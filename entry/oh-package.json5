@@ -1,0 +1,16 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "同休日主应用（entry 型 HAP：首页/排班/计划/我的/卡片）",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "commons": "file:../commons",
+    "domain": "file:../domain",
+    "data": "file:../data",
+    "cloud": "file:../cloud",
+    "feature": "file:../feature"
+  }
+}
+

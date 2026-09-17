@@ -1,0 +1,9 @@
+{
+  "name": "commons",
+  "version": "1.0.0",
+  "description": "同休日 公共层：日志、常量、通用工具",
+  "main": "Index.ets",
+  "author": "",
+  "license": "",
+  "dependencies": {}
+}

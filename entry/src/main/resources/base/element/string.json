@@ -1,0 +1,108 @@
+{
+    "string":  [
+                   {
+                       "name":  "module_desc",
+                       "value":  "同休日主模块"
+                   },
+                   {
+                       "name":  "EntryAbility_desc",
+                       "value":  "情侣共同休息日助手"
+                   },
+                   {
+                       "name":  "EntryAbility_label",
+                       "value":  "同休日"
+                   },
+                   {
+                       "name":  "calendar_perm_reason",
+                       "value":  "用于将共同计划写入系统日历，并在取消计划时同步移除"
+                   },
+                   {
+                       "name":  "privacy_welcome_title",
+                       "value":  "欢迎使用同休日"
+                   },
+                   {
+                       "name":  "privacy_welcome_subtitle",
+                       "value":  "在你开始之前，请先了解我们如何对待你的数据"
+                   },
+                   {
+                       "name":  "privacy_point_local",
+                       "value":  "班表/课表数据仅存储在本机数据库，不上传任何服务器"
+                   },
+                   {
+                       "name":  "privacy_point_calendar",
+                       "value":  "日历事件：仅在你确认创建共同计划时写入系统日历，取消计划即同步移除"
+                   },
+                   {
+                       "name":  "privacy_point_photo",
+                       "value":  "照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图"
+                   },
+                   {
+                       "name":  "privacy_point_cloud",
+                       "value":  "未来云端同步仅存储加密后的忙闲数据，且以你设置的隐私等级为准"
+                   },
+                   {
+                       "name":  "privacy_link_fulltext",
+                       "value":  "查看《隐私政策》全文 ›"
+                   },
+                   {
+                       "name":  "privacy_level_hint",
+                       "value":  "你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）。"
+                   },
+                   {
+                       "name":  "privacy_btn_accept",
+                       "value":  "同意并继续"
+                   },
+                   {
+                       "name":  "privacy_btn_decline",
+                       "value":  "不同意并退出"
+                   },
+                   {
+                       "name":  "privacy_fulltext_soon",
+                       "value":  "隐私政策全文即将上线"
+                   },
+                   {
+                       "name":  "privacy_save_failed",
+                       "value":  "保存失败，请重试"
+                   },
+                   {
+                       "name":  "computing",
+                       "value":  "计算中…"
+                   },
+                   {
+                       "name":  "cotime_subtitle_partner",
+                       "value":  "「我们」的空闲——已扣除双方的课程、班次、睡眠与收整缓冲"
+                   },
+                   {
+                       "name":  "cotime_subtitle_single",
+                       "value":  "「我」的空闲——添加伴侣后，这里展示你们的共同时间"
+                   },
+                   {
+                       "name":  "cotime_empty_partner_title",
+                       "value":  "添加伴侣后即可计算共同时间"
+                   },
+                   {
+                       "name":  "cotime_empty_partner_desc",
+                       "value":  "同一台手机上代录 TA 的课表/班表，立即得到你们都能空闲的时间段。"
+                   },
+                   {
+                       "name":  "cotime_empty_with_partner",
+                       "value":  "未来没有共同窗口，试试调整作息参数或检查双方课表"
+                   },
+                   {
+                       "name":  "cotime_empty_single",
+                       "value":  "暂无符合条件的空闲窗口"
+                   },
+                   {
+                       "name":  "home_subtitle_partner",
+                       "value":  "自动找出你们两个人真正能一起生活的时间。"
+                   },
+                   {
+                       "name":  "home_subtitle_single",
+                       "value":  "不是普通倒班日历，而是自动找出真正能安排生活的时间。"
+                   },
+                   {
+                       "name":  "plans_empty_desc",
+                       "value":  "去「共同时间」页选一个窗口，创建你们的第一个共同计划；创建后会自动重算占用该时段。"
+                   }
+               ]
+}

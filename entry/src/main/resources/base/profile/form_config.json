@@ -1,0 +1,21 @@
+{
+  "forms": [
+    {
+      "name": "RestCard2x2",
+      "displayName": "同休日",
+      "description": "距下次共同休息的倒计时与次窗口摘要",
+      "src": "./ets/widget/RestCard2x2.ets",
+      "uiSyntax": "arkts",
+      "isDynamic": true,
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "10:30",
+      "updateDuration": 1,
+      "supportDimensions": [
+        "2*2"
+      ],
+      "defaultDimension": "2*2",
+      "formConfigAbility": "ability://FormAbility"
+    }
+  ]
+}

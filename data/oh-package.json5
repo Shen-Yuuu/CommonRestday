@@ -1,0 +1,12 @@
+{
+  "name": "data",
+  "version": "1.0.0",
+  "description": "同休日 数据层：RDB/Preferences/Repository",
+  "main": "Index.ets",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "domain": "file:../domain",
+    "commons": "file:../commons"
+  }
+}

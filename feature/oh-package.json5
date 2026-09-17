@@ -1,0 +1,14 @@
+{
+  "name": "feature",
+  "version": "1.0.0",
+  "description": "同休日 特性层：页面 ViewModel 与用例",
+  "main": "Index.ets",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "domain": "file:../domain",
+    "data": "file:../data",
+    "cloud": "file:../cloud",
+    "commons": "file:../commons"
+  }
+}

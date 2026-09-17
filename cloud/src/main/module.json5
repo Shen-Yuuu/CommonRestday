@@ -1,0 +1,9 @@
+{
+  "module": {
+    "name": "cloud",
+    "type": "har",
+    "deviceTypes": [
+      "phone"
+    ]
+  }
+}

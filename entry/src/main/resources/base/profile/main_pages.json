@@ -1,0 +1,10 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/ScheduleEditor",
+    "pages/CycleEditor",
+    "pages/PaintMonth",
+    "pages/CourseImport",
+    "pages/OcrCourse"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "domain",
+  "version": "1.0.0",
+  "description": "同休日 领域层：班表展开/缓冲/合并/分类 纯逻辑引擎（零 Kit 依赖）",
+  "main": "Index.ets",
+  "author": "",
+  "license": "",
+  "dependencies": {}
+}

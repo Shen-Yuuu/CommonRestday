@@ -1,0 +1,12 @@
+{
+  "name": "cloud",
+  "version": "1.0.0",
+  "description": "同休日 云层：AGC 云函数/云数据库 封装与快照加解密",
+  "main": "Index.ets",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "domain": "file:../domain",
+    "commons": "file:../commons"
+  }
+}

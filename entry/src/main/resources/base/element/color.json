@@ -1,0 +1,184 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#FAF7F5"
+    },
+    {
+      "name": "brand_pink",
+      "value": "#D24A7E"
+    },
+    {
+      "name": "brand_pink_bg",
+      "value": "#FFF3F8"
+    },
+    {
+      "name": "brand_pink_border",
+      "value": "#F7D6E5"
+    },
+    {
+      "name": "brand_pink_muted",
+      "value": "#B27A99"
+    },
+    {
+      "name": "text_primary",
+      "value": "#333333"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#666666"
+    },
+    {
+      "name": "text_tertiary",
+      "value": "#999999"
+    },
+    {
+      "name": "text_hint",
+      "value": "#AAAAAA"
+    },
+    {
+      "name": "card_bg",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "page_bg",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "border_weak",
+      "value": "#F0F0F0"
+    },
+    {
+      "name": "fill_weak",
+      "value": "#F0F0F0"
+    },
+    {
+      "name": "fill_weakest",
+      "value": "#FAFAFA"
+    },
+    {
+      "name": "btn_neutral",
+      "value": "#999999"
+    },
+    {
+      "name": "sheet_handle",
+      "value": "#DDDDDD"
+    },
+    {
+      "name": "success_green",
+      "value": "#4E9A63"
+    },
+    {
+      "name": "success_bg",
+      "value": "#F1FBF3"
+    },
+    {
+      "name": "danger_red",
+      "value": "#E0533A"
+    },
+    {
+      "name": "danger_bg",
+      "value": "#FDF0ED"
+    },
+    {
+      "name": "danger_border",
+      "value": "#F3C1B5"
+    },
+    {
+      "name": "info_blue",
+      "value": "#3AA6E8"
+    },
+    {
+      "name": "info_bg",
+      "value": "#EEF4FF"
+    },
+    {
+      "name": "accent_purple",
+      "value": "#8A63D2"
+    },
+    {
+      "name": "warn_orange",
+      "value": "#E8833A"
+    },
+    {
+      "name": "warn_bg",
+      "value": "#FFF3EC"
+    },
+    {
+      "name": "divider",
+      "value": "#DDDDDD"
+    },
+    {
+      "name": "fill_soft",
+      "value": "#EEEEEE"
+    },
+    {
+      "name": "text_disabled",
+      "value": "#CCCCCC"
+    },
+    {
+      "name": "page_bg_soft",
+      "value": "#F7F7F7"
+    },
+    {
+      "name": "tag_weekend",
+      "value": "#8A63D2"
+    },
+    {
+      "name": "tag_trip",
+      "value": "#2B4C9B"
+    },
+    {
+      "name": "tag_fallback",
+      "value": "#7A7A7A"
+    },
+    {
+      "name": "month_free_none_bg",
+      "value": "#F2F2F2"
+    },
+    {
+      "name": "month_free_low_bg",
+      "value": "#F7D9E4"
+    },
+    {
+      "name": "month_free_mid_bg",
+      "value": "#E89AB6"
+    },
+    {
+      "name": "month_free_none_fg",
+      "value": "#B0B0B0"
+    },
+    {
+      "name": "month_free_low_fg",
+      "value": "#7A3550"
+    },
+    {
+      "name": "bar_gap",
+      "value": "#EFEFEF"
+    },
+    {
+      "name": "my_busy",
+      "value": "#8FA3B0"
+    },
+    {
+      "name": "partner_busy",
+      "value": "#D9A441"
+    },
+    {
+      "name": "page_bg_warm",
+      "value": "#FAF7F5"
+    },
+    {
+      "name": "sunset_from",
+      "value": "#D24A7E"
+    },
+    {
+      "name": "sunset_to",
+      "value": "#E8833A"
+    },
+    {
+      "name": "shadow_soft",
+      "value": "#14000000"
+    }
+  ]
+}

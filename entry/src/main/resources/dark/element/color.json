@@ -1,0 +1,184 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#171412"
+    },
+    {
+      "name": "brand_pink",
+      "value": "#DE5F8E"
+    },
+    {
+      "name": "brand_pink_bg",
+      "value": "#3A2230"
+    },
+    {
+      "name": "brand_pink_border",
+      "value": "#5A3A4C"
+    },
+    {
+      "name": "brand_pink_muted",
+      "value": "#C79BB3"
+    },
+    {
+      "name": "text_primary",
+      "value": "#E6E6E6"
+    },
+    {
+      "name": "text_secondary",
+      "value": "#B8B8B8"
+    },
+    {
+      "name": "text_tertiary",
+      "value": "#8F8F8F"
+    },
+    {
+      "name": "text_hint",
+      "value": "#7A7A7A"
+    },
+    {
+      "name": "text_disabled",
+      "value": "#5A5A5A"
+    },
+    {
+      "name": "card_bg",
+      "value": "#1E1E1E"
+    },
+    {
+      "name": "page_bg",
+      "value": "#141414"
+    },
+    {
+      "name": "page_bg_soft",
+      "value": "#171717"
+    },
+    {
+      "name": "border_weak",
+      "value": "#2E2E2E"
+    },
+    {
+      "name": "fill_weak",
+      "value": "#2A2A2A"
+    },
+    {
+      "name": "fill_soft",
+      "value": "#2A2A2A"
+    },
+    {
+      "name": "fill_weakest",
+      "value": "#232323"
+    },
+    {
+      "name": "btn_neutral",
+      "value": "#8F8F8F"
+    },
+    {
+      "name": "sheet_handle",
+      "value": "#444444"
+    },
+    {
+      "name": "divider",
+      "value": "#3D3D3D"
+    },
+    {
+      "name": "success_green",
+      "value": "#74BB8E"
+    },
+    {
+      "name": "success_bg",
+      "value": "#1B2E22"
+    },
+    {
+      "name": "danger_red",
+      "value": "#EF7B64"
+    },
+    {
+      "name": "danger_bg",
+      "value": "#331E1A"
+    },
+    {
+      "name": "danger_border",
+      "value": "#6E3A2E"
+    },
+    {
+      "name": "info_blue",
+      "value": "#5FB4F0"
+    },
+    {
+      "name": "info_bg",
+      "value": "#1A2635"
+    },
+    {
+      "name": "accent_purple",
+      "value": "#AB8CEB"
+    },
+    {
+      "name": "warn_orange",
+      "value": "#F09A5F"
+    },
+    {
+      "name": "warn_bg",
+      "value": "#332619"
+    },
+    {
+      "name": "tag_weekend",
+      "value": "#AB8CEB"
+    },
+    {
+      "name": "tag_trip",
+      "value": "#7D9BE0"
+    },
+    {
+      "name": "tag_fallback",
+      "value": "#9C9C9C"
+    },
+    {
+      "name": "month_free_none_bg",
+      "value": "#2E2E2E"
+    },
+    {
+      "name": "month_free_low_bg",
+      "value": "#4A2837"
+    },
+    {
+      "name": "month_free_mid_bg",
+      "value": "#B8617F"
+    },
+    {
+      "name": "month_free_none_fg",
+      "value": "#6A6A6A"
+    },
+    {
+      "name": "month_free_low_fg",
+      "value": "#F0C9D8"
+    },
+    {
+      "name": "bar_gap",
+      "value": "#2E2E2E"
+    },
+    {
+      "name": "my_busy",
+      "value": "#A6BAC7"
+    },
+    {
+      "name": "partner_busy",
+      "value": "#E0B25E"
+    },
+    {
+      "name": "page_bg_warm",
+      "value": "#171412"
+    },
+    {
+      "name": "sunset_from",
+      "value": "#C4537F"
+    },
+    {
+      "name": "sunset_to",
+      "value": "#C96A33"
+    },
+    {
+      "name": "shadow_soft",
+      "value": "#00000000"
+    }
+  ]
+}

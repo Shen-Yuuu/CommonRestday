@@ -42,7 +42,7 @@ export struct PlansView {
     });
   }
 
-  /** 解析 conflict_hint（{"altStart":..,"altEnd":..}）→ "替代窗口：M月d日 HH:mm–HH:mm"。 */
+  /** 解析 conflict_hint（{"altStart":..,"altEnd":..}）→ "替代窗口：M月d日 周X HH:mm–HH:mm"。 */
   altHint(p: PlanRow): string {
     if (p.status !== 'CONFLICT' || p.conflictHint === '') {
       return '';
@@ -54,7 +54,7 @@ export struct PlansView {
       if (s <= 0 || e <= 0) {
         return '';
       }
-      return '替代窗口：' + DateLabel.md(Math.floor(s / 1440)) + ' ' + DateLabel.hm(s) + '–' + DateLabel.hm(e);
+      return '替代窗口：' + DateLabel.mdw(Math.floor(s / 1440)) + ' ' + DateLabel.endLabel(s, e);
     } catch (err) {
       return '';
     }
@@ -85,7 +85,7 @@ export struct PlansView {
     this.getUIContext().showAlertDialog({
       title: p.title,
       message: planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
-        + DateLabel.hm(p.start) + '—' + DateLabel.hm(p.end),
+        + DateLabel.endLabel(p.start, p.end),
       primaryButton: {
         value: '取消计划',
         action: () => this.confirmCancel(p)
@@ -128,6 +128,34 @@ export struct PlansView {
       promptAction.showToast({ message: '取消失败：' + (e as Error).message });
     }
     this.cancelling = false;
+  }
+
+  /** 接受替代窗口（PRD F7 动作一）：二次确认后级联改期（日历日程/本地提醒同步迁移）。 */
+  askAcceptAlternative(p: PlanRow): void {
+    const hint = this.altHint(p);
+    this.getUIContext().showAlertDialog({
+      title: '改期到替代窗口',
+      message: (hint !== '' ? hint : '按建议时间改期') + '？系统日历日程与提醒会一并更新。',
+      primaryButton: {
+        value: '确认改期',
+        action: () => this.doAcceptAlternative(p)
+      },
+      secondaryButton: {
+        value: '暂不',
+        action: () => {
+        }
+      }
+    });
+  }
+
+  async doAcceptAlternative(p: PlanRow): Promise<void> {
+    try {
+      const ok = await PlanUseCase.acceptAlternative(p.id);
+      promptAction.showToast({ message: ok ? '已改期，日历与提醒已同步更新' : '改期失败：替代窗口信息缺失' });
+      this.reload();
+    } catch (e) {
+      promptAction.showToast({ message: '改期失败：' + (e as Error).message });
+    }
   }
 
   build() {
@@ -224,17 +252,33 @@ export struct PlansView {
         }.width('100%')
 
         Text(planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
-          + DateLabel.hm(p.start) + '—' + DateLabel.hm(p.end) + ' · '
+          + DateLabel.endLabel(p.start, p.end) + ' · '
           + DateLabel.duration(p.end - p.start))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
         if (p.status === 'CONFLICT') {
-          Column({ space: 4 }) {
+          Column({ space: 6 }) {
             Text('与最新课表/班表冲突，计划时间已不可用').fontSize(11).fontColor($r('app.color.danger_red'))
             if (this.altHint(p) !== '') {
               Text(this.altHint(p)).fontSize(12).fontColor($r('app.color.brand_pink'))
             } else {
               Text('未来暂无合适的替代窗口，可取消后手动调整').fontSize(11).fontColor($r('app.color.text_hint'))
+            }
+            // PRD F7 三动作：接受替代（级联改期）/ 保留原计划（不操作，红点常驻）/ 重新查找
+            if (this.altHint(p) !== '') {
+              Row({ space: 10 }) {
+                Button('改期到替代窗口').height(32).fontSize(12)
+                  .backgroundColor($r('app.color.brand_pink'))
+                  .onClick(() => this.askAcceptAlternative(p))
+                Text('重新选窗口').fontSize(12).fontColor($r('app.color.info_blue'))
+                  .onClick(() => {
+                    if (this.onGoWindow != null) {
+                      this.onGoWindow();
+                    } else {
+                      navToCoTime();
+                    }
+                  })
+              }.width('100%')
             }
           }
           .width('100%')

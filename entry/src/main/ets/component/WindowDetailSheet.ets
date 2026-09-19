@@ -156,7 +156,7 @@ export struct WindowDetailSheet {
           Column({ space: 6 }) {
             Text(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
               .fontSize(17).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
-            Text(DateLabel.hm(this.winStart) + ' – ' + DateLabel.hm(this.winEnd)
+            Text(DateLabel.endLabel(this.winStart, this.winEnd)
               + ' · 共 ' + DateLabel.duration(this.winEnd - this.winStart))
               .fontSize(13).fontColor('#FFFFFFB8')
             if (this.winTags !== '') {
@@ -195,7 +195,7 @@ export struct WindowDetailSheet {
             Row() {
               Text(DateLabel.hm(this.winStart)).fontSize(10).fontColor($r('app.color.text_hint'))
               Blank()
-              Text('计划 ' + DateLabel.hm(this.planStart) + '–' + DateLabel.hm(this.planEnd)
+              Text('计划 ' + DateLabel.endLabel(this.planStart, this.planEnd)
                 + '（' + DateLabel.duration(this.planEnd - this.planStart) + '）')
                 .fontSize(10).fontColor($r('app.color.brand_pink'))
               Blank()

@@ -9,8 +9,8 @@
       "isDynamic": true,
       "isDefault": false,
       "updateEnabled": true,
-      "scheduledUpdateTime": "10:30",
-      "updateDuration": 1,
+      "scheduledUpdateTime": "00:10",
+      "updateDuration": 12,
       "supportDimensions": [
         "2*2"
       ],

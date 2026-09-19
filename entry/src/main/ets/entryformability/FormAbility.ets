@@ -21,12 +21,16 @@ interface CardData {
   hasPartner: boolean;
 }
 
+/** 跨多日的旅行长窗口不作为卡片"次窗口摘要"（其信息由首页出行卡呈现）。 */
+const CARD_MAX_WINDOW_MIN: number = 36 * 60;
+
 /**
  * 2x2 服务卡片扩展（US7 / FR-013）：
  * - onAddForm：同步返回占位数据（卡片框架要求立即返回），异步读共同窗口缓存计算后 updateForm 回填；
  * - 数据来源：computed_window 缓存（ScheduleRepo.listWindows）；缓存为空时触发一次重算（毫秒级）；
  * - 卡片进程可能独立于 EntryAbility 启动，先自行初始化 Db/SettingsStore，任何失败静默降级保持占位内容；
- * - onUpdateForm：周期刷新（updateDuration=1，约 30 分钟）时重算倒计时，保证跨天后天数不过期。
+ * - onUpdateForm：周期刷新（updateDuration=12，每 6 小时；另每日 00:10 scheduledUpdateTime）时重算倒计时，
+ *   与 PRD"每 6h 定时 + 日切刷新"的电量口径一致，保证跨天后天数不过期。
  */
 export default class FormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
@@ -99,12 +103,20 @@ export default class FormAbility extends FormExtensionAbility {
       }
       const today = todayEpochDay();
       const nowMin = today * MIN_PER_DAY + FormAbility.minutesNow();
-      // 最近一个未结束窗口（listWindows 已按开始时间升序）
+      // 最近一个未结束窗口（listWindows 已按开始时间升序）；跳过跨多日的旅行长窗口
       let next: Interval | null = null;
       for (let i = 0; i < ivs.length; i++) {
-        if (ivs[i].end > nowMin) {
+        if (ivs[i].end > nowMin && ivs[i].end - ivs[i].start <= CARD_MAX_WINDOW_MIN) {
           next = ivs[i];
           break;
+        }
+      }
+      if (next == null) {
+        for (let i = 0; i < ivs.length; i++) {
+          if (ivs[i].end > nowMin) {
+            next = ivs[i];
+            break;
+          }
         }
       }
       if (next != null) {

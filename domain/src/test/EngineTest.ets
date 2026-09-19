@@ -40,8 +40,11 @@ function mkMy(template: CycleTemplate | null): MySchedule {
   return m;
 }
 
-function mkInput(my: MySchedule, partnerBusy: Interval[], startDay: number, days: number): EngineInput {
-  const partner: PartnerSchedule = { shareLevel: 1, busyIntervals: partnerBusy };
+function mkInput(my: MySchedule, partnerBusy: Interval[], startDay: number, days: number,
+  partnerTripBusy?: Interval[]): EngineInput {
+  const partner: PartnerSchedule = {
+    shareLevel: 1, busyIntervals: partnerBusy, tripBusyIntervals: partnerTripBusy ?? null
+  };
   const input: EngineInput = {
     my: my,
     partner: partner,
@@ -106,13 +109,13 @@ export default function engineTest() {
       const input = mkInput(mkMy(tpl), [], fri, 3);
       const r = CommonFreeEngine.compute(input);
 
-      // 找到周六窗口
+      // 找到周六常规窗口（v1.2 起同起点可能另有旅行窗口，需按起止双字段匹配）
       let satWinStart = -1;
       let satWinEnd = -1;
       let satWinDur = -1;
       let satWinTags: string[] = [];
       for (let i = 0; i < r.windows.length; i++) {
-        if (r.windows[i].start === sat * MIN_PER_DAY + 900) {
+        if (r.windows[i].start === sat * MIN_PER_DAY + 900 && r.windows[i].end === sat * MIN_PER_DAY + 1350) {
           satWinStart = r.windows[i].start;
           satWinEnd = r.windows[i].end;
           satWinDur = r.windows[i].durationMin;
@@ -217,6 +220,104 @@ export default function engineTest() {
       expect(r.windows[0].start).assertEqual(mon * MIN_PER_DAY + 420);
       expect(r.windows[0].end).assertEqual(mon * MIN_PER_DAY + 1290);
       expect(r.windows[0].durationMin).assertEqual(870);
+    });
+
+    it('partner_full_day_and_trip_local_both_idle', 0, () => {
+      // 回归（v1.2）：双人本机代录、周六周日双方均无班次/课程。
+      // 修复前：classify 收到对方含睡眠的不可用 → peerBusy 恒 >0 → FULL_DAY 永不触发。
+      const sat = epochDayOf(2026, 9, 19);
+      const sun = sat + 1;
+      const my = mkSched([], [], -1, 420, 1350, 20);
+      // 伴侣不可用 = 两天睡眠块（与我的作息一致）；不含睡眠的真忙为空
+      const pb: Interval[] = [
+        { start: sat * MIN_PER_DAY, end: sat * MIN_PER_DAY + 420, tag: 'SLEEP' },
+        { start: sat * MIN_PER_DAY + 1350, end: (sat + 1) * MIN_PER_DAY, tag: 'SLEEP' },
+        { start: sun * MIN_PER_DAY, end: sun * MIN_PER_DAY + 420, tag: 'SLEEP' },
+        { start: sun * MIN_PER_DAY + 1350, end: (sun + 1) * MIN_PER_DAY, tag: 'SLEEP' }
+      ];
+      const r = CommonFreeEngine.compute(mkInput(my, pb, sat, 2, []));
+
+      // 两个完整同休日
+      expect(r.fullDays.length).assertEqual(2);
+      // 常规窗口（每天 [wake, bed)）带 FULL_DAY 标签
+      let regFull = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        if (r.windows[i].start === sat * MIN_PER_DAY + 420 && hasTag(r.windows[i].tags, WindowTag.FULL_DAY)) {
+          regFull = true;
+        }
+      }
+      expect(regFull).assertTrue();
+      // 旅行窗口：跨睡眠连续空档 [sat 00:00, sun 24:00) 48h，带 TRIP/OVERNIGHT_TRIP
+      let tripFound = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        const w = r.windows[i];
+        if (w.start === sat * MIN_PER_DAY && w.end === (sat + 2) * MIN_PER_DAY) {
+          tripFound = hasTag(w.tags, WindowTag.TRIP) && hasTag(w.tags, WindowTag.OVERNIGHT_TRIP);
+        }
+      }
+      expect(tripFound).assertTrue();
+    });
+
+    it('partner_l1_snapshot_full_day_conservative', 0, () => {
+      // L1 快照：忙碌位图含对方睡眠（'BUSY' 标签，不可剥离）→ 同休日判定保守不触发；
+      // 常规窗口计算不受影响。
+      const mon = epochDayOf(2026, 9, 14);
+      const my = mkSched([], [], -1, 420, 1350, 20);
+      const pb: Interval[] = [
+        { start: mon * MIN_PER_DAY, end: mon * MIN_PER_DAY + 420, tag: 'BUSY' },
+        { start: mon * MIN_PER_DAY + 1350, end: (mon + 1) * MIN_PER_DAY, tag: 'BUSY' }
+      ];
+      const r = CommonFreeEngine.compute(mkInput(my, pb, mon, 1));
+      expect(r.fullDays.length).assertEqual(0);
+      expect(r.windows.length).assertEqual(1);
+      expect(r.windows[0].start).assertEqual(mon * MIN_PER_DAY + 420);
+      expect(r.windows[0].end).assertEqual(mon * MIN_PER_DAY + 1350);
+    });
+
+    it('partner_trip_window_skips_busy_morning', 0, () => {
+      // 旅行窗口语义（v1.2）：睡眠可被跨越、真忙+收整切断。
+      // 伴侣周六上午有课（08:00–11:50 含收整），周六下午起至周日深夜为连续旅行空档。
+      const sat = epochDayOf(2026, 9, 19);
+      const sun = sat + 1;
+      const my = mkSched([], [], -1, 420, 1350, 20);
+      const pb: Interval[] = [
+        { start: sat * MIN_PER_DAY, end: sat * MIN_PER_DAY + 420, tag: 'SLEEP' },
+        { start: sat * MIN_PER_DAY + 480, end: sat * MIN_PER_DAY + 710, tag: 'COURSE' },
+        { start: sat * MIN_PER_DAY + 1350, end: (sat + 1) * MIN_PER_DAY, tag: 'SLEEP' },
+        { start: sun * MIN_PER_DAY, end: sun * MIN_PER_DAY + 420, tag: 'SLEEP' },
+        { start: sun * MIN_PER_DAY + 1350, end: (sun + 1) * MIN_PER_DAY, tag: 'SLEEP' }
+      ];
+      const tripBusy: Interval[] = [
+        { start: sat * MIN_PER_DAY + 480, end: sat * MIN_PER_DAY + 710, tag: 'COURSE' }
+      ];
+      const r = CommonFreeEngine.compute(mkInput(my, pb, sat, 2, tripBusy));
+
+      // 常规窗口：周六 11:50–22:30、周日 07:00–22:30
+      let satWin = false;
+      let sunWin = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        const w = r.windows[i];
+        if (w.start === sat * MIN_PER_DAY + 710 && w.end === sat * MIN_PER_DAY + 1350) {
+          satWin = true;
+        }
+        if (w.start === sun * MIN_PER_DAY + 420 && w.end === sun * MIN_PER_DAY + 1350) {
+          sunWin = true;
+        }
+      }
+      expect(satWin).assertTrue();
+      expect(sunWin).assertTrue();
+      // 周日为完整同休日（周六伴侣有课不算）
+      expect(r.fullDays.length).assertEqual(1);
+      expect(r.fullDays[0]).assertEqual(sun);
+      // 旅行窗口：周六 11:50 → 周一 00:00（≥32h 且跨零点）
+      let tripFound = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        const w = r.windows[i];
+        if (w.start === sat * MIN_PER_DAY + 710 && w.end === (sat + 2) * MIN_PER_DAY) {
+          tripFound = hasTag(w.tags, WindowTag.TRIP) && hasTag(w.tags, WindowTag.OVERNIGHT_TRIP);
+        }
+      }
+      expect(tripFound).assertTrue();
     });
   });
 }

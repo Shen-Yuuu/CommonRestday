@@ -2,7 +2,7 @@ import {
   CommonFreeEngine, CommonFreeResult, ConflictOutcome, EngineInput, EngineParams, Interval,
   MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule, PlanBlock, PlanLite,
   ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec, Window,
-  buildAvailability, defaultParams, detectConflicts, todayEpochDay, unionIntervals
+  buildAvailability, defaultParams, detectConflicts, mergeIntervals, mkIv, todayEpochDay, unionIntervals
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
@@ -19,6 +19,8 @@ export interface TermConfig {
 /** 伴侣忙区间装配结果：忙碌集合 + 数据来源与隐私等级（供 UI 按来源/等级差异化渲染）。 */
 export interface PartnerBusyResult {
   busy: Interval[];
+  /** "不含睡眠"的不可用（忙碌块+收整，已合并）：完整同休日/旅行判定专用。 */
+  tripBusy: Interval[];
   /** 'LOCAL' = 本机代录（全量细节）；'SNAPSHOT' = 云端加密快照（按对方 shareLevel 降维）。 */
   source: string;
   /** 对方数据隐私等级（1/2/3）；本机代录恒为 3。 */
@@ -60,7 +62,8 @@ export class ScheduleUseCase {
       ScheduleUseCase.mkType('train', '培训', '#4E9A63', 540, 720, false, 20, 20, 0)
     ];
     for (let i = 0; i < seeds.length; i++) {
-      await ScheduleRepo.upsertShiftType(seeds[i]);
+      // owner 必须透传：否则伴侣侧首次进入会把种子写入 ME 侧，反复覆写"我"的同 id 班次类型
+      await ScheduleRepo.upsertShiftType(seeds[i], owner);
     }
     Logger.info('ScheduleUseCase', 'seeded default shift types');
   }
@@ -119,7 +122,11 @@ export class ScheduleUseCase {
     const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
     const partnerBusy = await ScheduleUseCase.buildPartnerBusy(startEpochDay, params);
     const partner: PartnerSchedule | null = partnerBusy != null
-      ? { shareLevel: partnerBusy.shareLevel, busyIntervals: partnerBusy.busy }
+      ? {
+        shareLevel: partnerBusy.shareLevel,
+        busyIntervals: partnerBusy.busy,
+        tripBusyIntervals: partnerBusy.tripBusy
+      }
       : null;
     const partnerIvs = partnerBusy != null ? partnerBusy.busy : null;
     const input: EngineInput = {
@@ -142,7 +149,6 @@ export class ScheduleUseCase {
       + ' fullDays=' + result.fullDays.length + ' partner=' + (partnerBusy != null) + ' in ' + result.computeMs + 'ms');
     return result;
   }
-
   /**
    * 装配伴侣忙区间（"伴侣不可用"语义，与我的 notAvailable 同构）：
    * - 云端快照路径：已配对且 pairId/密钥就绪时先拉快照解密（快照已含对方缓冲，不二次加缓冲）；
@@ -171,7 +177,16 @@ export class ScheduleUseCase {
     const partnerSched = await ScheduleUseCase.loadMySchedule(startEpochDay, partnerParams, OWNER_PARTNER);
     const days = Math.max(1, Math.min(partnerParams.horizonDays, 366));
     const avail = buildAvailability(partnerSched, partnerParams, startEpochDay, days);
-    const r: PartnerBusyResult = { busy: avail.notAvailable, source: 'LOCAL', shareLevel: 3 };
+    // 本机代录可拿到全量细节：从真忙+收整重建"不含睡眠"不可用（避免合并吞标签的边缘情形）
+    const tripBusy = mergeIntervals(avail.trueBusy.map((iv: Interval): Interval => {
+      return mkIv(iv.start, iv.end + partnerParams.windDownMin, iv.tag);
+    }));
+    const r: PartnerBusyResult = {
+      busy: avail.notAvailable,
+      tripBusy: tripBusy,
+      source: 'LOCAL',
+      shareLevel: 3
+    };
     return r;
   }
 
@@ -197,7 +212,15 @@ export class ScheduleUseCase {
         return null;
       }
       await SettingsStore.setPartnerSnapVer(snap.version);
-      const r: PartnerBusyResult = { busy: ivs, source: 'SNAPSHOT', shareLevel: snap.shareLevel };
+      // 快照分段已含对方缓冲；剥离 SLEEP 段得到"不含睡眠"不可用
+      // （L1 位图解码后标签全为 BUSY，剥离结果仍含睡眠 → 引擎侧同休日/旅行判定自然保守）
+      const tripIvs = ivs.filter((iv: Interval) => iv.tag !== 'SLEEP');
+      const r: PartnerBusyResult = {
+        busy: ivs,
+        tripBusy: tripIvs,
+        source: 'SNAPSHOT',
+        shareLevel: snap.shareLevel
+      };
       return r;
     } catch (e) {
       // CloudApiError(1001/1002) 等：云端路径不可用，静默降级本机代录

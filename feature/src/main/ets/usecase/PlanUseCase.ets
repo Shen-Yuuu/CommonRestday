@@ -120,22 +120,7 @@ export class PlanUseCase {
         break;
       }
     }
-    if (eventId !== '') {
-      try {
-        const ctx = PlanUseCase.context;
-        if (ctx != null) {
-          const mgr = calendarManager.getCalendarManager(ctx);
-          const account: calendarManager.CalendarAccount = {
-            name: CAL_NAME, type: calendarManager.CalendarType.LOCAL
-          };
-          const cal = await mgr.getCalendar(account);
-          await cal.deleteEvent(Number(eventId));
-        }
-      } catch (e) {
-        // 权限被撤销/日历不存在：日历侧删除降级，本机取消照常进行
-        Logger.warn(TAG, 'deleteEvent degraded: ' + (e as Error).message);
-      }
-    }
+    await PlanUseCase.deleteCalendarEventById(eventId);
     // 取消本地提醒（尽力而为，失败静默：提醒过期后系统自动清理）
     if (reminderId >= 0) {
       try {
@@ -146,6 +131,97 @@ export class PlanUseCase {
     }
     await ScheduleRepo.updatePlanStatus(id, 'CANCELLED');
     await ScheduleUseCase.onScheduleChanged();
+  }
+
+  /**
+   * 接受冲突替代窗口改期（PRD F7 动作一 / L11 G1）：
+   * 计划时长不变、起点对齐替代窗口起点（替代窗口由冲突检测保证时长足够，越界时收缩兜底）；
+   * 级联迁移系统日历日程与本地提醒（旧事件/旧提醒尽力清理，新事件/新提醒尽力写入），
+   * 回写新起止后触发重算——重算的冲突检测在新时段无冲突时把计划恢复为 OK。
+   * 替代窗口信息缺失/非法时返回 false，由 UI 提示。
+   */
+  static async acceptAlternative(id: string): Promise<boolean> {
+    const rows = await ScheduleRepo.listActivePlans();
+    let row: PlanRow | null = null;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].id === id) {
+        row = rows[i];
+        break;
+      }
+    }
+    if (row == null || row.status !== 'CONFLICT' || row.conflictHint === '') {
+      return false;
+    }
+    let altStart = 0;
+    let altEnd = 0;
+    try {
+      const o = JSON.parse(row.conflictHint) as Record<string, number>;
+      altStart = Number(o['altStart']);
+      altEnd = Number(o['altEnd']);
+    } catch (e) {
+      return false;
+    }
+    if (!(altStart > 0 && altEnd > altStart)) {
+      return false;
+    }
+    const duration = row.end - row.start;
+    const newStart = altStart;
+    const newEnd = Math.min(altStart + duration, altEnd);
+    if (newEnd - newStart < 15) {
+      return false;
+    }
+    // 级联迁移：旧日历日程/旧提醒尽力清理（失败不阻塞改期）
+    await PlanUseCase.deleteCalendarEventById(row.myEventId);
+    if (row.reminderId >= 0) {
+      try {
+        await reminderAgentManager.cancelReminder(row.reminderId);
+      } catch (e) {
+        Logger.warn(TAG, 'cancel old reminder degraded: ' + (e as Error).message);
+      }
+    }
+    await ScheduleRepo.updatePlanTime(id, newStart, newEnd);
+    let calendarWritten = false;
+    try {
+      const eventId = await PlanUseCase.writeCalendarEvent(row.title, newStart, newEnd);
+      if (eventId >= 0) {
+        await ScheduleRepo.updatePlanEventId(id, '' + eventId);
+        calendarWritten = true;
+      }
+    } catch (e) {
+      Logger.warn(TAG, 'calendar rewrite degraded: ' + (e as Error).message);
+    }
+    try {
+      const reminderId = await PlanUseCase.registerReminder(row.title, newStart);
+      if (reminderId >= 0) {
+        await ScheduleRepo.updatePlanReminder(id, reminderId);
+      }
+    } catch (e) {
+      Logger.warn(TAG, 'reminder rewrite degraded: ' + (e as Error).message);
+    }
+    await ScheduleUseCase.onScheduleChanged();
+    Logger.info(TAG, `plan rescheduled to alternative: id=${id} calendar=${calendarWritten}`);
+    return true;
+  }
+
+  /** 删除"同休日"日历中的日程（尽力而为；eventId 为空或权限失效时静默跳过）。 */
+  private static async deleteCalendarEventById(eventId: string): Promise<void> {
+    if (eventId === '') {
+      return;
+    }
+    try {
+      const ctx = PlanUseCase.context;
+      if (ctx != null) {
+        const mgr = calendarManager.getCalendarManager(ctx);
+        const account: calendarManager.CalendarAccount = {
+          name: CAL_NAME, type: calendarManager.CalendarType.LOCAL
+        };
+        const cal = await mgr.getCalendar(account);
+        await cal.deleteEvent(Number(eventId));
+      }
+    } catch (e) {
+      // 权限被撤销/日历不存在：日历侧删除降级，本机操作照常进行
+      Logger.warn(TAG, 'deleteEvent degraded: ' + (e as Error).message);
+    }
   }
 
   /**

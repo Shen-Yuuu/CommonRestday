@@ -285,6 +285,14 @@ export class ScheduleRepo {
     await Db.get().update(vb, pred);
   }
 
+  /** 改期：更新计划起止（接受冲突替代窗口时调用；状态由重算的冲突检测复核）。 */
+  static async updatePlanTime(id: string, start: number, end: number): Promise<void> {
+    const pred = new relationalStore.RdbPredicates('plan');
+    pred.equalTo('id', id);
+    const vb: relationalStore.ValuesBucket = { 'start_min': start, 'end_min': end };
+    await Db.get().update(vb, pred);
+  }
+
   /** 冲突检测结果回写：状态 + conflict_hint（替代窗口 JSON，空串表示无冲突/无替代）。 */
   static async updatePlanConflict(id: string, status: string, conflictHint: string): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');

@@ -187,6 +187,13 @@ export interface MySchedule {
 export interface PartnerSchedule {
   shareLevel: number;
   busyIntervals: Interval[];
+  /**
+   * 对方"不含睡眠"的不可用区间（忙碌块+收整缓冲，已合并）：
+   * 用于完整同休日判定（当日真忙=0）与旅行窗口（睡眠可被跨越）。
+   * 缺省/null 时引擎回退为 busyIntervals 剥离 SLEEP 段；L1 快照睡眠与班次不可分，
+   * 剥离结果仍含睡眠 → 同休日/旅行判定自然保守（不误标），行为正确。
+   */
+  tripBusyIntervals?: Interval[] | null;
 }
 
 export interface EngineInput {

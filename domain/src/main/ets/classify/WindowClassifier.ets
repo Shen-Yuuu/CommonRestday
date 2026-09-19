@@ -18,7 +18,7 @@ const DINNER_END = 1170;   // 19:30
  * 窗口分类打标（PRD F4 判定表）：
  * - MEAL：覆盖午/晚餐时段
  * - HALF_DAY：≥ halfDayMin
- * - FULL_DAY：存在"完整同休日" d（双方真忙=0 且当日共同可安排 ≥ fullDayAvailMin），
+ * - FULL_DAY：存在"完整同休日" d（双方当日无任何不可用占用，且当日共同可安排 ≥ fullDayAvailMin），
  *   且窗口完整覆盖当日可安排核心 [d+wake, d+bed)
  * - TWO_DAYS：覆盖两个相邻的完整同休日
  * - WEEKEND：覆盖周六或周日
@@ -26,8 +26,12 @@ const DINNER_END = 1170;   // 19:30
  * - TRIP：≥ tripMinMin 或 TWO_DAYS
  * - STUDY：≥ studyMinMin 且窗口起止同一天、该天为周一至周五、整体落在
  *   [studyStartMin, studyEndMin] 白天时段内（跨多日的长窗口不标）
+ *
+ * @param trueBusyMine 我方真忙（工作/恢复/课程/计划，不含睡眠与收整）
+ * @param peerBusyNoSleep 对方"不含睡眠"的不可用区间（忙碌块+收整；L1 快照会含对方睡眠，
+ *                        当日占用恒 >0 → 同休日判定自然保守，不会误标）
  */
-export function classifyWindows(free: Interval[], trueBusyMine: Interval[], trueBusyPartner: Interval[],
+export function classifyWindows(free: Interval[], trueBusyMine: Interval[], peerBusyNoSleep: Interval[],
   params: EngineParams, wakeMin: number, bedMin: number,
   startEpochDay: number, days: number): ClassifyResult {
 
@@ -37,7 +41,7 @@ export function classifyWindows(free: Interval[], trueBusyMine: Interval[], true
     const dayStart = d * MIN_PER_DAY;
     const dayEnd = dayStart + MIN_PER_DAY;
     const myBusy = totalOverlap(trueBusyMine, dayStart, dayEnd);
-    const peerBusy = totalOverlap(trueBusyPartner, dayStart, dayEnd);
+    const peerBusy = totalOverlap(peerBusyNoSleep, dayStart, dayEnd);
     const freeMin = totalOverlap(free, dayStart, dayEnd);
     if (myBusy === 0 && peerBusy === 0 && freeMin >= params.fullDayAvailMin) {
       fullDays.push(d);

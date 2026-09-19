@@ -203,6 +203,8 @@ export struct CoTimeView {
           free += oe - os;
         }
       }
+      // 跨多日的旅行窗口与当日窗口并存时按日封顶（一天最多 24h）
+      free = Math.min(free, MIN_PER_DAY);
       const c: MonthCell = { day: d, epochDay: ed, freeMin: free };
       cells.push(c);
     }
@@ -675,7 +677,7 @@ export struct CoTimeView {
             .backgroundColor($r('app.color.brand_pink_bg'))
         }.width('100%')
 
-        Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end))
+        Text(DateLabel.endLabel(w.start, w.end))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
         if (w.tags.length > 0) {

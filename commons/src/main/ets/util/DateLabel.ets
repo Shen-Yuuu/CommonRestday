@@ -36,6 +36,25 @@ export class DateLabel {
     return hs + ':' + mms;
   }
 
+  /**
+   * 起止时段显示（不含起始日期，起日由调用方上下文给出）：
+   * 同日 "15:00–22:30"；跨日 "15:00 – 9月21日 22:30"；结束恰为午夜显示 "24:00"。
+   * 跨日窗口（如旅行窗口、跨天计划）由此正确带出结束日期。
+   */
+  static endLabel(startMin: number, endMin: number): string {
+    const sd = Math.floor(startMin / 1440);
+    let ed = Math.floor(endMin / 1440);
+    let et = DateLabel.hm(endMin);
+    if (endMin % 1440 === 0) {
+      ed = endMin / 1440 - 1;
+      et = '24:00';
+    }
+    if (ed <= sd) {
+      return DateLabel.hm(startMin) + '–' + et;
+    }
+    return DateLabel.hm(startMin) + ' – ' + DateLabel.md(ed) + ' ' + et;
+  }
+
   /** "7小时30分" */
   static duration(minutes: number): string {
     const h = Math.floor(minutes / 60);

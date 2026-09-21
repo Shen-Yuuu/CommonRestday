@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="共同休时精简版原型的三种视觉方向对比：温暖编辑感、柔和结构感与深色玻璃感。">
+  <meta name="theme-color" content="#e9e5df">
+  <title>共同休时 · 三种视觉气质</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{
+      color-scheme:light;
+      --page:#e9e5df;
+      --ink:#242320;
+      --muted:#6e6b65;
+      --hair:rgba(31,29,26,.12);
+      --shadow:0 28px 80px rgba(60,51,42,.14);
+      --spring:cubic-bezier(.22,1,.36,1);
+      --z-nav:10;
+      --z-overlay:20;
+      --z-focus:30;
+    }
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      min-width:320px;
+      min-height:100dvh;
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%,rgba(255,255,255,.78),transparent 34rem),
+        radial-gradient(circle at 92% 18%,rgba(185,175,161,.2),transparent 29rem),
+        var(--page);
+      font-family:"Avenir Next","HarmonyOS Sans SC","PingFang SC",sans-serif;
+      overflow-x:hidden;
+    }
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:var(--z-overlay);
+      pointer-events:none;
+      opacity:.035;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E");
+    }
+    button{font:inherit}
+    .skip-link{
+      position:fixed;
+      top:10px;
+      left:10px;
+      z-index:var(--z-focus);
+      padding:10px 14px;
+      border-radius:10px;
+      color:#fff;
+      background:#242320;
+      transform:translateY(-150%);
+      transition:transform 380ms var(--spring);
+    }
+    .skip-link:focus{transform:translateY(0)}
+    .shell{width:min(1540px,100%);margin-inline:auto;padding:28px clamp(18px,3.6vw,58px) 80px}
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:24px;
+      padding:10px 2px 54px;
+    }
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:650;letter-spacing:.02em}
+    .brand-mark{
+      width:31px;height:31px;border-radius:11px;
+      display:grid;place-items:center;
+      background:#242320;color:#fff;
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.2),0 8px 22px rgba(54,48,41,.18)
+    }
+    .brand-mark svg{width:17px;height:17px}
+    .hint{font-size:12px;color:var(--muted);letter-spacing:.02em}
+    .intro{
+      display:grid;
+      grid-template-columns:minmax(0,1.55fr) minmax(250px,.45fr);
+      align-items:end;
+      gap:clamp(38px,7vw,120px);
+      margin-bottom:54px;
+    }
+    .kicker{display:flex;align-items:center;gap:10px;margin:0 0 18px;font-size:11px;font-weight:650;letter-spacing:.16em;text-transform:uppercase;color:#716c64}
+    .kicker::before{content:"";width:26px;height:1px;background:currentColor}
+    h1{max-width:900px;margin:0;font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:clamp(44px,6.2vw,94px);font-weight:500;line-height:.96;letter-spacing:-.055em;text-wrap:balance}
+    .intro-copy{max-width:38ch;margin:0 0 7px;font-size:14px;line-height:1.8;color:var(--muted);text-wrap:pretty}
+    .comparison-note{display:flex;align-items:center;gap:9px;margin-top:18px;color:#4d4a45;font-size:12px}
+    .comparison-note svg{width:17px;height:17px;flex:0 0 auto}
+    .directions{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;align-items:start}
+    .direction-card{
+      --accent:#9a3150;
+      --surface:#f8f1e7;
+      --surface-deep:#ede2d5;
+      --text:#332825;
+      --sub:#776964;
+      grid-column:span 4;
+      position:relative;
+      min-width:0;
+      border:0;
+      border-radius:34px;
+      padding:7px;
+      color:var(--text);
+      background:color-mix(in srgb,var(--surface-deep) 84%,transparent);
+      box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.52);
+      isolation:isolate;
+      cursor:pointer;
+      transform:translateY(34px);
+      opacity:0;
+      animation:arrive 900ms var(--spring) forwards;
+      transition:transform 700ms var(--spring),opacity 500ms var(--spring),box-shadow 700ms var(--spring);
+    }
+    .direction-card:nth-child(2){animation-delay:100ms}
+    .direction-card:nth-child(3){animation-delay:200ms}
+    @keyframes arrive{to{transform:translateY(0);opacity:1}}
+    .direction-card:hover{transform:translateY(-7px);box-shadow:0 38px 95px rgba(60,51,42,.2),inset 0 1px 0 rgba(255,255,255,.55)}
+    .direction-card:active{transform:translateY(-3px) scale(.992)}
+    .direction-card:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 74%,white);outline-offset:5px}
+    .card-core{
+      min-height:100%;
+      overflow:hidden;
+      border-radius:28px;
+      background:var(--surface);
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.7);
+    }
+    .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:25px 25px 20px}
+    .index{font-family:"Iowan Old Style",Georgia,serif;font-size:12px;font-style:italic;color:var(--sub)}
+    .title-wrap h2{margin:5px 0 4px;font-size:24px;line-height:1.05;letter-spacing:-.035em;font-weight:650}
+    .title-wrap p{margin:0;font-size:11px;color:var(--sub);letter-spacing:.03em}
+    .expand-cue{
+      width:42px;height:42px;flex:0 0 42px;
+      display:grid;place-items:center;
+      border:0;border-radius:50%;
+      color:var(--text);
+      background:color-mix(in srgb,var(--text) 7%,transparent);
+      transition:transform 600ms var(--spring),background-color 600ms var(--spring);
+      pointer-events:none;
+    }
+    .expand-cue svg{width:17px;height:17px;transition:transform 600ms var(--spring)}
+    .direction-card:hover .expand-cue{transform:scale(1.08);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+    .direction-card:hover .expand-cue svg{transform:translate(2px,-2px)}
+    .preview-shell{margin:0 20px;padding:5px;border-radius:30px;background:color-mix(in srgb,var(--text) 10%,transparent);box-shadow:inset 0 1px 1px rgba(255,255,255,.5)}
+    .phone{
+      position:relative;
+      min-height:548px;
+      overflow:hidden;
+      border-radius:25px;
+      background:var(--phone-bg);
+      color:var(--phone-text);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.28);
+    }
+    .status{height:31px;display:flex;align-items:center;justify-content:space-between;padding:0 17px;font-size:9px;font-variant-numeric:tabular-nums;color:var(--phone-sub)}
+    .status-icons{display:flex;align-items:center;gap:5px}
+    .status-icons svg{width:12px;height:12px}
+    .phone-content{padding:11px 18px 76px}
+    .greeting{position:relative;z-index:1;margin-bottom:18px}
+    .greeting small{display:block;margin-bottom:5px;font-size:9px;letter-spacing:.04em;color:var(--phone-sub)}
+    .greeting h3{margin:0;font-size:25px;line-height:1.03;letter-spacing:-.045em;font-weight:600}
+    .hero-card{position:relative;overflow:hidden;margin-bottom:12px;padding:20px;border-radius:var(--hero-radius);background:var(--hero-bg);color:var(--hero-text);box-shadow:var(--hero-shadow)}
+    .hero-card::after{content:"";position:absolute;right:-20px;bottom:-35px;width:115px;height:115px;border-radius:50%;background:var(--hero-orb);opacity:.62}
+    .hero-label,.hero-date,.hero-time{position:relative;z-index:1}
+    .hero-label{font-size:9px;letter-spacing:.04em;opacity:.72}
+    .hero-date{margin:14px 0 4px;font-size:27px;line-height:.95;letter-spacing:-.055em;font-weight:650;font-variant-numeric:tabular-nums}
+    .hero-time{font-size:11px;opacity:.78;font-variant-numeric:tabular-nums}
+    .conflict{display:flex;align-items:center;gap:11px;margin-bottom:12px;padding:12px 13px;border-radius:var(--item-radius);background:var(--conflict-bg);color:var(--conflict-text)}
+    .conflict-icon{width:25px;height:25px;flex:0 0 25px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--conflict-text) 9%,transparent)}
+    .conflict-icon svg{width:13px;height:13px}
+    .conflict-copy{min-width:0;flex:1}
+    .conflict-copy b{display:block;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .conflict-copy span{display:block;margin-top:2px;font-size:8px;opacity:.66}
+    .conflict-action{font-size:8px;font-weight:650;white-space:nowrap}
+    .insights{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .insight{min-height:92px;padding:14px 13px;border-radius:var(--item-radius);background:var(--item-bg);box-shadow:var(--item-shadow)}
+    .insight svg{width:16px;height:16px;margin-bottom:17px;color:var(--accent)}
+    .insight span{display:block;font-size:8px;color:var(--phone-sub)}
+    .insight b{display:block;margin-top:4px;font-size:11px;line-height:1.25;font-weight:600}
+    .bottom-nav{position:absolute;left:12px;right:12px;bottom:11px;height:51px;display:grid;grid-template-columns:repeat(3,1fr);align-items:center;border-radius:18px;background:var(--nav-bg);box-shadow:var(--nav-shadow)}
+    .nav-item{display:grid;place-items:center;gap:2px;font-size:7px;color:var(--phone-sub)}
+    .nav-item svg{width:16px;height:16px}.nav-item.active{color:var(--accent)}
+    .card-foot{padding:23px 25px 27px}
+    .swatches{display:flex;gap:6px;margin-bottom:17px}
+    .swatches i{width:23px;height:7px;border-radius:5px;background:var(--swatch);box-shadow:inset 0 0 0 1px rgba(0,0,0,.05)}
+    .swatches i:nth-child(1){--swatch:var(--surface-deep)}
+    .swatches i:nth-child(2){--swatch:var(--surface)}
+    .swatches i:nth-child(3){--swatch:var(--accent)}
+    .swatches i:nth-child(4){--swatch:var(--text)}
+    .traits{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 16px;padding:0;list-style:none}
+    .traits li{padding:6px 9px;border-radius:7px;background:color-mix(in srgb,var(--text) 6%,transparent);font-size:9px;color:var(--sub)}
+    .verdict{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:end}
+    .verdict p{margin:0;font-size:11px;line-height:1.7;color:var(--sub);text-wrap:pretty}
+    .fit{font-size:9px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);white-space:nowrap}
+    .close-focus{
+      display:none;
+      position:absolute;right:20px;top:20px;z-index:2;
+      width:45px;height:45px;border:0;border-radius:50%;
+      color:var(--text);background:color-mix(in srgb,var(--surface) 86%,transparent);
+      box-shadow:0 10px 30px color-mix(in srgb,var(--text) 12%,transparent);
+      cursor:pointer;
+    }
+    .close-focus svg{width:17px;height:17px}
+
+    /* 01 — warm editorial */
+    .editorial{
+      --accent:#9d3554;--surface:#fbf4e9;--surface-deep:#e9d8c9;--text:#392a27;--sub:#806d65;
+      --phone-bg:#f7eddf;--phone-text:#352825;--phone-sub:#8a766c;
+      --hero-bg:#8f2f4c;--hero-text:#fff8ef;--hero-orb:rgba(242,185,145,.7);--hero-shadow:0 17px 35px rgba(91,39,51,.2);
+      --hero-radius:8px 28px 28px 28px;--item-radius:7px 19px 19px 19px;
+      --conflict-bg:#efdcd0;--conflict-text:#87364b;--item-bg:rgba(255,250,243,.78);--item-shadow:0 10px 27px rgba(107,81,62,.08);
+      --nav-bg:#fff9f0;--nav-shadow:0 15px 35px rgba(78,55,43,.13)
+    }
+    .editorial .phone-content{padding-inline:20px}
+    .editorial .greeting h3,.editorial .hero-date{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-weight:500}
+    .editorial .greeting::after{content:"22 / 九月";position:absolute;right:1px;top:-4px;width:42px;height:42px;border:1px solid rgba(157,53,84,.25);border-radius:50%;display:grid;place-items:center;text-align:center;font-family:"Iowan Old Style",serif;font-size:7px;line-height:1.25;color:var(--accent);transform:rotate(8deg)}
+    .editorial .insight:nth-child(2){transform:translateY(10px)}
+
+    /* 02 — soft structuralism */
+    .structural{
+      --accent:#d65f43;--surface:#f4f6f6;--surface-deep:#d9e0e1;--text:#213036;--sub:#68777c;
+      --phone-bg:#edf1f1;--phone-text:#213036;--phone-sub:#76858a;
+      --hero-bg:#233840;--hero-text:#f5f8f7;--hero-orb:rgba(112,157,160,.7);--hero-shadow:0 19px 43px rgba(39,65,73,.18);
+      --hero-radius:21px;--item-radius:14px;
+      --conflict-bg:#f6e2dc;--conflict-text:#a84935;--item-bg:#f9fbfa;--item-shadow:0 11px 30px rgba(55,76,80,.08);
+      --nav-bg:#f9fbfa;--nav-shadow:0 13px 34px rgba(49,70,75,.13)
+    }
+    .structural .phone::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(57,79,83,.032) 1px,transparent 1px),linear-gradient(90deg,rgba(57,79,83,.032) 1px,transparent 1px);background-size:28px 28px;pointer-events:none}
+    .structural .greeting{display:grid;grid-template-columns:1fr auto;align-items:end}
+    .structural .greeting small{grid-column:1}.structural .greeting h3{grid-column:1;font-size:23px}.structural .greeting::after{content:"SEP · 22";grid-column:2;grid-row:1/3;padding-left:12px;border-left:2px solid var(--accent);font-family:ui-monospace,"Cascadia Mono",monospace;font-size:8px;letter-spacing:.08em;color:var(--phone-sub)}
+    .structural .hero-card{border-left:4px solid var(--accent)}
+    .structural .insight{position:relative;padding-left:17px}.structural .insight::before{content:"";position:absolute;left:0;top:16px;bottom:16px;width:2px;background:color-mix(in srgb,var(--accent) 50%,transparent)}
+
+    /* 03 — dark glass */
+    .glass{
+      --accent:#88c7b1;--surface:#0f1515;--surface-deep:#293230;--text:#edf4f1;--sub:#93a39e;
+      --phone-bg:#07100f;--phone-text:#edf5f2;--phone-sub:#81928d;
+      --hero-bg:linear-gradient(145deg,rgba(126,193,169,.28),rgba(18,38,34,.72));--hero-text:#effbf6;--hero-orb:rgba(105,208,173,.58);--hero-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 22px 48px rgba(0,22,17,.44);
+      --hero-radius:24px;--item-radius:17px;
+      --conflict-bg:rgba(111,62,56,.28);--conflict-text:#e9a695;--item-bg:rgba(255,255,255,.055);--item-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 15px 34px rgba(0,0,0,.18);
+      --nav-bg:rgba(28,43,40,.92);--nav-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 18px 45px rgba(0,0,0,.45)
+    }
+    .glass.card-core,.glass .card-core{box-shadow:inset 0 1px 1px rgba(255,255,255,.08)}
+    .glass .phone::before{content:"";position:absolute;width:270px;height:270px;right:-145px;top:-80px;border-radius:50%;background:radial-gradient(circle,rgba(92,188,154,.22),transparent 66%);pointer-events:none}
+    .glass .phone::after{content:"";position:absolute;width:230px;height:230px;left:-150px;bottom:45px;border-radius:50%;background:radial-gradient(circle,rgba(79,112,148,.15),transparent 68%);pointer-events:none}
+    .glass .phone-content,.glass .bottom-nav{z-index:1}.glass .greeting h3{font-weight:500}.glass .hero-card{outline:1px solid rgba(255,255,255,.08);outline-offset:-1px}.glass .conflict{outline:1px solid rgba(231,160,144,.1);outline-offset:-1px}
+
+    .selection-help{margin:42px auto 0;text-align:center;color:#6e6b65;font-size:11px;letter-spacing:.03em}
+    .focus-backdrop{position:fixed;inset:0;z-index:calc(var(--z-focus) - 1);background:rgba(28,27,25,.72);backdrop-filter:blur(16px);opacity:0;pointer-events:none;transition:opacity 450ms var(--spring)}
+    body.has-focus{overflow:hidden}
+    body.has-focus .focus-backdrop{opacity:1;pointer-events:auto}
+    body.has-focus .direction-card:not(.is-focused){opacity:.18;transform:scale(.96)}
+    body.has-focus .direction-card.is-focused{
+      position:fixed;
+      inset:18px;
+      z-index:var(--z-focus);
+      width:min(1060px,calc(100% - 36px));
+      height:calc(100dvh - 36px);
+      margin:auto;
+      overflow:auto;
+      cursor:default;
+      transform:none;
+      opacity:1;
+    }
+    body.has-focus .direction-card.is-focused .card-core{display:grid;grid-template-columns:minmax(330px,.9fr) minmax(390px,1.1fr);align-items:center;padding:26px}
+    body.has-focus .direction-card.is-focused .card-head{grid-column:2;grid-row:1;padding:22px 34px 14px}
+    body.has-focus .direction-card.is-focused .preview-shell{grid-column:1;grid-row:1/3;width:100%;max-width:430px;margin:auto}
+    body.has-focus .direction-card.is-focused .phone{min-height:680px}
+    body.has-focus .direction-card.is-focused .card-foot{grid-column:2;grid-row:2;padding:10px 34px 34px;align-self:start}
+    body.has-focus .direction-card.is-focused .title-wrap h2{font-size:38px}
+    body.has-focus .direction-card.is-focused .title-wrap p{font-size:13px}
+    body.has-focus .direction-card.is-focused .verdict{display:block}
+    body.has-focus .direction-card.is-focused .verdict p{max-width:42ch;font-size:15px;line-height:1.85}
+    body.has-focus .direction-card.is-focused .fit{display:block;margin-top:22px;font-size:11px}
+    body.has-focus .direction-card.is-focused .traits{margin-bottom:24px}.is-focused .close-focus{display:grid;place-items:center}.is-focused .expand-cue{display:none}
+    @media (max-width:1120px){
+      .directions{grid-template-columns:repeat(2,minmax(0,1fr))}.direction-card{grid-column:span 1}.direction-card:nth-child(3){grid-column:1/-1;width:calc(50% - 10px);justify-self:center}
+    }
+    @media (max-width:760px){
+      .shell{padding:18px 16px 56px}.topbar{padding-bottom:42px}.hint{display:none}.intro{grid-template-columns:1fr;gap:24px;margin-bottom:36px}.intro-copy{font-size:13px}.directions{grid-template-columns:1fr;gap:17px}.direction-card,.direction-card:nth-child(3){grid-column:1;width:100%}.direction-card:hover{transform:none}.card-head{padding:22px 21px 18px}.preview-shell{margin-inline:15px}.card-foot{padding:21px}.phone{min-height:535px}
+      body.has-focus .direction-card.is-focused{inset:8px;width:calc(100% - 16px);height:calc(100dvh - 16px)}
+      body.has-focus .direction-card.is-focused .card-core{display:block;padding:8px 0 26px}
+      body.has-focus .direction-card.is-focused .card-head{padding:58px 22px 18px}
+      body.has-focus .direction-card.is-focused .preview-shell{width:auto;max-width:none;margin-inline:12px}
+      body.has-focus .direction-card.is-focused .phone{min-height:610px}
+      body.has-focus .direction-card.is-focused .card-foot{padding:24px 22px}
+      body.has-focus .direction-card.is-focused .title-wrap h2{font-size:30px}
+      .close-focus{position:fixed;right:22px;top:22px}
+    }
+    @media (max-width:380px){.phone-content{padding-inline:14px}.preview-shell{margin-inline:10px}.card-head,.card-foot{padding-inline:18px}.hero-date{font-size:25px}}
+    @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.direction-card{animation:none;opacity:1;transform:none}.direction-card,.expand-cue,.expand-cue svg,.focus-backdrop{transition:none}}
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#directions">跳到方案比较</a>
+  <div class="focus-backdrop" aria-hidden="true"></div>
+  <main class="shell">
+    <nav class="topbar" aria-label="页面信息">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.2 4.5c-2.6 0-4.7 2.2-4.7 4.9 0 5.1 5.3 8.7 9.5 11.1 4.2-2.4 9.5-6 9.5-11.1 0-2.7-2.1-4.9-4.7-4.9-2.1 0-3.9 1.4-4.8 3.2-.9-1.8-2.7-3.2-4.8-3.2Z"/></svg>
+        </span>
+        <span>共同休时 · design study</span>
+      </div>
+      <span class="hint">点击任一方向放大 · Esc 返回</span>
+    </nav>
+
+    <header class="intro">
+      <div>
+        <p class="kicker">Visual directions · 01—03</p>
+        <h1>同一段时间，<br>三种表达。</h1>
+      </div>
+      <div>
+        <p class="intro-copy">三套方案使用完全相同的信息：下一段共同时间、冲突提醒、同休日与出行窗口。区别只在气质、层级与交互手感。</p>
+        <div class="comparison-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v6m0-9.5v.2"/></svg>
+          <span>这是一轮风格选择，不是最终功能定稿。</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="directions" id="directions" aria-label="三种视觉方向">
+      <article class="direction-card editorial" tabindex="0" role="button" aria-expanded="false" data-theme="editorial" aria-label="温暖编辑感，点击放大">
+        <div class="card-core">
+          <header class="card-head">
+            <div class="title-wrap"><span class="index">Direction 01</span><h2>温暖编辑感</h2><p>生活杂志 × 私密手账</p></div>
+            <span class="expand-cue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 16 16 8M9 8h7v7"/></svg></span>
+          </header>
+          <div class="preview-shell">
+            <div class="phone">
+              <div class="status"><span>09:41</span><span class="status-icons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18h2M7 15h2m2-4h2m2-4h2"/></svg><span>100%</span></span></div>
+              <div class="phone-content">
+                <div class="greeting"><small>和阿明的时间</small><h3>下午好</h3></div>
+                <section class="hero-card"><div class="hero-label">下一段共同时间</div><div class="hero-date">明天 · 3小时10分</div><div class="hero-time">18:50—22:00</div></section>
+                <div class="conflict"><span class="conflict-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4.5m0 2.5v.2"/></svg></span><span class="conflict-copy"><b>接孩子放学与班次冲突</b><span>今天 11:00 · 重叠 1小时</span></span><span class="conflict-action">改到 18:50</span></div>
+                <div class="insights">
+                  <div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4v3m14-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12H4V7a1 1 0 0 1 1-1Z"/></svg><span>下个完整同休日</span><b>9月22日 周二</b></div>
+                  <div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 17 5-5 3 3 8-9M15 6h5v5"/></svg><span>最近能不能出行</span><b>连续 3 天</b></div>
+                </div>
+              </div>
+              <div class="bottom-nav"><span class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 11 8-7 8 7v9H4v-9Z"/></svg>同休</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.2 5c-2.3 0-4.2 2-4.2 4.4 0 4.6 4.8 7.8 9 10.1 4.2-2.3 9-5.5 9-10.1C21 7 19.1 5 16.8 5c-2 0-3.8 1.4-4.8 3.2C11 6.4 9.2 5 7.2 5Z"/></svg>共同</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg>我的</span></div>
+            </div>
+          </div>
+          <footer class="card-foot">
+            <div class="swatches" aria-label="方案色板"><i></i><i></i><i></i><i></i></div>
+            <ul class="traits"><li>暖象牙纸面</li><li>莓红单强调</li><li>编辑式留白</li><li>轻纸张颗粒</li></ul>
+            <div class="verdict"><p>把排班结果说成一段生活建议。情绪更近、信息更松，适合把“共同生活”放在产品第一位。</p><span class="fit">推荐 · 情感优先</span></div>
+          </footer>
+        </div>
+        <button class="close-focus" type="button" aria-label="关闭放大预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </article>
+
+      <article class="direction-card structural" tabindex="0" role="button" aria-expanded="false" data-theme="structural" aria-label="柔和结构感，点击放大">
+        <div class="card-core">
+          <header class="card-head"><div class="title-wrap"><span class="index">Direction 02</span><h2>柔和结构感</h2><p>时间工具 × 安静秩序</p></div><span class="expand-cue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 16 16 8M9 8h7v7"/></svg></span></header>
+          <div class="preview-shell">
+            <div class="phone">
+              <div class="status"><span>09:41</span><span class="status-icons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18h2M7 15h2m2-4h2m2-4h2"/></svg><span>100%</span></span></div>
+              <div class="phone-content">
+                <div class="greeting"><small>和阿明的时间</small><h3>下午好</h3></div>
+                <section class="hero-card"><div class="hero-label">下一段共同时间</div><div class="hero-date">明天 · 3小时10分</div><div class="hero-time">18:50—22:00</div></section>
+                <div class="conflict"><span class="conflict-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4.5m0 2.5v.2"/></svg></span><span class="conflict-copy"><b>接孩子放学与班次冲突</b><span>今天 11:00 · 重叠 1小时</span></span><span class="conflict-action">改到 18:50</span></div>
+                <div class="insights"><div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4v3m14-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12H4V7a1 1 0 0 1 1-1Z"/></svg><span>下个完整同休日</span><b>9月22日 周二</b></div><div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 17 5-5 3 3 8-9M15 6h5v5"/></svg><span>最近能不能出行</span><b>连续 3 天</b></div></div>
+              </div>
+              <div class="bottom-nav"><span class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 11 8-7 8 7v9H4v-9Z"/></svg>同休</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.2 5c-2.3 0-4.2 2-4.2 4.4 0 4.6 4.8 7.8 9 10.1 4.2-2.3 9-5.5 9-10.1C21 7 19.1 5 16.8 5c-2 0-3.8 1.4-4.8 3.2C11 6.4 9.2 5 7.2 5Z"/></svg>共同</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg>我的</span></div>
+            </div>
+          </div>
+          <footer class="card-foot"><div class="swatches" aria-label="方案色板"><i></i><i></i><i></i><i></i></div><ul class="traits"><li>冷银灰基底</li><li>珊瑚橙提示</li><li>时间轨道</li><li>结构化网格</li></ul><div class="verdict"><p>让复杂排班像一套可信赖的仪表。扫描更快、层级更清楚，适合把“看懂时间”放在产品第一位。</p><span class="fit">适合 · 效率优先</span></div></footer>
+        </div>
+        <button class="close-focus" type="button" aria-label="关闭放大预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </article>
+
+      <article class="direction-card glass" tabindex="0" role="button" aria-expanded="false" data-theme="glass" aria-label="深色玻璃感，点击放大">
+        <div class="card-core">
+          <header class="card-head"><div class="title-wrap"><span class="index">Direction 03</span><h2>深色玻璃感</h2><p>夜间界面 × 数字氛围</p></div><span class="expand-cue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 16 16 8M9 8h7v7"/></svg></span></header>
+          <div class="preview-shell">
+            <div class="phone">
+              <div class="status"><span>09:41</span><span class="status-icons"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18h2M7 15h2m2-4h2m2-4h2"/></svg><span>100%</span></span></div>
+              <div class="phone-content">
+                <div class="greeting"><small>和阿明的时间</small><h3>下午好</h3></div>
+                <section class="hero-card"><div class="hero-label">下一段共同时间</div><div class="hero-date">明天 · 3小时10分</div><div class="hero-time">18:50—22:00</div></section>
+                <div class="conflict"><span class="conflict-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4.5m0 2.5v.2"/></svg></span><span class="conflict-copy"><b>接孩子放学与班次冲突</b><span>今天 11:00 · 重叠 1小时</span></span><span class="conflict-action">改到 18:50</span></div>
+                <div class="insights"><div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4v3m14-3v3M4 9h16M5 6h14a1 1 0 0 1 1 1v12H4V7a1 1 0 0 1 1-1Z"/></svg><span>下个完整同休日</span><b>9月22日 周二</b></div><div class="insight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 17 5-5 3 3 8-9M15 6h5v5"/></svg><span>最近能不能出行</span><b>连续 3 天</b></div></div>
+              </div>
+              <div class="bottom-nav"><span class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 11 8-7 8 7v9H4v-9Z"/></svg>同休</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.2 5c-2.3 0-4.2 2-4.2 4.4 0 4.6 4.8 7.8 9 10.1 4.2-2.3 9-5.5 9-10.1C21 7 19.1 5 16.8 5c-2 0-3.8 1.4-4.8 3.2C11 6.4 9.2 5 7.2 5Z"/></svg>共同</span><span class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg>我的</span></div>
+            </div>
+          </div>
+          <footer class="card-foot"><div class="swatches" aria-label="方案色板"><i></i><i></i><i></i><i></i></div><ul class="traits"><li>炭黑底色</li><li>薄荷青光</li><li>玻璃浮岛</li><li>夜间沉浸</li></ul><div class="verdict"><p>把时间变成有氛围的数字空间。辨识度与展示力最强，适合把“智能计算”放在产品第一位。</p><span class="fit">适合 · 科技优先</span></div></footer>
+        </div>
+        <button class="close-focus" type="button" aria-label="关闭放大预览"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </article>
+    </section>
+    <p class="selection-help">建议先看信息是否舒服，再看颜色是否喜欢。最终方案可以混合两种方向。</p>
+  </main>
+  <script>
+    (function(){
+      var cards=Array.prototype.slice.call(document.querySelectorAll('.direction-card'));
+      var backdrop=document.querySelector('.focus-backdrop');
+      var active=null;
+      function setFocus(card){
+        if(!card||active===card){return;}
+        active=card;
+        card.classList.add('is-focused');
+        document.body.classList.add('has-focus');
+        card.setAttribute('aria-expanded','true');
+        card.setAttribute('aria-label',card.querySelector('h2').textContent+'，已放大');
+        card.querySelector('.close-focus').focus({preventScroll:true});
+      }
+      function clearFocus(){
+        if(!active){return;}
+        var previous=active;
+        previous.classList.remove('is-focused');
+        previous.setAttribute('aria-expanded','false');
+        previous.setAttribute('aria-label',previous.querySelector('h2').textContent+'，点击放大');
+        document.body.classList.remove('has-focus');
+        active=null;
+        previous.focus({preventScroll:true});
+      }
+      cards.forEach(function(card){
+        card.addEventListener('click',function(event){
+          if(event.target.closest('.close-focus')){event.stopPropagation();clearFocus();return;}
+          if(!active){setFocus(card);}
+        });
+        card.addEventListener('keydown',function(event){
+          if((event.key==='Enter'||event.key===' ')&&!active){event.preventDefault();setFocus(card);}
+        });
+      });
+      backdrop.addEventListener('click',clearFocus);
+      document.addEventListener('keydown',function(event){if(event.key==='Escape'){clearFocus();}});
+      window.styleDirections={setFocus:setFocus,clearFocus:clearFocus};
+    }());
+  </script>
+</body>
+</html>

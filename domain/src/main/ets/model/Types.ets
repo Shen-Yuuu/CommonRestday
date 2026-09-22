@@ -102,11 +102,23 @@ export interface Interval {
 }
 
 /** 共同空闲窗口（带分类标签）。 */
+/**
+ * 共同时间计算通道：由 CommonFreeEngine 生成窗口时一次性写入，
+ * 数据层与 UI 一律不得从 tags 反推（旅行标签只是分类结果，不是通道证据）。
+ */
+export enum WindowChannel {
+  /** 常规：睡眠计入忙集，不可在睡眠时段安排活动。 */
+  REGULAR = 'REGULAR',
+  /** 旅行：仅真忙+收整计入忙集，睡眠可被跨越。 */
+  TRIP = 'TRIP'
+}
+
 export interface Window {
   start: number;
   end: number;
   durationMin: number;
   tags: string[];
+  channel: WindowChannel;
 }
 
 /** 窗口分类标签（与 PRD F4 筛选项一一对应）。 */

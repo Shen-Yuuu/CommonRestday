@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { Interval, MIN_PER_DAY, PlanLite, Window } from '../main/ets/model/Types';
+import { Interval, MIN_PER_DAY, PlanLite, Window, WindowChannel } from '../main/ets/model/Types';
 import { epochDayOf } from '../main/ets/utils/TimeUtil';
 import { mkIv } from '../main/ets/merge/IntervalOps';
 import { detectConflicts, findAlternativeWindow } from '../main/ets/conflict/PlanConflict';
@@ -10,7 +10,7 @@ function mkPlan(id: string, start: number, end: number): PlanLite {
 }
 
 function mkWin(start: number, dur: number): Window {
-  const w: Window = { start: start, end: start + dur, durationMin: dur, tags: [] };
+  const w: Window = { start: start, end: start + dur, durationMin: dur, tags: [], channel: WindowChannel.REGULAR };
   return w;
 }
 

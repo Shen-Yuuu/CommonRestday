@@ -1,4 +1,4 @@
-import { EngineParams, Interval, MIN_PER_DAY, Window, WindowTag } from '../model/Types';
+import { EngineParams, Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag } from '../model/Types';
 import { isWeekend } from '../utils/TimeUtil';
 import { mkIv, overlapMin, totalOverlap } from '../merge/IntervalOps';
 
@@ -30,10 +30,11 @@ const DINNER_END = 1170;   // 19:30
  * @param trueBusyMine 我方真忙（工作/恢复/课程/计划，不含睡眠与收整）
  * @param peerBusyNoSleep 对方"不含睡眠"的不可用区间（忙碌块+收整；L1 快照会含对方睡眠，
  *                        当日占用恒 >0 → 同休日判定自然保守，不会误标）
+ * @param channel 本次调用的计算通道，原样写入产出的每个 Window（调用方不得事后再改写）
  */
 export function classifyWindows(free: Interval[], trueBusyMine: Interval[], peerBusyNoSleep: Interval[],
   params: EngineParams, wakeMin: number, bedMin: number,
-  startEpochDay: number, days: number): ClassifyResult {
+  startEpochDay: number, days: number, channel: WindowChannel): ClassifyResult {
 
   const fullDays: number[] = [];
   for (let i = 0; i < days; i++) {
@@ -120,7 +121,9 @@ export function classifyWindows(free: Interval[], trueBusyMine: Interval[], peer
       }
     }
 
-    const win: Window = { start: w.start, end: w.end, durationMin: dur, tags: tags };
+    const win: Window = {
+      start: w.start, end: w.end, durationMin: dur, tags: tags, channel: channel
+    };
     windows.push(win);
   }
 

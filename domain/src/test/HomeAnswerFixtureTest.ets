@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   ConflictOutcome, Course, defaultParams, EngineInput, EngineParams, Interval, MIN_PER_DAY,
-  MySchedule, PartnerSchedule, PlanBlock, PlanLite, SectionTime, ShiftType, Window, WindowTag
+  MySchedule, PartnerSchedule, PlanBlock, PlanLite, SectionTime, ShiftType, Window, WindowChannel, WindowTag
 } from '../main/ets/model/Types';
 import { epochDayOf } from '../main/ets/utils/TimeUtil';
 import { CommonFreeEngine, buildAvailability } from '../main/ets/engine/CommonFreeEngine';
@@ -95,6 +95,12 @@ function findWin(windows: Window[], start: number, end: number): Window | null {
 
 function hasTag(tags: string[], tag: string): boolean {
   return tags.indexOf(tag) >= 0;
+}
+
+/** 手写窗口夹具（仅用于纯函数级冲突用例；channel 必填，不得留空由下游猜）。 */
+function mkWin(start: number, end: number, channel: WindowChannel): Window {
+  const w: Window = { start: start, end: end, durationMin: end - start, tags: [], channel: channel };
+  return w;
 }
 
 function countWithTag(windows: Window[], tag: string): number {
@@ -261,6 +267,7 @@ export default function homeAnswerFixtureTest() {
       expect(regular != null).assertTrue();
       if (regular != null) {
         expect(regular.durationMin).assertEqual(930);
+        expect(regular.channel).assertEqual(WindowChannel.REGULAR);
         expect(hasTag(regular.tags, WindowTag.TRIP)).assertFalse();
         expect(hasTag(regular.tags, WindowTag.OVERNIGHT_TRIP)).assertFalse();
       }
@@ -269,7 +276,14 @@ export default function homeAnswerFixtureTest() {
       expect(trip != null).assertTrue();
       if (trip != null) {
         expect(trip.durationMin).assertEqual(2880);
+        expect(trip.channel).assertEqual(WindowChannel.TRIP);
         expect(hasTag(trip.tags, WindowTag.TRIP)).assertTrue();
+      }
+      // 全量不变式：通道与旅行标签必须一一对应（下游可只信 channel，不必解析 tags）
+      for (let i = 0; i < r.windows.length; i++) {
+        const w = r.windows[i];
+        const tripTagged = hasTag(w.tags, WindowTag.TRIP) || hasTag(w.tags, WindowTag.OVERNIGHT_TRIP);
+        expect(w.channel === WindowChannel.TRIP).assertEqual(tripTagged);
       }
     });
 
@@ -284,6 +298,9 @@ export default function homeAnswerFixtureTest() {
       const r = CommonFreeEngine.compute(input(emptyMy(), localPartner(busy, tripBusy), SAT, 2));
       const trip = findWin(r.windows, SAT * MIN_PER_DAY + 710, (SUN + 1) * MIN_PER_DAY);
       expect(trip != null).assertTrue();
+      if (trip != null) {
+        expect(trip.channel).assertEqual(WindowChannel.TRIP);
+      }
       expect(findWin(r.windows, SAT * MIN_PER_DAY, (SUN + 1) * MIN_PER_DAY) == null).assertTrue();
     });
 
@@ -352,7 +369,7 @@ export default function homeAnswerFixtureTest() {
       const plans: PlanLite[] = [{ id: 'p1', startMin: MON * MIN_PER_DAY + 600, endMin: MON * MIN_PER_DAY + 720 }];
       const busyUnion: Interval[] = [dayIv(MON, 660, 900, 'WORK')];
       const windows: Window[] = [
-        { start: MON * MIN_PER_DAY + 420, end: MON * MIN_PER_DAY + 600, durationMin: 180, tags: [] }
+        mkWin(MON * MIN_PER_DAY + 420, MON * MIN_PER_DAY + 600, WindowChannel.REGULAR)
       ];
       const out: ConflictOutcome[] = detectConflicts(plans, busyUnion, windows);
       expect(out.length).assertEqual(1);
@@ -372,9 +389,9 @@ export default function homeAnswerFixtureTest() {
       const plan: PlanLite = { id: 'p1', startMin: MON * MIN_PER_DAY + 600, endMin: MON * MIN_PER_DAY + 690 };
       const plans: PlanLite[] = [plan];
       const busyUnion: Interval[] = [dayIv(MON, 600, 780, 'WORK')];
-      const exact: Window = { start: MON * MIN_PER_DAY + 1260, end: MON * MIN_PER_DAY + 1350, durationMin: 90, tags: [] };
-      const longer: Window = { start: MON * MIN_PER_DAY + 900, end: MON * MIN_PER_DAY + 1200, durationMin: 300, tags: [] };
-      const near: Window = { start: TUE * MIN_PER_DAY + 420, end: TUE * MIN_PER_DAY + 520, durationMin: 100, tags: [] };
+      const exact: Window = mkWin(MON * MIN_PER_DAY + 1260, MON * MIN_PER_DAY + 1350, WindowChannel.REGULAR);
+      const longer: Window = mkWin(MON * MIN_PER_DAY + 900, MON * MIN_PER_DAY + 1200, WindowChannel.REGULAR);
+      const near: Window = mkWin(TUE * MIN_PER_DAY + 420, TUE * MIN_PER_DAY + 520, WindowChannel.REGULAR);
       const out: ConflictOutcome[] = detectConflicts(plans, busyUnion, [longer, exact, near]);
       expect(out[0].conflict).assertTrue();
       // 起点晚于计划、时长 ≥ 计划者中取「时长最接近」：等长的 90 分钟窗口

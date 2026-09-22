@@ -42,10 +42,15 @@ CRD_ONLY=commonTimeQueryService node tools/test/run.mjs
 不需要改测试；反过来，**界面与设备行为必须由 `entry/src/ohosTest` 的真机 Instrument
 Test 与 `docs/testing-checklist.md` 的人工检查负责**，不能用这里的绿灯代替。
 
+写命令的编排可以测：`ScheduleCommandService` 的仓储与 `ScheduleUseCase` 依赖都是类型壳，
+`boot.cjs` 另给了一个 `AppStorage` 替身，因此用例用与设备同名的 `recomputeCount` 键断言
+"一次保存恰好一次重算、空批次不重算"，不引入任何测试专用字段。
+
 ## 加一个用例
 
 1. 在 `entry/src/test/` 或 `domain/src/test/` 新建 `XxxTest.ets`，默认导出
-   `export default function xxxTest() { describe('xxx', () => { it('case', 0, () => {...}); }); }`；
+   `export default function xxxTest() { describe('xxx', () => { it('case', 0, async () => {...}); }); }`；
+   用例可以是 `async`：`xhsRun` 会串行 await 到底再判定（断言在汇总之后才抛会退化成假绿灯）；
 2. 在该目录的 `List.test.ets` 里 import 并调用它；
 3. 跑 `node tools/test/run.mjs`。若被测源码依赖设备侧模块，把纯规则下沉到
    `feature/src/main/ets/model/` 这类无依赖位置，而不是给 `run.mjs` 加新桩。

@@ -3,6 +3,7 @@ import {
   Course, CycleTemplate, OWNER_ME, OWNER_PARTNER, PlanBlock, ScheduleOverride, ShiftType, Window, WindowChannel
 } from 'domain';
 import { Db } from '../db/Db';
+import { Logger } from 'commons';
 
 /**
  * 班表相关仓库：班次类型 / 循环模板 / 单日覆盖 / 课程 / 学期 / 共同计划 / 窗口缓存。
@@ -42,6 +43,28 @@ function channelOf(text: string): WindowChannel {
 }
 
 export class ScheduleRepo {
+  /**
+   * 事务包裹一批写入：要么全部落库，要么整批回滚。
+   * 月历涂抹和课程导入是"一次编辑几十天/几十门"，中途失败留下半套班表比全不做更糟。
+   * begin/commit 是同步接口，因此 commit 必须在 work() 的所有 await 之后调用。
+   */
+  static async runInTransaction(work: () => Promise<void>): Promise<void> {
+    const store = Db.get();
+    store.beginTransaction();
+    try {
+      await work();
+      store.commit();
+    } catch (e) {
+      try {
+        store.rollBack();
+      } catch (rb) {
+        // 回滚失败不覆盖原始错误：调用方要看到的是那条真正失败的 SQL
+        Logger.warn('ScheduleRepo', 'rollback failed: ' + (rb as Error).message);
+      }
+      throw e as Error;
+    }
+  }
+
   // ---------- 班次类型 ----------
 
   static async upsertShiftType(st: ShiftType, owner: string = OWNER_ME): Promise<void> {

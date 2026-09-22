@@ -6,10 +6,10 @@ import { image } from '@kit.ImageKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { textRecognition } from '@kit.CoreVisionKit';
 import { OWNER_ME, Course, ParsedCourseLine, parseCourseText, toCourse } from 'domain';
-import { ScheduleRepo } from 'data';
 import { Logger } from 'commons';
-import { ScheduleUseCase } from 'feature';
+import { ScheduleCommandService } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { toastCommand } from '../util/CommandToast';
 
 const TAG = 'OcrCourse';
 
@@ -85,19 +85,18 @@ struct OcrCourse {
   }
 
   async saveParsed(): Promise<void> {
-    let n = 0;
+    const list: Course[] = [];
     for (let i = 0; i < this.parsed.length; i++) {
       if (this.parsed[i].ok) {
-        await ScheduleRepo.upsertCourse(toCourse(this.parsed[i], util.generateRandomUUID()), this.owner);
-        n++;
+        list.push(toCourse(this.parsed[i], util.generateRandomUUID()));
       }
     }
-    promptAction.showToast({ message: '已导入 ' + n + ' 门课程' });
-    // 保存动作 → 自动重算（US6 / FR-011，ME/PARTNER 两侧一致触发）
-    ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-      Logger.error(TAG, 'recompute failed: ' + e.message);
-    });
-    router.back();
+    const r = await ScheduleCommandService.importCourses(list, this.owner);
+    toastCommand(r, '已导入 ' + list.length + ' 门课程');
+    // 整批事务失败时留在本页，识别出的文本还在，可直接重试
+    if (r.ok) {
+      router.back();
+    }
   }
 
   build() {

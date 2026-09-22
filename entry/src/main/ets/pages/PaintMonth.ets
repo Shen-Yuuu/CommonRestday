@@ -4,7 +4,7 @@ import {
 } from 'domain';
 import { ScheduleRepo } from 'data';
 import { Logger } from 'commons';
-import { ScheduleUseCase } from 'feature';
+import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 
 /** 日历格数据（@Observed：涂抹时原地修改属性，子组件 @ObjectLink 精准刷新，不重建组件、不打断拖动手势）。 */
@@ -218,7 +218,7 @@ struct PaintMonth {
     }, PERSIST_DEBOUNCE_MS);
   }
 
-  /** 冲刷待落库变更：批量写覆盖 → 触发重算（US6 / FR-011）；失败 toast 并保留内存态。 */
+  /** 冲刷待落库变更：整批涂抹在一条事务里落库，成功后由命令触发一次重算（US6 / FR-011）。 */
   async flushPersist(): Promise<void> {
     if (this.dirtyUpsert.size === 0 && this.dirtyDelete.size === 0) {
       return;
@@ -227,30 +227,23 @@ struct PaintMonth {
     const deletes: Set<number> = new Set(this.dirtyDelete);
     this.dirtyUpsert.clear();
     this.dirtyDelete.clear();
-    try {
-      const delArr: number[] = [];
-      deletes.forEach((ed: number) => {
-        delArr.push(ed);
-      });
-      for (let i = 0; i < delArr.length; i++) {
-        await ScheduleRepo.deleteOverride(delArr[i], this.owner);
-      }
-      const upArr: number[] = [];
-      upserts.forEach((typeId: string | null, ed: number) => {
-        upArr.push(ed);
-      });
-      for (let i = 0; i < upArr.length; i++) {
-        const ed = upArr[i];
-        const raw = upserts.get(ed);
-        const ov: ScheduleOverride = { epochDay: ed, shiftTypeId: raw === undefined ? null : raw };
-        await ScheduleRepo.upsertOverride(ov, '', this.owner);
-      }
-      ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-        Logger.error('PaintMonth', 'recompute failed: ' + e.message);
-      });
-    } catch (e) {
+    const delArr: number[] = [];
+    deletes.forEach((ed: number) => {
+      delArr.push(ed);
+    });
+    const overrides: ScheduleOverride[] = [];
+    upserts.forEach((typeId: string | null, ed: number) => {
+      const ov: ScheduleOverride = { epochDay: ed, shiftTypeId: typeId === undefined ? null : typeId };
+      overrides.push(ov);
+    });
+    const r = await ScheduleCommandService.paintDays(delArr, overrides, this.owner);
+    if (r.errorCode === 'WRITE_FAILED') {
+      // 整批回滚：画面上仍是用户涂的样子，但库里没动，说清楚免得以为已保存
       promptAction.showToast({ message: '保存失败，请重试' });
-      Logger.error('PaintMonth', 'flush persist failed: ' + (e as Error).message);
+      Logger.warn('PaintMonth', 'paint batch rolled back: ' + delArr.length + ' del / '
+        + overrides.length + ' set');
+    } else if (r.errorCode === 'RECOMPUTE_FAILED') {
+      promptAction.showToast({ message: '班表已保存，但共同时间暂未刷新' });
     }
   }
 

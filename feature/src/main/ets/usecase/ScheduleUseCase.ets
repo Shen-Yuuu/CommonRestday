@@ -30,8 +30,8 @@ export interface PartnerBusyResult {
 /** 日视图数据（DayDetailSheet）：当日窗口 + 双方忙碌时间轴。 */
 export interface DayViewData {
   epochDay: number;
-  /** 与当日有交叠的共同窗口（来自重算缓存）。 */
-  windows: Interval[];
+  /** 与当日有交叠的共同窗口（来自重算缓存，含 channel/tags 完整语义）。 */
+  windows: Window[];
   /** 我的不可用时间轴（真忙 + 睡眠/缓冲，与伴侣 notAvailable 同构）。 */
   myBusy: Interval[];
   /** 对方不可用时间轴；单人模式为 null。 */
@@ -136,13 +136,7 @@ export class ScheduleUseCase {
       horizonStartEpochDay: startEpochDay
     };
     const result = CommonFreeEngine.compute(input);
-    const ivs: Interval[] = [];
-    for (let i = 0; i < result.windows.length; i++) {
-      const w = result.windows[i];
-      const iv: Interval = { start: w.start, end: w.end, tag: w.tags.join('|') };
-      ivs.push(iv);
-    }
-    await ScheduleRepo.replaceWindows(ivs);
+    await ScheduleRepo.replaceWindows(result.windows, Date.now());
     // 冲突检测回写（排除计划自身占用的交叠判定 + 替代窗口推荐）
     await ScheduleUseCase.detectAndWriteConflicts(my, partnerIvs, params, startEpochDay, result.windows);
     Logger.info('ScheduleUseCase', 'recomputed windows=' + result.windows.length
@@ -452,7 +446,7 @@ export class ScheduleUseCase {
     const dayStart = epochDay * MIN_PER_DAY;
     const dayEnd = dayStart + MIN_PER_DAY;
     const all = await ScheduleRepo.listWindows();
-    const windows: Interval[] = [];
+    const windows: Window[] = [];
     for (let i = 0; i < all.length; i++) {
       if (all[i].start < dayEnd && all[i].end > dayStart) {
         windows.push(all[i]);
@@ -483,13 +477,6 @@ export class ScheduleUseCase {
       }
     }
     return out;
-  }
-
-  /** 保存学期配置；times 缺省时写入默认节次模板（保持既有调用兼容）。 */
-  static async saveTermConfig(termStart: number, times?: SectionTime[]): Promise<void> {
-    const t = times == null || times.length === 0 ? ScheduleUseCase.defaultSectionTimes() : times;
-    const json = ScheduleUseCase.sectionTimesToJson(t);
-    await ScheduleRepo.saveTermConfig(termStart, json);
   }
 
   static sectionTimesToJson(times: SectionTime[]): string {

@@ -36,7 +36,7 @@ const TREES = [
   { root: 'test', from: 'domain/src/test', skip: [] },
   {
     root: 'feature/main', from: 'feature/src/main',
-    skip: ['ScheduleUseCase.ets', 'PlanUseCase.ets', 'ScheduleCommandService.ets',
+    skip: ['ScheduleUseCase.ets', 'PlanUseCase.ets',
       'ScheduleOverviewQueryService.ets', 'ProfileSettingsService.ets']
   },
   // 只有 @kit-free 的迁移层参与；Db.ets 需要 relationalStore，属于真机侧。
@@ -76,9 +76,19 @@ function copyTree(from, to, skip) {
   }
 }
 
-/** 设备侧门面（SettingsStore/ScheduleRepo）与 ScheduleUseCase 的类型壳：用例只驱动纯装配，能过类型即可。 */
+/**
+ * ScheduleUseCase 的类型壳：设备侧这里跑引擎与广播，桩只保留"重算发生了一次"的可观测语义
+ * ——按设备侧同名键累加 recomputeCount，用例据此断言一次保存只重算一次。
+ */
 const STUB_SCHEDULE_USECASE = `
-import { Interval, Window } from '../../../../main/ets/model/Types';
+import { Interval, SectionTime, Window } from '../../../../main/ets/model/Types';
+
+export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
+
+declare const AppStorage: {
+  get(k: string): number | undefined;
+  setOrCreate(k: string, v: number): boolean;
+};
 
 export interface DayViewData {
   epochDay: number;
@@ -90,6 +100,20 @@ export interface DayViewData {
 }
 
 export class ScheduleUseCase {
+  static async onScheduleChanged(): Promise<void> {
+    const cur: number = AppStorage.get(RECOMPUTE_COUNT_KEY) ?? 0;
+    AppStorage.setOrCreate(RECOMPUTE_COUNT_KEY, cur + 1);
+  }
+  static defaultSectionTimes(): SectionTime[] {
+    return [{ startMin: 480, endMin: 525 }];
+  }
+  static sectionTimesToJson(times: SectionTime[]): string {
+    const parts: string[] = [];
+    for (let i = 0; i < times.length; i++) {
+      parts.push('[' + times[i].startMin + ',' + times[i].endMin + ']');
+    }
+    return '[' + parts.join(',') + ']';
+  }
   static async getDayView(epochDay: number): Promise<DayViewData> {
     const dv: DayViewData = {
       epochDay: epochDay, windows: [], myBusy: [], partnerBusy: null,
@@ -100,8 +124,18 @@ export class ScheduleUseCase {
 }
 `;
 
+/** Logger 类型壳：commons 的 log 目录包 hilog，不参与转译。 */
+const STUB_LOGGER = `
+export class Logger {
+  static info(tag: string, msg: string): void {}
+  static warn(tag: string, msg: string): void {}
+  static error(tag: string, msg: string): void {}
+}
+`;
+
+/** 设备侧门面（SettingsStore/ScheduleRepo）的类型壳：用例只驱动纯装配，能过类型即可。 */
 const STUB_DATA = `
-import { Window } from './main/ets/model/Types';
+import { Course, ScheduleOverride, ShiftType, Window } from './main/ets/model/Types';
 
 export const PAIRED = 'PAIRED';
 
@@ -113,10 +147,24 @@ export interface PlanRow {
 
 export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number; windDownMin: number; }
 
+/**
+ * 仓储桩：写入一律空实现（设备侧才是 SQLite）。
+ * runInTransaction 保留"整批要么全成要么回滚"的传播语义，好让命令层的失败分支可测。
+ */
 export class ScheduleRepo {
   static async listWindows(): Promise<Window[]> { return []; }
   static async listActivePlans(): Promise<PlanRow[]> { return []; }
   static async windowCacheComputedAt(): Promise<number> { return 0; }
+  static async runInTransaction(work: () => Promise<void>): Promise<void> { await work(); }
+  static async upsertOverride(o: ScheduleOverride, note: string, owner: string): Promise<void> {}
+  static async deleteOverride(epochDay: number, owner: string): Promise<void> {}
+  static async upsertShiftType(st: ShiftType, owner: string): Promise<void> {}
+  static async deleteShiftType(id: string, owner: string): Promise<void> {}
+  static async saveTemplate(tpl: Object, owner: string): Promise<void> {}
+  static async deleteTemplate(owner: string): Promise<void> {}
+  static async upsertCourse(c: Course, owner: string): Promise<void> {}
+  static async deleteCourse(id: string, owner: string): Promise<void> {}
+  static async saveTermConfig(termStartEpochDay: number, sectionTimesJson: string): Promise<void> {}
 }
 
 export class SettingsStore {
@@ -139,10 +187,14 @@ function prepare() {
     "export * from './feature/main/ets/model/PresentationModels';\n"
     + "export * from './feature/main/ets/model/RhythmRules';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
-    + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n");
+    + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
+    + "export * from './feature/main/ets/usecase/ScheduleUseCase';\n"
+    + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n");
+  fs.writeFileSync(path.join(OUT, 'commonsLogStub.ts'), STUB_LOGGER);
   fs.writeFileSync(path.join(OUT, 'commonsIndex.ts'),
     "export * from './commons/main/ets/util/DateLabel';\n"
-    + "export * from './commons/main/ets/constant/AppConst';\n");
+    + "export * from './commons/main/ets/constant/AppConst';\n"
+    + "export * from './commonsLogStub';\n");
   fs.writeFileSync(path.join(OUT, 'dataIndex.ts'),
     "export * from './data/main/ets/db/MigrationRunner';\nexport * from './dataStubs';\n");
   fs.writeFileSync(path.join(OUT, 'dataStubs.ts'), STUB_DATA);

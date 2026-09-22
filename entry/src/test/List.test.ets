@@ -3,6 +3,7 @@ import presentationModelsTest from './PresentationModelsTest';
 import commonTimeQueryServiceTest from './CommonTimeQueryServiceTest';
 import rhythmRulesTest from './RhythmRulesTest';
 import dbMigrationTest from './DbMigrationTest';
+import scheduleCommandServiceTest from './ScheduleCommandServiceTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -10,4 +11,5 @@ export default function testsuite() {
   commonTimeQueryServiceTest();
   rhythmRulesTest();
   dbMigrationTest();
+  scheduleCommandServiceTest();
 }

@@ -2,8 +2,9 @@ import { DatePickerComponent, DatePickerComponentResult, DateMode, DisplayMode, 
 import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
 import { ScheduleRepo } from 'data';
 import { AppConst, DateLabel } from 'commons';
-import { ScheduleUseCase } from 'feature';
+import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { toastCommand } from '../util/CommandToast';
 
 /** 循环模板编辑：班次序列 + 锚点日期（owner 双侧复用）。 */
 @Entry
@@ -62,13 +63,11 @@ struct CycleEditor {
       id: 'main', name: this.owner === OWNER_ME ? '我的循环' : '伴侣循环',
       seq: this.seq.slice(), anchorEpochDay: this.anchor
     };
-    await ScheduleRepo.saveTemplate(tpl, this.owner);
-    this.hasTemplate = true;
-    promptAction.showToast({ message: '循环模板已保存，班表已自动展开' });
-    // 保存动作 → 自动重算（US6 / FR-011，ME/PARTNER 两侧一致触发）
-    ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-      promptAction.showToast({ message: '重算失败：' + e.message });
-    });
+    const r = await ScheduleCommandService.saveTemplate(tpl, this.owner);
+    if (r.changed) {
+      this.hasTemplate = true;
+    }
+    toastCommand(r, '循环模板已保存，班表已自动展开');
   }
 
   /** 清空：已保存过模板时真删 DB（循环展开随之消失），并触发重算；未保存过仅重置编辑区。 */
@@ -98,18 +97,14 @@ struct CycleEditor {
   }
 
   async doClearTemplate(): Promise<void> {
-    try {
-      await ScheduleRepo.deleteTemplate(this.owner);
+    const r = await ScheduleCommandService.removeTemplate(this.owner);
+    if (r.changed) {
       this.hasTemplate = false;
       this.anchor = todayEpochDay();
-      promptAction.showToast({ message: '循环模板已删除' });
-      ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-        promptAction.showToast({ message: '重算失败：' + e.message });
-      });
-    } catch (e) {
-      promptAction.showToast({ message: '删除失败：' + (e as Error).message });
+    } else {
       this.reloadTemplate();
     }
+    toastCommand(r, '循环模板已删除');
   }
 
   /** 重新载入已保存模板（取消删除时恢复编辑区现场）。 */

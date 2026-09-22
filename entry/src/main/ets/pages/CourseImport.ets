@@ -6,8 +6,9 @@ import {
 } from 'domain';
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import { ScheduleUseCase, TermConfig } from 'feature';
+import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
 import { ownerFromParams, OwnerRouteParam } from '../model/RouteParams';
+import { toastCommand } from '../util/CommandToast';
 
 /** 课程表导入：学期锚点 + 节次模板 + 粘贴文本解析 + 手动添加 + 课程列表（owner 双侧复用）。 */
 @Entry
@@ -88,10 +89,9 @@ struct CourseImport {
       promptAction.showToast({ message: '节次格式有误：每行一节，形如 08:00-08:45' });
       return;
     }
-    await ScheduleUseCase.saveTermConfig(this.termStart, times);
-    promptAction.showToast({ message: '节次时间已保存' });
+    const r = await ScheduleCommandService.saveTerm(this.termStart, times);
     this.reload();
-    this.recomputeAfterSave();
+    toastCommand(r, '节次时间已保存');
   }
 
   /** 恢复默认节次模板（仅填充编辑区，点"保存节次"才落库）。 */
@@ -107,18 +107,24 @@ struct CourseImport {
   }
 
   async saveParsed(): Promise<void> {
-    let n = 0;
+    const list: Course[] = [];
     for (let i = 0; i < this.parsed.length; i++) {
       if (this.parsed[i].ok) {
-        await ScheduleRepo.upsertCourse(toCourse(this.parsed[i], util.generateRandomUUID()), this.owner);
-        n++;
+        list.push(toCourse(this.parsed[i], util.generateRandomUUID()));
       }
     }
-    promptAction.showToast({ message: '已导入 ' + n + ' 门课程' });
-    this.parsed = [];
-    this.pasteText = '';
-    this.reload();
-    this.recomputeAfterSave();
+    const r = await ScheduleCommandService.importCourses(list, this.owner);
+    if (r.changed) {
+      this.parsed = [];
+      this.pasteText = '';
+      this.reload();
+    }
+    this.reportImport(r, list.length);
+  }
+
+  /** 导入/新增结果提示。 */
+  reportImport(r: ScheduleCommandResult, n: number): void {
+    toastCommand(r, '已导入 ' + n + ' 门课程');
   }
 
   async saveManual(): Promise<void> {
@@ -139,24 +145,20 @@ struct CourseImport {
       parity: 0,
       place: ''
     };
-    await ScheduleRepo.upsertCourse(c, this.owner);
-    this.manualName = '';
-    promptAction.showToast({ message: '已添加' });
-    this.reload();
-    this.recomputeAfterSave();
+    const r = await ScheduleCommandService.saveCourse(c, this.owner);
+    if (r.changed) {
+      this.manualName = '';
+      this.reload();
+    }
+    toastCommand(r, '已添加');
   }
 
   async removeCourse(id: string): Promise<void> {
-    await ScheduleRepo.deleteCourse(id, this.owner);
-    this.reload();
-    this.recomputeAfterSave();
-  }
-
-  /** 保存/删除动作 → 自动重算（US6 / FR-011，ME/PARTNER 两侧一致触发）。 */
-  recomputeAfterSave(): void {
-    ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-      promptAction.showToast({ message: '重算失败：' + e.message });
-    });
+    const r = await ScheduleCommandService.removeCourse(id, this.owner);
+    if (r.changed) {
+      this.reload();
+    }
+    toastCommand(r, '已删除');
   }
 
   /** 打开学期起点 sheet：DatePickerComponent 滚轮选值（带触感反馈），确认后保存。 */
@@ -174,11 +176,10 @@ struct CourseImport {
     }
     ScheduleRepo.getSectionTimes().then((json: string) => {
       // 保留已自定义节次；未保存过（空串/解析失败）时回退默认模板
-      return ScheduleUseCase.saveTermConfig(ed, ScheduleUseCase.sectionTimesFromJson(json));
-    }).then(() => {
-      promptAction.showToast({ message: '学期起点已保存' });
+      return ScheduleCommandService.saveTerm(ed, ScheduleUseCase.sectionTimesFromJson(json));
+    }).then((r: ScheduleCommandResult) => {
       this.reload();
-      this.recomputeAfterSave();
+      toastCommand(r, '学期起点已保存');
     });
   }
 

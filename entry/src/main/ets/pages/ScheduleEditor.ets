@@ -4,8 +4,9 @@ import { util } from '@kit.ArkTS';
 import { OWNER_ME, ShiftType, hhmmToMin, minToHHmm } from 'domain';
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import { ScheduleUseCase } from 'feature';
+import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { toastCommand } from '../util/CommandToast';
 
 const COLORS: string[] = ['#E8833A', '#3AA6E8', '#8A63D2', '#D24A7E', '#2B4C9B', '#4E9A63', '#C9A227', '#7A7A7A'];
 
@@ -158,16 +159,11 @@ struct ScheduleEditor {
   }
 
   async doDelete(id: string): Promise<void> {
-    try {
-      await ScheduleRepo.deleteShiftType(id, this.owner);
+    const r = await ScheduleCommandService.removeShiftType(id, this.owner);
+    toastCommand(r, '已删除');
+    if (r.changed) {
       this.editing = null;
       this.reload();
-      promptAction.showToast({ message: '已删除' });
-      ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-        promptAction.showToast({ message: '重算失败：' + e.message });
-      });
-    } catch (e) {
-      promptAction.showToast({ message: '删除失败：' + (e as Error).message });
     }
   }
 
@@ -190,14 +186,12 @@ struct ScheduleEditor {
       allowActivity: this.allowActivity,
       kind: SHIFT_KINDS[this.kindIdx].key
     };
-    await ScheduleRepo.upsertShiftType(st, this.owner);
-    this.editing = null;
-    this.reload();
-    promptAction.showToast({ message: '已保存' });
-    // 保存动作 → 自动重算（US6 / FR-011，ME/PARTNER 两侧一致触发）
-    ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-      promptAction.showToast({ message: '重算失败：' + e.message });
-    });
+    const r = await ScheduleCommandService.saveShiftType(st, this.owner);
+    if (r.changed) {
+      this.editing = null;
+      this.reload();
+    }
+    toastCommand(r, '已保存');
   }
 
   toInt(text: string, dft: number): number {

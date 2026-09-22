@@ -90,7 +90,12 @@ export struct AppNavigator {
     Navigation(this.pathStack) {
       Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
         TabContent() {
-          HomeView()
+          // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
+          HomeView({
+            onOpenRoute: (name: string): void => {
+              this.openRoute(name, undefined);
+            }
+          })
         }
         .tabBar(this.tabLabel($r('sys.symbol.house'), '同休', NavRoutes.TAB_HOME))
 

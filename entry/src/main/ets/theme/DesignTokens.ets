@@ -39,6 +39,9 @@ export class DesignTokens {
   // ---- 语义色 ----
   static readonly success: Resource = $r('app.color.success_green');
   static readonly successBg: Resource = $r('app.color.success_bg');
+  /** 双方忙碌标识色：我=青灰，TA=驼色（今日概览的圆点，与周视图同一套色）。 */
+  static readonly busyMine: Resource = $r('app.color.my_busy');
+  static readonly busyPartner: Resource = $r('app.color.partner_busy');
   static readonly danger: Resource = $r('app.color.danger_red');
   static readonly dangerBg: Resource = $r('app.color.danger_bg');
   static readonly dangerBorder: Resource = $r('app.color.danger_border');

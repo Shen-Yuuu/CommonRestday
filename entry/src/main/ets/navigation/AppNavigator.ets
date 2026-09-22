@@ -7,8 +7,32 @@ import { ScheduleHub } from '../view/ScheduleHub';
 import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
 import { navParamsFrom, routeNameFromParams } from '../util/NavUtil';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
+import { GlassStrength } from '../theme/MaterialPolicy';
+import { GlassSurface } from '../component/GlassSurface';
 
 const TAG = 'AppNavigator';
+/**
+ * 底栏留白带高度：系统条收成透明后仍占这一段，浮岛画在它里面。
+ * 用留白带而不是让浮岛盖住内容，三个 Tab 页面就不必各自补底部内边距。
+ */
+const BAR_BAND = 78;
+/** 浮岛高度与单项热区：热区不小于 48vp，不用视觉胶囊大小代替真实热区。 */
+const ISLAND_HEIGHT = 58;
+const ITEM_HEIGHT = 50;
+const ITEM_WIDTH = 74;
+
+interface NavItem {
+  icon: Resource;
+  text: string;
+  tab: number;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { icon: $r('sys.symbol.house'), text: '同休', tab: NavRoutes.TAB_HOME },
+  { icon: $r('sys.symbol.heart'), text: '共同', tab: NavRoutes.TAB_COMMON_TIME },
+  { icon: $r('sys.symbol.person'), text: '我的', tab: NavRoutes.TAB_ME }
+];
 
 /**
  * 应用壳层：Navigation + NavPathStack 包裹三个底部 Tab。
@@ -21,6 +45,8 @@ const TAG = 'AppNavigator';
 @Component
 export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
+  // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
+  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 跨 Tab 导航广播（「去添加伴侣」等入口）：NavUtil.navToMe() 触发
   @StorageProp('navToMeCount') @Watch('onNavToMe') navToMeCount: number = 0;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
@@ -87,44 +113,64 @@ export struct AppNavigator {
     this.activeTab = tab;
   }
 
+  /** 选中态只做透明度/底色迁移（150–220ms），减少动效时归零，不延迟内容切换。 */
+  private selectTab(tab: number): void {
+    if (this.activeTab === tab) {
+      return;
+    }
+    this.getUIContext().animateTo({
+      duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionGlassEnter),
+      curve: DesignTokens.curve
+    }, () => {
+      this.goTab(tab);
+    });
+  }
+
   build() {
     Navigation(this.pathStack) {
-      Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
-        TabContent() {
-          // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
-          HomeView({
-            onOpenRoute: (name: string): void => {
-              this.openRoute(name, undefined);
-            }
-          })
-        }
-        .tabBar(this.tabLabel($r('sys.symbol.house'), '同休', NavRoutes.TAB_HOME))
+      Stack({ alignContent: Alignment.Bottom }) {
+        Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
+          TabContent() {
+            // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
+            HomeView({
+              onOpenRoute: (name: string): void => {
+                this.openRoute(name, undefined);
+              }
+            })
+          }
+          .tabBar(this.hiddenBar())
 
-        TabContent() {
-          // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
-          CoTimeView({
-            onOpenRoute: (name: string): void => {
-              this.openRoute(name, undefined);
-            }
-          })
-        }
-        .tabBar(this.tabLabel($r('sys.symbol.heart'), '共同', NavRoutes.TAB_COMMON_TIME))
+          TabContent() {
+            // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
+            CoTimeView({
+              onOpenRoute: (name: string): void => {
+                this.openRoute(name, undefined);
+              }
+            })
+          }
+          .tabBar(this.hiddenBar())
 
-        TabContent() {
-          // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
-          MeView({
-            onOpenRoute: (name: string, params?: Object): void => {
-              this.openRoute(name, params);
-            }
-          })
+          TabContent() {
+            // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
+            MeView({
+              onOpenRoute: (name: string, params?: Object): void => {
+                this.openRoute(name, params);
+              }
+            })
+          }
+          .tabBar(this.hiddenBar())
         }
-        .tabBar(this.tabLabel($r('sys.symbol.person'), '我的', NavRoutes.TAB_ME))
+        .scrollable(false)
+        .barHeight(BAR_BAND)
+        .barBackgroundColor(Color.Transparent)
+        .onChange((idx: number) => {
+          this.activeTab = idx;
+        })
+
+        this.navIsland()
       }
-      .scrollable(false)
-      .barHeight(64)
-      .onChange((idx: number) => {
-        this.activeTab = idx;
-      })
+      .width('100%')
+      .height('100%')
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
@@ -153,18 +199,58 @@ export struct AppNavigator {
     }
   }
 
+  /** 系统条收成透明占位：真正的控件是下面的浮岛，避免两处底栏同时可点。 */
   @Builder
-  tabLabel(icon: Resource, text: string, idx: number) {
-    Column({ space: 2 }) {
-      SymbolGlyph(icon)
-        .fontSize(22)
-        .fontColor(this.activeTab === idx ? [$r('app.color.brand_pink')] : [$r('app.color.text_tertiary')])
-      Text(text)
-        .fontSize(11)
-        .fontColor(this.activeTab === idx ? $r('app.color.brand_pink') : $r('app.color.text_tertiary'))
-        .fontWeight(this.activeTab === idx ? FontWeight.Bold : FontWeight.Normal)
+  hiddenBar() {
+    Column()
+      .width('100%')
+      .height(0)
+  }
+
+  /** 悬浮底栏：与左右和底部安全区留出呼吸空间，材质不可用时退化为近实色暖白。 */
+  @Builder
+  navIsland() {
+    // 自定义组件不吃链式属性，留白与热区由外层 Column 承担
+    Column() {
+      GlassSurface({ strength: GlassStrength.STRONG, radius: DesignTokens.radiusPill }) {
+        Row() {
+          ForEach(NAV_ITEMS, (item: NavItem) => {
+            this.navItem(item)
+          }, (item: NavItem) => '' + item.tab)
+        }
+        .height(ISLAND_HEIGHT)
+        .width('100%')
+        .justifyContent(FlexAlign.SpaceEvenly)
+      }
     }
     .width('100%')
+    .margin({
+      left: DesignTokens.space4,
+      right: DesignTokens.space4,
+      bottom: DesignTokens.space3
+    })
+  }
+
+  @Builder
+  navItem(item: NavItem) {
+    Column({ space: 2 }) {
+      SymbolGlyph(item.icon)
+        .fontSize(22)
+        .fontColor([this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary')])
+      Text(item.text)
+        .fontSize(11)
+        .fontColor(this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
+        .fontWeight(this.activeTab === item.tab ? FontWeight.Bold : FontWeight.Normal)
+    }
+    // 选中态用浅莓实心底标出，不只靠玻璃色差：状态要有底色/字重双重提示
+    .width(ITEM_WIDTH)
+    .height(ITEM_HEIGHT)
     .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .borderRadius(DesignTokens.radiusPill)
+    .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
+    .onClick(() => {
+      this.selectTab(item.tab);
+    })
   }
 }

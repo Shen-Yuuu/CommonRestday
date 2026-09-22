@@ -1,9 +1,13 @@
 import { KeyCode } from '@kit.InputKit';
 import { DesignTokens } from '../theme/DesignTokens';
+import { GlassStyle } from './GlassSurface';
+import { GlassStrength } from '../theme/MaterialPolicy';
 
 /**
  * 温暖编辑感卡片：默认错角 8/21/21/21，偶数卡把切角换到右上。
  * Hero 变体是深莓底 + 暖白字 + 右下光晕，只给最重要的一个结果，不铺满整页。
+ * glass=true 时这张卡走玻璃表面（首屏唯一主结果）：材质路径把底色/描边/阴影让给系统，
+ * 实色路径仍用深莓近实色底，文字对比不随材质可用性变化。
  * 深浅色随资源自动切换；按压只做缩放，开启减少动效时时长归零。
  */
 @Component
@@ -14,9 +18,13 @@ export struct EditorialCard {
   cutTopLeft: boolean = true;
   /** 是否可点：决定是否响应按压、焦点与键盘回车。 */
   tappable: boolean = false;
+  /** 玻璃表面：只有需要「浮在内容之上」的前景卡开启。 */
+  glass: boolean = false;
   onTapCard: () => void = () => {};
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 TRANSPARENCY_REDUCE_KEY 保持一致。
+  @StorageProp('crd_reduce_transparency') reduceTransparency: boolean = false;
   @BuilderParam content: () => void = this.placeholder;
   @State private isPressed: boolean = false;
   @State private hasFocus: boolean = false;
@@ -27,6 +35,40 @@ export struct EditorialCard {
 
   private innerPadding(): Resource {
     return this.hero ? DesignTokens.space5 : DesignTokens.space4;
+  }
+
+  private surfaceFill(): ResourceColor {
+    if (!this.glass) {
+      return this.hero ? DesignTokens.hero : DesignTokens.card;
+    }
+    return GlassStyle.fill(DesignTokens.hero, this.reduceTransparency);
+  }
+
+  /** 焦点环优先级高于表面描边：键盘用户任何时候都要能看出这张卡被选中。 */
+  private surfaceBorderWidth(): number {
+    if (this.hasFocus) {
+      return 2;
+    }
+    return this.glass ? GlassStyle.borderWidth(this.reduceTransparency) : 0;
+  }
+
+  private surfaceBorderColor(): ResourceColor {
+    if (this.hasFocus) {
+      return DesignTokens.focusRing;
+    }
+    return this.glass ? DesignTokens.glassBorder : Color.Transparent;
+  }
+
+  private surfaceShadow(): ShadowOptions {
+    if (!this.glass) {
+      return {
+        radius: this.hero ? 38 : 32,
+        color: DesignTokens.shadowSoft,
+        offsetX: 0,
+        offsetY: this.hero ? 18 : 13
+      };
+    }
+    return GlassStyle.shadow(this.reduceTransparency);
   }
 
   private press(down: boolean): void {
@@ -57,18 +99,16 @@ export struct EditorialCard {
     }
     .width('100%')
     .clip(true)
-    .backgroundColor(this.hero ? DesignTokens.hero : DesignTokens.card)
+    .systemMaterial(this.glass
+      ? GlassStyle.material(GlassStrength.SOFT, this.reduceTransparency)
+      : undefined)
+    .backgroundColor(this.surfaceFill())
     .borderRadius(DesignTokens.cardRadius(this.cutTopLeft))
-    .shadow({
-      radius: this.hero ? 38 : 32,
-      color: DesignTokens.shadowSoft,
-      offsetX: 0,
-      offsetY: this.hero ? 18 : 13
-    })
-    // 焦点环常驻 2vp 透明边，避免聚焦时布局跳动。
+    .shadow(this.surfaceShadow())
+    // 焦点环常驻透明边，避免聚焦时布局跳动。
     .border({
-      width: 2,
-      color: this.hasFocus ? DesignTokens.focusRing : Color.Transparent,
+      width: this.surfaceBorderWidth(),
+      color: this.surfaceBorderColor(),
       radius: DesignTokens.cardRadius(this.cutTopLeft)
     })
     .scale(this.isPressed

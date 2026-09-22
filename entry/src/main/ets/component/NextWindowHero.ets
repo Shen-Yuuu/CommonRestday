@@ -69,6 +69,7 @@ export struct NextWindowHero {
         hero: true,
         cutTopLeft: true,
         tappable: true,
+        glass: true,
         onTapCard: () => this.onTapHero()
       }) {
         if (this.variant === HeroVariant.WINDOW) {

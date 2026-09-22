@@ -15,6 +15,7 @@ import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
+import { AmbientScene } from '../component/AmbientScene';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { ConflictNotice } from '../component/ConflictNotice';
@@ -421,134 +422,143 @@ export struct HomeView {
   }
 
   build() {
-    Scroll() {
-      Column({ space: DesignTokens.space3 }) {
-        this.header()
+    Stack() {
+      // 气氛层只在首页出现，且不吃掉正文对比：暖白雾压在色带与内容之间
+      AmbientScene()
 
-        if (this.home == null) {
-          if (this.failed) {
-            StatePanel({
-              kind: StatePanelKind.ERROR,
-              title: '首页读取失败',
-              description: '本机日程数据没有变化，重试一次通常就能恢复。',
-              actionLabel: '重试',
-              onAction: () => {
-                this.load(true);
-              }
-            })
+      Scroll() {
+        Column({ space: DesignTokens.space3 }) {
+          this.header()
+
+          if (this.home == null) {
+            if (this.failed) {
+              StatePanel({
+                kind: StatePanelKind.ERROR,
+                title: '首页读取失败',
+                description: '本机日程数据没有变化，重试一次通常就能恢复。',
+                actionLabel: '重试',
+                onAction: () => {
+                  this.load(true);
+                }
+              })
+            } else {
+              this.skeleton()
+            }
           } else {
-            this.skeleton()
-          }
-        } else {
-          if (this.failed || this.isStale()) {
-            NoticeBar({
-              tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
-              title: this.noticeTitle(),
-              body: this.noticeBody(),
-              actionLabel: this.failed ? '重试' : '重新计算',
-              onAction: () => {
-                this.load(true);
+            if (this.failed || this.isStale()) {
+              NoticeBar({
+                tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
+                title: this.noticeTitle(),
+                body: this.noticeBody(),
+                actionLabel: this.failed ? '重试' : '重新计算',
+                onAction: () => {
+                  this.load(true);
+                }
+              })
+            }
+
+            NextWindowHero({
+              variant: this.heroVariant(),
+              experience: this.home.mode,
+              todayEpoch: todayEpochDay(),
+              winStart: this.winStart(),
+              winEnd: this.winEnd(),
+              winDuration: this.winDuration(),
+              winSubtitle: this.winSubtitle(),
+              onTapHero: () => {
+                this.openHero();
+              }
+            })
+
+            if (this.conflictCount() > 0) {
+              ConflictNotice({
+                conflictCount: this.conflictCount(),
+                onTap: () => {
+                  this.openConflicts();
+                }
+              })
+            }
+
+            EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+              EditorialSection({
+                eyebrow: '三个问题',
+                title: '先看结论',
+                trailing: '刷新',
+                trailingAction: true,
+                onTrailingTap: () => {
+                  this.load(false);
+                }
+              }) {
+                QuickAnswerRow({
+                  question: this.tonightQuestion(),
+                  answerState: this.home.tonight.state,
+                  headline: this.home.tonight.headline,
+                  supporting: this.home.tonight.supportingText,
+                  onTap: () => {
+                    this.openTonight();
+                  }
+                })
+                QuickAnswerRow({
+                  question: this.fullDayQuestion(),
+                  showDivider: true,
+                  answerState: this.home.fullRestDay.state,
+                  headline: this.home.fullRestDay.headline,
+                  supporting: this.home.fullRestDay.supportingText,
+                  onTap: () => {
+                    this.openFullRestDay();
+                  }
+                })
+                QuickAnswerRow({
+                  question: '最近能出行吗',
+                  showDivider: true,
+                  answerState: this.home.trip.state,
+                  headline: this.home.trip.headline,
+                  supporting: this.home.trip.supportingText,
+                  onTap: () => {
+                    this.openTrip();
+                  }
+                })
+              }
+            }
+
+            TodayOverview({
+              myText: this.todayMy(),
+              partnerText: this.todayPartner(),
+              commonText: this.todayCommon(),
+              partnerVisible: !this.isSolo(),
+              partnerName: this.partnerName(),
+              weekdayText: DateLabel.mdw(todayEpochDay()),
+              onEditSchedule: () => {
+                this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
+              },
+              onAddPlan: () => {
+                this.openPlan();
               }
             })
           }
-
-          NextWindowHero({
-            variant: this.heroVariant(),
-            experience: this.home.mode,
-            todayEpoch: todayEpochDay(),
-            winStart: this.winStart(),
-            winEnd: this.winEnd(),
-            winDuration: this.winDuration(),
-            winSubtitle: this.winSubtitle(),
-            onTapHero: () => {
-              this.openHero();
-            }
-          })
-
-          if (this.conflictCount() > 0) {
-            ConflictNotice({
-              conflictCount: this.conflictCount(),
-              onTap: () => {
-                this.openConflicts();
-              }
-            })
-          }
-
-          EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-            EditorialSection({
-              eyebrow: '三个问题',
-              title: '先看结论',
-              trailing: '刷新',
-              trailingAction: true,
-              onTrailingTap: () => {
-                this.load(false);
-              }
-            }) {
-              QuickAnswerRow({
-                question: this.tonightQuestion(),
-                answerState: this.home.tonight.state,
-                headline: this.home.tonight.headline,
-                supporting: this.home.tonight.supportingText,
-                onTap: () => {
-                  this.openTonight();
-                }
-              })
-              QuickAnswerRow({
-                question: this.fullDayQuestion(),
-                showDivider: true,
-                answerState: this.home.fullRestDay.state,
-                headline: this.home.fullRestDay.headline,
-                supporting: this.home.fullRestDay.supportingText,
-                onTap: () => {
-                  this.openFullRestDay();
-                }
-              })
-              QuickAnswerRow({
-                question: '最近能出行吗',
-                showDivider: true,
-                answerState: this.home.trip.state,
-                headline: this.home.trip.headline,
-                supporting: this.home.trip.supportingText,
-                onTap: () => {
-                  this.openTrip();
-                }
-              })
-            }
-          }
-
-          TodayOverview({
-            myText: this.todayMy(),
-            partnerText: this.todayPartner(),
-            commonText: this.todayCommon(),
-            partnerVisible: !this.isSolo(),
-            partnerName: this.partnerName(),
-            weekdayText: DateLabel.mdw(todayEpochDay()),
-            onEditSchedule: () => {
-              this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
-            },
-            onAddPlan: () => {
-              this.openPlan();
-            }
-          })
         }
+        .width('100%')
+        .padding({
+          left: 18,
+          right: 18,
+          bottom: DesignTokens.space6
+        })
       }
       .width('100%')
-      .padding({
-        left: 18,
-        right: 18,
-        bottom: DesignTokens.space6
+      .height('100%')
+      // 底色交给 Stack：气氛层要能透出来，滚动容器自己不再铺底
+      .backgroundColor(Color.Transparent)
+      .align(Alignment.Top)
+      .scrollBar(BarState.Off)
+      .bindSheet($$this.sheetVisible, this.detailSheet(), {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        dragBar: false,
+        showClose: false,
+        blurStyle: BlurStyle.Thick
       })
     }
     .width('100%')
     .height('100%')
     .backgroundColor(DesignTokens.page)
-    .align(Alignment.Top)
-    .scrollBar(BarState.Off)
-    .bindSheet($$this.sheetVisible, this.detailSheet(), {
-      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-      dragBar: false,
-      showClose: false,
-      blurStyle: BlurStyle.Thick
-    })
   }
 }

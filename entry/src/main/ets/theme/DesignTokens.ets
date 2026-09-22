@@ -1,5 +1,10 @@
 /** 减少动效开关的 AppStorage 键：设置页写入，组件用 @StorageProp 订阅。 */
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
+/**
+ * 降低透明度开关的 AppStorage 键：系统侧没有对应可读设置（本 SDK 只在 settings 里暴露
+ * 字体缩放与动画倍率），所以由应用自己的无障碍开关写入，组件用 @StorageProp 订阅。
+ */
+export const TRANSPARENCY_REDUCE_KEY: string = 'crd_reduce_transparency';
 
 /**
  * 温暖编辑感（视觉方向 01）设计令牌。
@@ -20,6 +25,23 @@ export class DesignTokens {
   static readonly heroGlow: Resource = $r('app.color.hero_glow');
   static readonly shadowSoft: Resource = $r('app.color.shadow_soft');
   static readonly focusRing: Resource = $r('app.color.focus_ring');
+
+  // ---- 气氛背景层：低饱和日光/莓粉/冷蓝，只用于首页顶部一条，正文不压在它上面 ----
+  static readonly sceneWarm: Resource = $r('app.color.scene_warm');
+  static readonly sceneRose: Resource = $r('app.color.scene_rose');
+  static readonly sceneBlue: Resource = $r('app.color.scene_blue');
+  /** 暖白雾层：压在气氛层与内容之间，保证合成后文字底下总有可预测底色。 */
+  static readonly sceneVeilStrong: Resource = $r('app.color.scene_veil_strong');
+  static readonly sceneVeilSoft: Resource = $r('app.color.scene_veil_soft');
+
+  // ---- 交互玻璃层：strong=悬浮底栏与 Sheet，soft=首页唯一主结果（深莓底） ----
+  static readonly glassStrong: Resource = $r('app.color.glass_strong');
+  static readonly glassSoft: Resource = $r('app.color.glass_soft');
+  static readonly glassBorder: Resource = $r('app.color.glass_border');
+  static readonly glassHighlight: Resource = $r('app.color.glass_highlight');
+  /** 实色回退底：系统材质不可用、算力不足或降低透明度时的近实色（92%–96% 暖白）。 */
+  static readonly glassFallback: Resource = $r('app.color.glass_fallback');
+  static readonly glassShadow: Resource = $r('app.color.glass_shadow');
 
   // ---- 文本 ----
   static readonly textPrimary: Resource = $r('app.color.text_primary');
@@ -75,6 +97,11 @@ export class DesignTokens {
   static readonly radiusPill: Resource = $r('app.float.radius_pill');
   static readonly hitMin: Resource = $r('app.float.hit_min');
 
+  // ---- 玻璃层几何：1vp 描边 + 大半径低透明环境阴影，圆角仍复用 radius* ----
+  static readonly glassBorderWidth: number = 1;
+  static readonly glassShadowRadius: number = 34;
+  static readonly glassShadowOffsetY: number = 14;
+
   // ---- 字体族：标题走衬线回退链，正文走系统无衬线 ----
   static readonly fontSerif: string = 'Iowan Old Style, Songti SC, STSong, serif';
   static readonly fontSans: string = 'HarmonyOS Sans SC, PingFang SC, sans-serif';
@@ -86,7 +113,15 @@ export class DesignTokens {
   static readonly motionItem: number = 550;
   static readonly motionFade: number = 350;
   static readonly motionPress: number = 150;
+  /** 玻璃层进入/选中态迁移：150–220ms，只做透明度与轻微位移。 */
+  static readonly motionGlassEnter: number = 200;
   static readonly pressScale: number = 0.98;
+  /**
+   * 气氛背景漂移周期（ms）与幅度（vp）：规范只允许 8–16 秒、2–6vp 的极轻漂移，
+   * 默认关闭，由 AmbientScene 的 drift 入参显式打开；减少动效时强制为 0。
+   */
+  static readonly motionSceneShift: number = 12000;
+  static readonly sceneDriftVp: number = 4;
   /** 入场位移（vp）与列表错峰步进（ms）。 */
   static readonly enterOffset: number = 14;
   static readonly staggerStep: number = 45;

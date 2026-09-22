@@ -18,6 +18,11 @@
 --month_free_none_bg:#F2F2F2;--month_free_low_bg:#F7D9E4;--month_free_mid_bg:#E89AB6;--month_free_none_fg:#B0B0B0;--month_free_low_fg:#7A3550;
 --bar_gap:#EFEFEF;--my_busy:#8FA3B0;--partner_busy:#D9A441;
 --sunset_from:#D24A7E;--sunset_to:#E8833A;--shadow_soft:#14000000;
+--scene_warm:rgba(242,214,164,.30);--scene_rose:rgba(231,174,184,.26);--scene_blue:rgba(140,166,180,.23);
+--scene_veil_soft:rgba(247,237,223,.32);--scene_veil_strong:rgba(247,237,223,.55);
+--glass_strong:rgba(255,249,240,.875);--glass_soft:rgba(143,47,76,.85);
+--glass_border:rgba(151,49,79,.19);--glass_highlight:rgba(255,255,255,.30);--glass_shadow:rgba(91,66,51,.10);
+--glass_fallback:rgba(255,249,240,.95);
 }
 :root[data-theme="dark"]{
 --start_window_background:#171412;--brand_pink:#DE5F8E;--brand_pink_bg:#3A2230;--brand_pink_border:#5A3A4C;--brand_pink_muted:#C79BB3;
@@ -31,6 +36,11 @@
 --month_free_none_bg:#2E2E2E;--month_free_low_bg:#4A2837;--month_free_mid_bg:#B8617F;--month_free_none_fg:#6A6A6A;--month_free_low_fg:#F0C9D8;
 --bar_gap:#2E2E2E;--my_busy:#A6BAC7;--partner_busy:#E0B25E;
 --sunset_from:#C4537F;--sunset_to:#C96A33;--shadow_soft:#00000000;
+--scene_warm:rgba(92,69,41,.18);--scene_rose:rgba(91,48,64,.16);--scene_blue:rgba(47,70,82,.14);
+--scene_veil_soft:rgba(23,20,18,.32);--scene_veil_strong:rgba(23,20,18,.55);
+--glass_strong:rgba(36,30,27,.875);--glass_soft:rgba(108,39,64,.85);
+--glass_border:rgba(255,255,255,.20);--glass_highlight:rgba(255,255,255,.15);--glass_shadow:rgba(0,0,0,.25);
+--glass_fallback:rgba(32,27,25,.96);
 }
 body{font:14px/1.5 -apple-system,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",sans-serif;background:#0d0d0f;color:#ddd}
 .wrap{display:flex;gap:16px;padding:16px;align-items:flex-start;min-height:100vh}
@@ -297,6 +307,30 @@ body.lean-mode .screen-enter .page>.body>*:nth-child(4){animation-delay:145ms}
 @keyframes leanEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes leanItem{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 body.lean-mode .phone :is(button,[data-act],[data-p],input,textarea):focus-visible{outline:2px solid color-mix(in srgb,var(--brand_pink) 72%,white);outline-offset:3px}
+
+/* ---- 阶段 1V「温暖影像玻璃」试点：气氛层 / 纸面层 / 玻璃层 ----
+   只覆盖首页背景、Hero 与底栏，其余页面维持纸面；对应 entry 的 AmbientScene / GlassSurface / AppNavigator。
+   html[data-glass="material"]＝系统材质路径；html[data-glass="solid"]＝降低透明度或材质不可用，退化为近实色。 */
+.phone[data-screen="home"] .screen{background:transparent}
+.phone[data-screen="home"] .screen::before,.phone[data-screen="home"] .screen::after{
+  content:'';position:sticky;top:0;z-index:-1;display:block;width:100%;pointer-events:none}
+.phone[data-screen="home"] .screen::before{height:487px;margin-bottom:-487px;
+  background:linear-gradient(168deg,var(--scene_warm) 0%,var(--scene_rose) 42%,var(--scene_blue) 72%,transparent 100%)}
+.phone[data-screen="home"] .screen::after{height:786px;margin-bottom:-786px;
+  background:linear-gradient(180deg,var(--scene_veil_soft) 0%,var(--scene_veil_strong) 34%,transparent 66%)}
+/* 首屏唯一强玻璃焦点：文字底下始终有稳定深莓底 */
+html[data-glass="material"] .hero{
+  background:var(--glass_soft);border:1px solid var(--glass_border);
+  box-shadow:0 14px 34px var(--glass_shadow),inset 0 1px 0 var(--glass_highlight);
+  backdrop-filter:blur(18px) saturate(1.3)}
+/* 悬浮岛：左右与底部留呼吸空间，热区 50vp 起，选中态另有浅莓实心底 */
+body:not(.lean-mode) .tabbar{
+  flex:0 0 78px;display:flex;gap:6px;align-items:center;margin:0 16px 12px;padding:0 8px;
+  border:0;border-radius:999px;background:var(--glass_strong);
+  box-shadow:0 14px 34px var(--glass_shadow),inset 0 1px 0 var(--glass_highlight)}
+html[data-glass="material"] body:not(.lean-mode) .tabbar{backdrop-filter:blur(22px) saturate(1.32)}
+body:not(.lean-mode) .tabbar .t{flex:1;height:50px;border-radius:999px;color:var(--text_secondary)}
+body:not(.lean-mode) .tabbar .t.on{background:var(--brand_pink_bg);color:var(--brand_pink)}
 @media(max-width:820px){
 body.lean-mode .wrap{flex-direction:column;align-items:stretch;padding:8px;gap:12px}
 body.lean-mode .panel{width:100%;flex-basis:auto;max-height:none}
@@ -336,6 +370,12 @@ body.lean-mode .chip,body.lean-mode .btn,body.lean-mode .arow,body.lean-mode .ta
       <button class="pbtn" data-p="inspect">来源标记</button>
       <button class="pbtn" data-p="privacy">隐私弹窗</button>
     </div>
+    <h3>阶段 1V 玻璃试点</h3>
+    <div class="prow">
+      <button class="pbtn" data-p="glass-material">玻璃：系统材质</button>
+      <button class="pbtn" data-p="glass-solid">玻璃：实色回退</button>
+    </div>
+    <p class="sub">只覆盖首页气氛层、Hero 与底栏悬浮岛；底栏岛对应 App 的三 Tab 壳，需在「完整版」下查看。</p>
     <div class="prow">
       <button class="pbtn" data-p="partner">伴侣：开</button>
       <button class="pbtn" data-p="agc">AGC 云服务：已开通</button>
@@ -348,7 +388,7 @@ body.lean-mode .chip,body.lean-mode .btn,body.lean-mode .arow,body.lean-mode .ta
     <hr>
     <h3>页面跳转 · 对应 .ets</h3>
     <div class="nav" id="nav"></div>
-    <h3>色板 token（color.json 44 项）</h3>
+    <h3>色板 token（本页 55 项 / color.json 61 项）</h3>
     <div class="tok" id="tok"></div>
     <hr>
     <p class="sub">改 UI 只需改本文件的 <code>&lt;style&gt;</code> 与 <code>scr*/sheet*</code> 函数；<code>S</code> 是状态树，<code>CACHE</code> 是引擎输出。回写 ArkUI 时注意：一个节点只能绑一个 bindSheet、ForEach key 需含月份、无 LongPressGesture 清除（同色再点一次）。</p>
@@ -447,7 +487,7 @@ function defaultParams(){
 function seedState(){
   var mk = function(arr){ return arr.map(function(x){ return x === 'rest' ? REST_KEY : x; }); };
   return {
-    theme:'light', inspect:false, screen:'home', tab:0, owner:'ME', lean:true,
+    theme:'light', inspect:false, screen:'home', tab:0, owner:'ME', lean:true, glass:'material',
     seg:'window', view:'list', filter:'ALL',
     calY:dayParts(TODAY).y, calM:dayParts(TODAY).m, weekStart:TODAY - (weekdayOf(TODAY) - 1),
     sheet:null, sheetWin:null, dayOpen:null, anchorWhich:'anchor',
@@ -482,10 +522,10 @@ function seedPlans(){
 }
 var _parsed = [], _ocrText = '', _ocrParsed = [], _manualWd = 1, _manualPar = 0;
 function reseedAll(){
-  var keepTheme = S.theme, keepInspect = S.inspect, keepScreen = S.screen, keepLean = S.lean;
+  var keepTheme = S.theme, keepInspect = S.inspect, keepScreen = S.screen, keepLean = S.lean, keepGlass = S.glass;
   S = seedState();
   seedPlans();
-  S.theme = keepTheme; S.inspect = keepInspect; S.screen = keepScreen; S.lean = keepLean;
+  S.theme = keepTheme; S.inspect = keepInspect; S.screen = keepScreen; S.lean = keepLean; S.glass = keepGlass;
   _parsed = []; _ocrText = ''; _ocrParsed = [];
   compute();
 }
@@ -2134,10 +2174,16 @@ var TOKENS = ['start_window_background','brand_pink','brand_pink_bg','brand_pink
   'border_weak','fill_weak','fill_weakest','fill_soft','divider','btn_neutral','sheet_handle','success_green','success_bg',
   'danger_red','danger_bg','danger_border','info_blue','info_bg','accent_purple','warn_orange','warn_bg','tag_weekend',
   'tag_trip','tag_fallback','month_free_none_bg','month_free_low_bg','month_free_mid_bg','month_free_none_fg',
-  'month_free_low_fg','bar_gap','my_busy','partner_busy','sunset_from','sunset_to'];
+  'month_free_low_fg','bar_gap','my_busy','partner_busy','sunset_from','sunset_to',
+  'scene_warm','scene_rose','scene_blue','scene_veil_soft','scene_veil_strong',
+  'glass_strong','glass_soft','glass_border','glass_highlight','glass_shadow','glass_fallback'];
 
 function render(){
   document.documentElement.dataset.theme = S.theme;
+  document.documentElement.dataset.glass = S.glass === 'solid' ? 'solid' : 'material';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-p^="glass-"]'), function(b){
+    b.classList.toggle('on', b.dataset.p === 'glass-' + document.documentElement.dataset.glass);
+  });
   document.body.classList.toggle('lean-mode', S.lean);
   var phone = document.getElementById('phone'), mode = S.lean ? 'lean' : 'full';
   var screenChanged = phone.dataset.screen !== S.screen || phone.dataset.mode !== mode;
@@ -2249,7 +2295,7 @@ function buildPanel(){
   }).join('');
   document.getElementById('lean-note').innerHTML = S.lean
     ? '当前：<b>3 tab / 5 页</b>（+1 个改班 sheet）。已隐藏：拍照识别课表、独立涂抹页、旅行通道概念、11 项引擎参数、5 个窗口标签、6 种计划类型；配对压缩为「一条邀请码流程 + 两档可见范围」。'
-    : '当前：<b>4 tab / 10 页</b>，与 <code>entry/src/main/ets</code> 现状一一对应。';
+    : '当前：<b>3 tab + 1 个导航栈目的地</b>（班表中心已降级为 NavDestination），对应 <code>navigation/AppNavigator.ets</code> 与 <code>view/*</code>。';
   var cs = getComputedStyle(document.documentElement);
   document.getElementById('tok').innerHTML = TOKENS.map(function(t){
     return '<div><i style="background:var(--' + t + ')"></i>' + t + '</div>';
@@ -2279,6 +2325,10 @@ document.addEventListener('click', function(e){
     if (S.lean && (S.screen === 'month' || S.screen === 'ocr')) { S.screen = 'hub'; }
     if (!S.lean && S.filter === 'GTE24H') { S.filter = 'ALL'; }
     buildPanel(); render(); return;
+  }
+  if (k === 'glass-material' || k === 'glass-solid') {
+    S.glass = (k === 'glass-solid') ? 'solid' : 'material';
+    render(); return;
   }
   if (k === 'theme-light') { S.theme = 'light'; }
   if (k === 'theme-dark') { S.theme = 'dark'; }

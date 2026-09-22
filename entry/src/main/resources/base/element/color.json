@@ -199,6 +199,50 @@
     {
       "name": "focus_ring",
       "value": "#B46B80"
+    },
+    {
+      "name": "scene_warm",
+      "value": "#4DF2D6A4"
+    },
+    {
+      "name": "scene_rose",
+      "value": "#42E7AEB8"
+    },
+    {
+      "name": "scene_blue",
+      "value": "#3A8CA6B4"
+    },
+    {
+      "name": "scene_veil_strong",
+      "value": "#8CF7EDDF"
+    },
+    {
+      "name": "scene_veil_soft",
+      "value": "#52F7EDDF"
+    },
+    {
+      "name": "glass_strong",
+      "value": "#E0FFF9F0"
+    },
+    {
+      "name": "glass_soft",
+      "value": "#D98F2F4C"
+    },
+    {
+      "name": "glass_border",
+      "value": "#3097314F"
+    },
+    {
+      "name": "glass_highlight",
+      "value": "#4DFFFFFF"
+    },
+    {
+      "name": "glass_fallback",
+      "value": "#F2FFF9F0"
+    },
+    {
+      "name": "glass_shadow",
+      "value": "#1A5B4233"
     }
   ]
 }

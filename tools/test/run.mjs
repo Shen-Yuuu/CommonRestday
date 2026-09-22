@@ -46,7 +46,10 @@ const TREES = [
       'NotificationGateway.ets',
       // 扫码/分享门面包 @kit.ScanKit / @kit.ShareKit / 剪贴板；一次性凭据口径由 domain 的
       // PairLinkTest 离线覆盖，这里不参与转译（真机侧行为见 docs/testing-checklist.md）。
-      'PairingShareGateway.ets']
+      'PairingShareGateway.ets',
+      // 预算门槛与线程归属：@kit.ArkTS(taskpool) + @kit.BasicServicesKit(systemDateTime)，
+      // 离线只留同名口径的桩（计算照跑、永远内联）。
+      'RecomputeExecutor.ets']
   },
   // 只有 @kit-free 的迁移层参与；Db.ets 需要 relationalStore，属于真机侧。
   { root: 'data/main/ets/db', from: 'data/src/main/ets/db', skip: ['Db.ets'] },
@@ -139,6 +142,29 @@ export class Logger {
   static info(tag: string, msg: string): void {}
   static warn(tag: string, msg: string): void {}
   static error(tag: string, msg: string): void {}
+  static perf(tag: string, msg: string): void {}
+}
+`;
+
+/**
+ * 预算执行器的离线桩：设备侧那份要 import @kit.ArkTS / @kit.BasicServicesKit，不参与转译。
+ * 口径保持一致——计算照跑、结果同构，只是不计时、永远内联：用例断言的是共同时间，不是线程归属。
+ */
+const STUB_RECOMPUTE_EXECUTOR = `
+import { CommonFreeEngine } from '../../../../main/ets/engine/CommonFreeEngine';
+import { CommonFreeResult, EngineInput } from '../../../../main/ets/model/Types';
+
+export const MAIN_THREAD_BUDGET_MS: number = 16;
+export const MIGRATE_HORIZON_DAYS: number = 150;
+export const LABEL_SAVE_FLOW: string = 'save_recompute';
+
+export class RecomputeExecutor {
+  static async compute(input: EngineInput): Promise<CommonFreeResult> {
+    return CommonFreeEngine.compute(input);
+  }
+  static async measure<T>(label: string, work: () => Promise<T>): Promise<T> {
+    return await work();
+  }
 }
 `;
 
@@ -285,6 +311,9 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'dataStubs.ts'), STUB_DATA);
   fs.writeFileSync(path.join(OUT, 'feature/main/ets/usecase/ScheduleUseCase.ts'),
     STUB_SCHEDULE_USECASE);
+  const perfDir = path.join(OUT, 'feature/main/ets/performance');
+  fs.mkdirSync(perfDir, { recursive: true });
+  fs.writeFileSync(path.join(perfDir, 'RecomputeExecutor.ts'), STUB_RECOMPUTE_EXECUTOR);
   fs.copyFileSync(path.join(REPO, 'feature/BuildProfile.ets'), path.join(OUT, 'BuildProfile.ts'));
 }
 

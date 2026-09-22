@@ -1,5 +1,5 @@
 import {
-  CommonFreeEngine, CommonFreeResult, ConflictOutcome, ConflictSources, EngineInput,
+  CommonFreeResult, ConflictOutcome, ConflictSources, EngineInput,
   EngineParams, Interval, MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule,
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
   Window, buildAvailability, decodeConflictHint, defaultParams, detectConflicts,
@@ -9,6 +9,7 @@ import {
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
 import { NotificationGateway } from '../integration/NotificationGateway';
+import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { AppConst, Logger } from 'commons';
 
 /** 学期配置。 */
@@ -136,7 +137,8 @@ export class ScheduleUseCase {
       params: params,
       horizonStartEpochDay: startEpochDay
     };
-    const result = CommonFreeEngine.compute(input);
+    // 引擎段的线程归属由实测预算决定（内联 / TaskPool），见 performance/RecomputeExecutor
+    const result = await RecomputeExecutor.compute(input);
     await ScheduleRepo.replaceWindows(result.windows, Date.now());
     // 冲突检测回写（排除计划自身占用的交叠判定 + 替代窗口推荐）
     await ScheduleUseCase.detectAndWriteConflicts(my, partnerIvs, params, startEpochDay, result.windows);
@@ -146,8 +148,11 @@ export class ScheduleUseCase {
     } catch (e) {
       Logger.warn('ScheduleUseCase', 'setLastRecomputeDay failed: ' + (e as Error).message);
     }
+    // engineMs 是引擎自己掐的表（走 TaskPool 时是工作线程上的耗时）；
+    // 主线程这一帧实际被占了多久，看 RecomputeExecutor 打的 PERF 行。
     Logger.info('ScheduleUseCase', 'recomputed windows=' + result.windows.length
-      + ' fullDays=' + result.fullDays.length + ' partner=' + (partnerBusy != null) + ' in ' + result.computeMs + 'ms');
+      + ' fullDays=' + result.fullDays.length + ' partner=' + (partnerBusy != null)
+      + ' engineMs=' + result.computeMs);
     return result;
   }
   /**

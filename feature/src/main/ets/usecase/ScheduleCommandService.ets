@@ -1,6 +1,7 @@
 import { Course, CycleTemplate, ScheduleOverride, SectionTime, ShiftType } from 'domain';
 import { PAIRED, ScheduleRepo, SettingsStore } from 'data';
 import { Logger } from 'commons';
+import { LABEL_SAVE_FLOW, RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { ScheduleUseCase } from './ScheduleUseCase';
 
 const TAG = 'ScheduleCommandService';
@@ -146,7 +147,10 @@ export class ScheduleCommandService {
 
   // ---------- 内部收口 ----------
 
-  /** 一次写入 → 一次重算：写失败不碰重算，重算失败要说清"数据已落库、只是这一轮没刷新"。 */
+  /**
+   * 一次写入 → 一次重算：写失败不碰重算，重算失败要说清"数据已落库、只是这一轮没刷新"。
+   * 只给重算段计时（保存动作里唯一会随数据量变长的那一段），写入本身由 RDB 侧负责。
+   */
   private static async run(write: () => Promise<void>): Promise<ScheduleCommandResult> {
     try {
       await write();
@@ -155,7 +159,9 @@ export class ScheduleCommandService {
       return result(false, false, false, false, 'WRITE_FAILED');
     }
     try {
-      await ScheduleUseCase.onScheduleChanged();
+      await RecomputeExecutor.measure(LABEL_SAVE_FLOW, async (): Promise<void> => {
+        await ScheduleUseCase.onScheduleChanged();
+      });
     } catch (e) {
       Logger.warn(TAG, 'recompute after write failed: ' + (e as Error).message);
       return result(false, true, false, false, 'RECOMPUTE_FAILED');

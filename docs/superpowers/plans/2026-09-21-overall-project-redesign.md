@@ -444,6 +444,30 @@ static async getWindowDetail(start: number, end: number): Promise<WindowDetailDa
 - [ ] 旧录入功能仍可达；
 - [ ] 本阶段可在完全关闭云功能时发布。
 
+## 阶段 1R：验收整改（进入阶段 2 前执行）
+
+> 2026-09-22 独立验收结论为 `CONDITIONAL PASS`。完整证据和逐项口径见 `docs/validation/2026-09-22-stage1-acceptance.md`。
+
+- [ ] 修正今晚答案把等待时间计入窗口时长的问题，并补边界测试；
+- [ ] 允许就寝时间跨午夜，仅拒绝相同时间或领域层明确无效的组合；
+- [ ] ScheduleHub 的视界文案与统计区间读取实际参数；
+- [ ] 前置 `ScheduleCommandService`，收回 `DayShiftSheet` 对仓储的直接写入；
+- [ ] 为 ScheduleHub/WeekSchedule 增加 feature 读模型，阶段 1 新 UI 不再自行拼仓储数据；
+- [ ] 将本地测试 runner 或标准 Hypium 命令纳入仓库，其他机器可一条命令复现；
+- [ ] clean build 与单测通过；设备不可用时保留视觉/返回栈验收待办。
+
+## 阶段 1V：温暖影像玻璃试点（阶段 1R 后、阶段 2 前）
+
+**Design:** `docs/plans/2026-09-22-warm-image-glass-visual-spec.md`
+
+- [ ] 增加材质能力策略、玻璃/实色双路径容器和静态气氛背景组件；
+- [ ] 只在首页 Hero 与悬浮底栏试点，密集日程、课程和设置页面保持纸面；
+- [ ] 系统材质不支持、降低透明度、低性能或对比不足时回退近实色；
+- [ ] 只动画 opacity/transform，不在滚动容器和重复列表项上实时模糊；
+- [ ] 设备可用后提交 360vp 浅色、深色、1.3× 字体、降低透明度四组截图。
+
+`WindowDetailSheet` 不在本阶段抢先重做；它在 Task 2.2 完成功能重构时一次性接入统一 Sheet 材质，避免重复返工。
+
 ---
 
 # 阶段 2：窗口—计划—日历—冲突闭环

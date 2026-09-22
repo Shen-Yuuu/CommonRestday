@@ -36,8 +36,11 @@ const TREES = [
   { root: 'test', from: 'domain/src/test', skip: [] },
   {
     root: 'feature/main', from: 'feature/src/main',
-    skip: ['ScheduleUseCase.ets', 'PlanUseCase.ets',
-      'ScheduleOverviewQueryService.ets', 'ProfileSettingsService.ets']
+    skip: ['ScheduleUseCase.ets',
+      'ScheduleOverviewQueryService.ets', 'ProfileSettingsService.ets',
+      // 两个门面包 @kit.CalendarKit / reminderAgentManager；PlanUseCase 通过能力端口调用它们，
+      // 单测注入确定性端口实现，这里只需要类型壳让默认适配器过编译。
+      'CalendarGateway.ets', 'ReminderGateway.ets']
   },
   // 只有 @kit-free 的迁移层参与；Db.ets 需要 relationalStore，属于真机侧。
   { root: 'data/main/ets/db', from: 'data/src/main/ets/db', skip: ['Db.ets'] },
@@ -147,13 +150,16 @@ export interface PlanRow {
 
 export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number; windDownMin: number; }
 
+/** 离线计划表：upsertPlan 存行，后续 update* 就地改字段（设备侧同一段是 SQL UPDATE）。 */
+const planRows = new Map<string, PlanRow>();
+
 /**
- * 仓储桩：写入一律空实现（设备侧才是 SQLite）。
+ * 仓储桩：写入按"内存表"记账（设备侧是 SQLite），好让用例能用同名公开 API
+ * 断言"本地计划先落库、日历结果只是回写"这类编排顺序，而不是靠测试专用字段。
  * runInTransaction 保留"整批要么全成要么回滚"的传播语义，好让命令层的失败分支可测。
  */
 export class ScheduleRepo {
   static async listWindows(): Promise<Window[]> { return []; }
-  static async listActivePlans(): Promise<PlanRow[]> { return []; }
   static async windowCacheComputedAt(): Promise<number> { return 0; }
   static async runInTransaction(work: () => Promise<void>): Promise<void> { await work(); }
   static async upsertOverride(o: ScheduleOverride, note: string, owner: string): Promise<void> {}
@@ -165,6 +171,36 @@ export class ScheduleRepo {
   static async upsertCourse(c: Course, owner: string): Promise<void> {}
   static async deleteCourse(id: string, owner: string): Promise<void> {}
   static async saveTermConfig(termStartEpochDay: number, sectionTimesJson: string): Promise<void> {}
+  static async upsertPlan(p: PlanRow): Promise<void> { planRows.set(p.id, p); }
+  static async updatePlanCalendar(id: string, calendarState: string, eventId: string): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) { r.calendarState = calendarState; r.myEventId = eventId; }
+  }
+  static async updatePlanReminder(id: string, reminderId: number): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) { r.reminderId = reminderId; }
+  }
+  static async updatePlanStatus(id: string, status: string): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) { r.status = status; }
+  }
+  static async updatePlanTime(id: string, start: number, end: number): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) { r.start = start; r.end = end; }
+  }
+  static async updatePlanConflict(id: string, status: string, conflictHint: string): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) { r.status = status; r.conflictHint = conflictHint; }
+  }
+  /** 与设备侧同口径：排除 CANCELLED，按 start 升序。 */
+  static async listActivePlans(): Promise<PlanRow[]> {
+    const out: PlanRow[] = [];
+    planRows.forEach((r: PlanRow) => {
+      if (r.status !== 'CANCELLED') { out.push(r); }
+    });
+    out.sort((a: PlanRow, b: PlanRow) => a.start - b.start);
+    return out;
+  }
 }
 
 export class SettingsStore {
@@ -172,6 +208,35 @@ export class SettingsStore {
   static getPartnerProfile(): PartnerProfile | null { return null; }
 }
 `;
+
+/**
+ * 设备侧日历/提醒门面的类型壳：PlanUseCase 只在默认适配器里引用它们，
+ * 用例通过 PlanUseCase.bindCapabilities 注入确定性端口实现，所以这里返回"能力不可用"即可。
+ */
+const STUB_GATEWAYS = {
+  'CalendarGateway.ts': `
+import { CalendarOutcome, CalendarWriteResult } from '../model/PlanFlow';
+
+export class CalendarGateway {
+  static init(context: Object): void {}
+  static async requestPermissions(): Promise<boolean> { return false; }
+  static async confirmEvent(t: string, s: number, e: number): Promise<CalendarWriteResult> {
+    return { outcome: CalendarOutcome.UNAVAILABLE, eventId: '' };
+  }
+  static async writeEvent(t: string, s: number, e: number): Promise<CalendarWriteResult> {
+    return { outcome: CalendarOutcome.UNAVAILABLE, eventId: '' };
+  }
+  static async removeEvent(eventId: string): Promise<boolean> { return false; }
+}
+`,
+  'ReminderGateway.ts': `
+export class ReminderGateway {
+  static init(context: Object): void {}
+  static async publish(title: string, startMin: number): Promise<number> { return -1; }
+  static async cancel(reminderId: number): Promise<void> {}
+}
+`
+};
 
 function prepare() {
   fs.rmSync(OUT, { recursive: true, force: true });
@@ -186,10 +251,17 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'featureIndex.ts'),
     "export * from './feature/main/ets/model/PresentationModels';\n"
     + "export * from './feature/main/ets/model/RhythmRules';\n"
+    + "export * from './feature/main/ets/model/PlanFlow';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
     + "export * from './feature/main/ets/usecase/ScheduleUseCase';\n"
-    + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n");
+    + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n"
+    + "export * from './feature/main/ets/usecase/PlanUseCase';\n");
+  for (const [name, body] of Object.entries(STUB_GATEWAYS)) {
+    const dir = path.join(OUT, 'feature/main/ets/integration');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, name), body);
+  }
   fs.writeFileSync(path.join(OUT, 'commonsLogStub.ts'), STUB_LOGGER);
   fs.writeFileSync(path.join(OUT, 'commonsIndex.ts'),
     "export * from './commons/main/ets/util/DateLabel';\n"

@@ -361,7 +361,10 @@ export struct CoTimeView {
       detents: [SheetSize.MEDIUM, SheetSize.LARGE],
       dragBar: false,
       showClose: false,
-      blurStyle: BlurStyle.Thick
+      // 表面（材质或近实色回退）由 WindowDetailSheet 里的 GlassSurface 负责，
+      // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
+      backgroundColor: Color.Transparent,
+      blurStyle: BlurStyle.NONE
     })
   }
 

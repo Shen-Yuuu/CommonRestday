@@ -3,7 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
-import { PlanUseCase, ScheduleUseCase } from 'feature';
+import { CalendarGateway, ReminderGateway, ScheduleUseCase } from 'feature';
 import { Logger } from 'commons';
 
 const DOMAIN = 0x0000;
@@ -15,8 +15,9 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
-    // Calendar Kit 尽力写入需要 UIAbility 上下文（权限请求 / CalendarManager）
-    PlanUseCase.init(this.context);
+    // 系统日历确认与本地提醒都要 UIAbility 上下文；两者拿不到上下文时静默降级
+    CalendarGateway.init(this.context);
+    ReminderGateway.init(this.context);
     // 初始化本地存储与内置数据（失败不阻塞启动，页面内各自兜底）；
     // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）
     Promise.all([

@@ -2,7 +2,16 @@ export {
   ScheduleUseCase, SettingsStoreParams, TermConfig, PartnerBusyResult, DayViewData,
   RECOMPUTE_COUNT_KEY
 } from './src/main/ets/usecase/ScheduleUseCase';
-export { PlanUseCase, CreatePlanResult } from './src/main/ets/usecase/PlanUseCase';
+export {
+  PlanUseCase, CreatePlanResult, CreatePlanOptions
+} from './src/main/ets/usecase/PlanUseCase';
+export { CalendarGateway } from './src/main/ets/integration/CalendarGateway';
+export { ReminderGateway } from './src/main/ets/integration/ReminderGateway';
+export {
+  CalendarOutcome, CalendarState, CalendarWriteResult, CalendarCapability, ReminderCapability,
+  PlanDraft, SubmitLatch, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN,
+  calendarStateOf, defaultDraft, epochMinToUtcMs, isOnSystemCalendar, newPlanId, planDraftError
+} from './src/main/ets/model/PlanFlow';
 export {
   ScheduleCommandService, ScheduleCommandResult
 } from './src/main/ets/usecase/ScheduleCommandService';

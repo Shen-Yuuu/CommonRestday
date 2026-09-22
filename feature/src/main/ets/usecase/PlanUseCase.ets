@@ -1,136 +1,158 @@
-import { calendarManager } from '@kit.CalendarKit';
-import { abilityAccessCtrl, common, PermissionRequestResult, Permissions } from '@kit.AbilityKit';
-import { notificationManager } from '@kit.NotificationKit';
-import { reminderAgentManager } from '@kit.BackgroundTasksKit';
-import { util } from '@kit.ArkTS';
 import { PlanRow, ScheduleRepo } from 'data';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from './ScheduleUseCase';
+import { CalendarGateway } from '../integration/CalendarGateway';
+import { ReminderGateway } from '../integration/ReminderGateway';
+import {
+  CalendarCapability, CalendarOutcome, CalendarState, CalendarWriteResult, MIN_PLAN_MIN, PlanDraft,
+  ReminderCapability, SubmitLatch, calendarStateOf, newPlanId, planDraftError
+} from '../model/PlanFlow';
 
 /** 创建计划结果。 */
 export interface CreatePlanResult {
   ok: boolean;
   planId: string;
-  /** Calendar Kit 是否成功写入"同休日"日历（false = 仅本机计划，计划仍创建成功）。 */
-  calendarWritten: boolean;
+  /** 落库后的 plan.calendar_state：非 WRITTEN 都意味着"仅保存在应用内"。 */
+  calendarState: string;
   error: string;
 }
 
-/** "同休日"专属日历账户名（Calendar Kit 目标账户）。 */
-const CAL_NAME = '同休日';
+/** 创建计划的可选项。 */
+export interface CreatePlanOptions {
+  /**
+   * 高级选项：跳过系统日历确认，直接 addEvent。
+   * 默认 false——写别人也会看到的日历，理当由用户当面点一次"保存"。
+   */
+  directCalendarWrite: boolean;
+}
 
 const TAG = 'PlanUseCase';
 
-/**
- * 共同计划用例（US5 / FR-009 / FR-017 / FR-014）：
- * - createPlan：窗口内硬限制校验 → RDB 写入 → Calendar Kit 尽力写入（权限拒绝/失败静默降级）
- *   → 本地提醒注册（通知拒绝/失败静默降级）→ 触发重算；
- * - cancelPlan：级联删除日历日程（尽力而为）→ 取消本地提醒（尽力而为）→ 状态 CANCELLED → 触发重算；
- * - 取消确认由 UI 层完成，本层不弹确认框。
- */
-export class PlanUseCase {
-  private static context: common.UIAbilityContext | null = null;
+/** 计划创建闩：重复点击/手势重入时只放行第一次，避免同一条计划落两遍。 */
+const CREATE_LATCH = new SubmitLatch();
 
-  /** 保存 UIAbility 上下文（权限请求与 CalendarManager 需要）；未初始化时日历写入静默降级。 */
-  static init(context: common.UIAbilityContext): void {
-    PlanUseCase.context = context;
+/** 真机日历门面 → 端口适配。 */
+class DeviceCalendar implements CalendarCapability {
+  confirm(title: string, startMin: number, endMin: number, direct: boolean): Promise<CalendarWriteResult> {
+    return direct ? CalendarGateway.writeEvent(title, startMin, endMin)
+      : CalendarGateway.confirmEvent(title, startMin, endMin);
   }
 
-  /** 本地纪元分钟（epochMin）→ 13 位毫秒时间戳（本地时区语义换算）。 */
-  static toUtcMs(epochMin: number): number {
-    // getTimezoneOffset() = UTC - 本地（分钟，如东八区为 -480）
-    return (epochMin + new Date().getTimezoneOffset()) * 60000;
+  remove(eventId: string): Promise<boolean> {
+    return CalendarGateway.removeEvent(eventId);
+  }
+}
+
+/** 真机提醒门面 → 端口适配。 */
+class DeviceReminder implements ReminderCapability {
+  publish(title: string, startMin: number): Promise<number> {
+    return ReminderGateway.publish(title, startMin);
+  }
+
+  cancel(reminderId: number): Promise<void> {
+    return ReminderGateway.cancel(reminderId);
+  }
+}
+
+/**
+ * 共同计划用例（US5 / FR-009 / FR-017 / FR-014）——只做业务编排，不碰 @kit：
+ * - createPlan：校验（PlanFlow 纯口径）→ 先写本地计划（calendar_state=PENDING）
+ *   → 请系统日历确认 → 回写 calendar_state → 注册提醒 → 一次重算；
+ * - 日历被取消/无权限/不可用时本地计划照常保留，由 UI 显示"仅保存在应用内"；
+ * - cancelPlan / acceptAlternative：级联清理日历日程与提醒（尽力而为）→ 回写状态 → 一次重算；
+ * - 取消确认由 UI 层完成，本层不弹确认框。
+ *
+ * 系统能力走 CalendarCapability/ReminderCapability 端口，默认真机门面；
+ * 单测注入确定性实现，好让"用户取消/权限拒绝"这些真机不可复现的分支也能被断言。
+ */
+export class PlanUseCase {
+  private static cal: CalendarCapability = new DeviceCalendar();
+  private static rem: ReminderCapability = new DeviceReminder();
+
+  /** 默认选项：走系统日历确认路径。 */
+  static defaultOptions(): CreatePlanOptions {
+    return { directCalendarWrite: false };
+  }
+
+  /** 换掉系统能力实现（单测/后续日历后端）；不传就保持真机门面。 */
+  static bindCapabilities(calendar: CalendarCapability | null, reminder: ReminderCapability | null): void {
+    if (calendar != null) {
+      PlanUseCase.cal = calendar;
+    }
+    if (reminder != null) {
+      PlanUseCase.rem = reminder;
+    }
   }
 
   /**
    * 创建共同计划：
-   * 1) 硬限制校验：计划区间 [startMin, endMin) 必须完全落在窗口 [winStart, winEnd) 内；
-   * 2) RDB 写入（status = OK）；
-   * 3) Calendar Kit 尽力写入"同休日"日历并记录 my_event_id；
-   *    权限拒绝（requestPermissionsFromUser 结果非 0）或调用失败 → 静默降级（仅本机计划），不阻塞创建；
-   * 4) 触发 onScheduleChanged()（计划占用忙碌时间 + 冲突检测回写）。
+   * 1) 草稿校验（标题、起止、必须完全落在窗口内）——非法不写库也不重算；
+   * 2) 本地计划先落库（status=OK，calendar_state=PENDING）：计划是本机事实，
+   *    系统日历只是它的一份投影，投影失败不该让计划消失；
+   * 3) 默认由用户在系统日历确认；显式高级选项才直写；
+   * 4) 确认结果写回 calendar_state，提醒尽力注册，全程只触发一次重算。
    */
   static async createPlan(winStart: number, winEnd: number, title: string, kind: string,
-    startMin: number, endMin: number): Promise<CreatePlanResult> {
-    if (title.trim() === '') {
-      return PlanUseCase.fail('请填写计划标题');
+    startMin: number, endMin: number, opts?: CreatePlanOptions): Promise<CreatePlanResult> {
+    const draft: PlanDraft = { title: title, kind: kind, start: startMin, end: endMin };
+    const invalid = planDraftError(draft, winStart, winEnd);
+    if (invalid !== '') {
+      return PlanUseCase.fail(invalid);
     }
-    if (startMin >= endMin) {
-      return PlanUseCase.fail('计划开始需早于结束');
+    if (!CREATE_LATCH.tryBegin()) {
+      return PlanUseCase.fail('正在创建，请稍候');
     }
-    if (startMin < winStart || endMin > winEnd) {
-      return PlanUseCase.fail('计划时间需在窗口范围内');
-    }
-    const planId = util.generateRandomUUID();
-    const winRef: Record<string, number> = { 's': winStart, 'e': winEnd };
-    const row: PlanRow = {
-      id: planId,
-      title: title.trim(),
-      kind: kind,
-      start: startMin,
-      end: endMin,
-      status: 'OK',
-      createdBy: 'ME',
-      windowRef: JSON.stringify(winRef),
-      conflictHint: '',
-      myEventId: '',
-      reminderId: -1,
-      updatedAt: 0,
-      calendarState: 'NOT_REQUESTED',
-      syncState: 'LOCAL_ONLY'
-    };
-    await ScheduleRepo.upsertPlan(row);
-    let calendarWritten = false;
     try {
-      const eventId = await PlanUseCase.writeCalendarEvent(row.title, startMin, endMin);
-      if (eventId >= 0) {
-        await ScheduleRepo.updatePlanEventId(planId, '' + eventId);
-        calendarWritten = true;
-      }
-    } catch (e) {
-      Logger.warn(TAG, 'calendar write degraded: ' + (e as Error).message);
-    }
-    // 本地提醒（US8 / FR-014）：任何一步失败均静默降级，绝不阻塞计划创建
-    try {
-      const reminderId = await PlanUseCase.registerReminder(row.title, startMin);
+      const options: CreatePlanOptions = opts == null ? PlanUseCase.defaultOptions() : opts;
+      const planId = newPlanId();
+      const winRef: Record<string, number> = { 's': winStart, 'e': winEnd };
+      const row: PlanRow = {
+        id: planId,
+        title: title.trim(),
+        kind: kind,
+        start: startMin,
+        end: endMin,
+        status: 'OK',
+        createdBy: 'ME',
+        windowRef: JSON.stringify(winRef),
+        conflictHint: '',
+        myEventId: '',
+        reminderId: -1,
+        updatedAt: 0,
+        calendarState: CalendarState.PENDING,
+        syncState: 'LOCAL_ONLY'
+      };
+      await ScheduleRepo.upsertPlan(row);
+      const cal = await PlanUseCase.cal.confirm(row.title, startMin, endMin, options.directCalendarWrite);
+      const state = calendarStateOf(cal.outcome);
+      await ScheduleRepo.updatePlanCalendar(planId, state,
+        cal.outcome === CalendarOutcome.WRITTEN ? cal.eventId : '');
+      // 本地提醒（US8 / FR-014）：任何一步失败均静默降级，绝不阻塞计划创建
+      const reminderId = await PlanUseCase.rem.publish(row.title, startMin);
       if (reminderId >= 0) {
         await ScheduleRepo.updatePlanReminder(planId, reminderId);
       }
+      await ScheduleUseCase.onScheduleChanged();
+      Logger.info(TAG, 'plan created id=' + planId + ' calendar=' + state);
+      return { ok: true, planId: planId, calendarState: state, error: '' };
     } catch (e) {
-      Logger.warn(TAG, 'register reminder degraded: ' + (e as Error).message);
+      Logger.warn(TAG, 'createPlan failed: ' + (e as Error).message);
+      return PlanUseCase.fail('创建失败，请重试');
+    } finally {
+      CREATE_LATCH.release();
     }
-    await ScheduleUseCase.onScheduleChanged();
-    const r: CreatePlanResult = {
-      ok: true, planId: planId, calendarWritten: calendarWritten, error: ''
-    };
-    return r;
   }
 
   /**
    * 取消计划（确认弹窗由 UI 层负责）：
-   * 级联删除"同休日"日历日程（my_event_id 存在时；权限被撤销/无账号 → try-catch 静默跳过）
-   * → 取消本地提醒（reminder_id 存在时；失败静默跳过）
+   * 级联删除"同休日"日历日程与本地提醒（都尽力而为，失败只记日志）
    * → updatePlanStatus CANCELLED → 触发重算（该时段恢复空闲）。
    */
   static async cancelPlan(id: string): Promise<void> {
-    const rows = await ScheduleRepo.listActivePlans();
-    let eventId = '';
-    let reminderId = -1;
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].id === id) {
-        eventId = rows[i].myEventId;
-        reminderId = rows[i].reminderId;
-        break;
-      }
-    }
-    await PlanUseCase.deleteCalendarEventById(eventId);
-    // 取消本地提醒（尽力而为，失败静默：提醒过期后系统自动清理）
-    if (reminderId >= 0) {
-      try {
-        await reminderAgentManager.cancelReminder(reminderId);
-      } catch (e) {
-        Logger.warn(TAG, 'cancelReminder degraded: ' + (e as Error).message);
-      }
+    const row = await PlanUseCase.findPlan(id);
+    if (row != null) {
+      await PlanUseCase.cal.remove(row.myEventId);
+      await PlanUseCase.rem.cancel(row.reminderId);
     }
     await ScheduleRepo.updatePlanStatus(id, 'CANCELLED');
     await ScheduleUseCase.onScheduleChanged();
@@ -139,19 +161,12 @@ export class PlanUseCase {
   /**
    * 接受冲突替代窗口改期（PRD F7 动作一 / L11 G1）：
    * 计划时长不变、起点对齐替代窗口起点（替代窗口由冲突检测保证时长足够，越界时收缩兜底）；
-   * 级联迁移系统日历日程与本地提醒（旧事件/旧提醒尽力清理，新事件/新提醒尽力写入），
+   * 级联迁移系统日历日程与本地提醒（旧事件/旧提醒尽力清理，新事件按默认确认路径重写），
    * 回写新起止后触发重算——重算的冲突检测在新时段无冲突时把计划恢复为 OK。
-   * 替代窗口信息缺失/非法时返回 false，由 UI 提示。
+   * 替代窗口信息缺失/非法时返回 false，UI 提示重选窗口。
    */
   static async acceptAlternative(id: string): Promise<boolean> {
-    const rows = await ScheduleRepo.listActivePlans();
-    let row: PlanRow | null = null;
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].id === id) {
-        row = rows[i];
-        break;
-      }
-    }
+    const row = await PlanUseCase.findPlan(id);
     if (row == null || row.status !== 'CONFLICT' || row.conflictHint === '') {
       return false;
     }
@@ -170,189 +185,38 @@ export class PlanUseCase {
     const duration = row.end - row.start;
     const newStart = altStart;
     const newEnd = Math.min(altStart + duration, altEnd);
-    if (newEnd - newStart < 15) {
+    if (newEnd - newStart < MIN_PLAN_MIN) {
       return false;
     }
     // 级联迁移：旧日历日程/旧提醒尽力清理（失败不阻塞改期）
-    await PlanUseCase.deleteCalendarEventById(row.myEventId);
-    if (row.reminderId >= 0) {
-      try {
-        await reminderAgentManager.cancelReminder(row.reminderId);
-      } catch (e) {
-        Logger.warn(TAG, 'cancel old reminder degraded: ' + (e as Error).message);
-      }
-    }
+    await PlanUseCase.cal.remove(row.myEventId);
+    await PlanUseCase.rem.cancel(row.reminderId);
     await ScheduleRepo.updatePlanTime(id, newStart, newEnd);
-    let calendarWritten = false;
-    try {
-      const eventId = await PlanUseCase.writeCalendarEvent(row.title, newStart, newEnd);
-      if (eventId >= 0) {
-        await ScheduleRepo.updatePlanEventId(id, '' + eventId);
-        calendarWritten = true;
-      }
-    } catch (e) {
-      Logger.warn(TAG, 'calendar rewrite degraded: ' + (e as Error).message);
-    }
-    try {
-      const reminderId = await PlanUseCase.registerReminder(row.title, newStart);
-      if (reminderId >= 0) {
-        await ScheduleRepo.updatePlanReminder(id, reminderId);
-      }
-    } catch (e) {
-      Logger.warn(TAG, 'reminder rewrite degraded: ' + (e as Error).message);
+    const cal = await PlanUseCase.cal.confirm(row.title, newStart, newEnd, false);
+    const state = calendarStateOf(cal.outcome);
+    await ScheduleRepo.updatePlanCalendar(id, state,
+      cal.outcome === CalendarOutcome.WRITTEN ? cal.eventId : '');
+    const reminderId = await PlanUseCase.rem.publish(row.title, newStart);
+    if (reminderId >= 0) {
+      await ScheduleRepo.updatePlanReminder(id, reminderId);
     }
     await ScheduleUseCase.onScheduleChanged();
-    Logger.info(TAG, `plan rescheduled to alternative: id=${id} calendar=${calendarWritten}`);
+    Logger.info(TAG, 'plan rescheduled to alternative: id=' + id + ' calendar=' + state);
     return true;
   }
 
-  /** 删除"同休日"日历中的日程（尽力而为；eventId 为空或权限失效时静默跳过）。 */
-  private static async deleteCalendarEventById(eventId: string): Promise<void> {
-    if (eventId === '') {
-      return;
-    }
-    try {
-      const ctx = PlanUseCase.context;
-      if (ctx != null) {
-        const mgr = calendarManager.getCalendarManager(ctx);
-        const account: calendarManager.CalendarAccount = {
-          name: CAL_NAME, type: calendarManager.CalendarType.LOCAL
-        };
-        const cal = await mgr.getCalendar(account);
-        await cal.deleteEvent(Number(eventId));
-      }
-    } catch (e) {
-      // 权限被撤销/日历不存在：日历侧删除降级，本机操作照常进行
-      Logger.warn(TAG, 'deleteEvent degraded: ' + (e as Error).message);
-    }
-  }
-
-  /**
-   * 尝试注册计划开始时间的本地提醒（后台代理提醒 REMINDER_TYPE_CALENDAR，US8 / FR-014）：
-   * 1) requestEnableNotification 引导用户开启通知（已开启则直接通过）；拒绝/失败 → 返回 -1 降级；
-   * 2) publishReminder 发布日历型提醒，时间取计划开始时刻（本地时区语义）；
-   * 3) 任何一步抛错 → Logger.warn 降级返回 -1，不阻塞计划创建。
-   */
-  static async registerReminder(title: string, startMin: number): Promise<number> {
-    const ctx = PlanUseCase.context;
-    if (ctx == null) {
-      return -1;
-    }
-    try {
-      const enabled = await PlanUseCase.ensureNotificationEnabled(ctx);
-      if (!enabled) {
-        Logger.info(TAG, 'notification not enabled, skip reminder');
-        return -1;
-      }
-      // epochMin（本地纪元分钟）→ UTC 毫秒 → 本地日期时间字段
-      const d = new Date(PlanUseCase.toUtcMs(startMin));
-      const reminder: reminderAgentManager.ReminderRequestCalendar = {
-        reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_CALENDAR,
-        dateTime: {
-          year: d.getFullYear(),
-          month: d.getMonth() + 1, // LocalDateTime 为 1-12 日历月（JS getMonth() 从 0 起，需 +1）
-          day: d.getDate(),
-          hour: d.getHours(),
-          minute: d.getMinutes(),
-          second: 0
-        },
-        title: title,
-        content: '同休日计划即将开始'
-      };
-      const reminderId = await reminderAgentManager.publishReminder(reminder);
-      Logger.info(TAG, 'reminder published, id=' + reminderId);
-      return reminderId;
-    } catch (e) {
-      Logger.warn(TAG, 'registerReminder degraded: ' + (e as Error).message);
-      return -1;
-    }
-  }
-
-  /**
-   * 引导开启通知授权（弹窗由系统显示）：
-   * 已开启/用户同意 → true；用户拒绝或请求异常 → false（调用方静默降级，无系统通知但不崩溃）。
-   */
-  static async ensureNotificationEnabled(ctx: common.UIAbilityContext): Promise<boolean> {
-    try {
-      await notificationManager.requestEnableNotification(ctx);
-      return true;
-    } catch (e) {
-      Logger.warn(TAG, 'requestEnableNotification rejected: ' + (e as Error).message);
-      return false;
-    }
-  }
-
-  /** 尽力写入"同休日"日历日程；成功返回日程 id（≥0），降级返回 -1。 */
-  static async writeCalendarEvent(title: string, startMin: number, endMin: number): Promise<number> {
-    const ctx = PlanUseCase.context;
-    if (ctx == null) {
-      return -1;
-    }
-    const granted = await PlanUseCase.requestCalendarPerms();
-    if (!granted) {
-      Logger.info(TAG, 'calendar permission denied, plan stays local');
-      return -1;
-    }
-    const mgr = calendarManager.getCalendarManager(ctx);
-    const account: calendarManager.CalendarAccount = {
-      name: CAL_NAME,
-      type: calendarManager.CalendarType.LOCAL,
-      displayName: CAL_NAME
-    };
-    let cal: calendarManager.Calendar | null = null;
-    try {
-      cal = await mgr.getCalendar(account);
-    } catch (e) {
-      // 账户不存在（23900003）→ 创建专属日历
-      try {
-        cal = await mgr.createCalendar(account);
-      } catch (e2) {
-        Logger.warn(TAG, 'createCalendar failed: ' + (e2 as Error).message);
-        return -1;
+  /** 按 id 取活动计划（含 CANCELLED 之外的全部状态）。 */
+  private static async findPlan(id: string): Promise<PlanRow | null> {
+    const rows = await ScheduleRepo.listActivePlans();
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].id === id) {
+        return rows[i];
       }
     }
-    if (cal == null) {
-      return -1;
-    }
-    const event: calendarManager.Event = {
-      type: calendarManager.EventType.NORMAL,
-      title: title,
-      startTime: PlanUseCase.toUtcMs(startMin),
-      endTime: PlanUseCase.toUtcMs(endMin),
-      description: '同休日共同计划'
-    };
-    const id = await cal.addEvent(event);
-    Logger.info(TAG, 'calendar event written, id=' + id);
-    return id;
-  }
-
-  /**
-   * 请求日历读写权限：全部授予返回 true；
-   * 任一拒绝或请求异常返回 false（调用方静默降级为仅本机计划，不崩溃）。
-   */
-  static async requestCalendarPerms(): Promise<boolean> {
-    const ctx = PlanUseCase.context;
-    if (ctx == null) {
-      return false;
-    }
-    try {
-      const atManager = abilityAccessCtrl.createAtManager();
-      const perms: Permissions[] = ['ohos.permission.READ_CALENDAR', 'ohos.permission.WRITE_CALENDAR'];
-      const result: PermissionRequestResult = await atManager.requestPermissionsFromUser(ctx, perms);
-      for (let i = 0; i < result.authResults.length; i++) {
-        if (result.authResults[i] !== 0) {
-          return false;
-        }
-      }
-      return true;
-    } catch (e) {
-      Logger.warn(TAG, 'requestPermissionsFromUser failed: ' + (e as Error).message);
-      return false;
-    }
+    return null;
   }
 
   private static fail(msg: string): CreatePlanResult {
-    const r: CreatePlanResult = { ok: false, planId: '', calendarWritten: false, error: msg };
-    return r;
+    return { ok: false, planId: '', calendarState: CalendarState.NOT_REQUESTED, error: msg };
   }
 }

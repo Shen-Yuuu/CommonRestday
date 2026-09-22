@@ -49,12 +49,21 @@ export struct GlassSurface {
   radius: Resource = DesignTokens.radiusCard;
   /** 实色回退底色。 */
   fallback: ResourceColor = DesignTokens.glassFallback;
+  /** 半模态贴底时只圆顶部两角：底部留圆角会在 sheet 与屏幕下沿之间露出一条缝。 */
+  topCornersOnly: boolean = false;
   // 装饰器实参必须是字面量，取值与 TRANSPARENCY_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_transparency') reduceTransparency: boolean = false;
   @BuilderParam content: () => void = this.placeholder;
 
   @Builder
   placeholder(): void {
+  }
+
+  private corners(): Resource | BorderRadiuses {
+    if (!this.topCornersOnly) {
+      return this.radius;
+    }
+    return { topLeft: this.radius, topRight: this.radius, bottomLeft: 0, bottomRight: 0 };
   }
 
   build() {
@@ -67,20 +76,20 @@ export struct GlassSurface {
           .backgroundColor(DesignTokens.glassHighlight)
         this.content()
       }
-      .borderRadius(this.radius)
+      .borderRadius(this.corners())
       .clip(true)
       .backgroundColor(GlassStyle.fill(this.fallback, this.reduceTransparency))
       .border({
         width: GlassStyle.borderWidth(this.reduceTransparency),
         color: DesignTokens.glassBorder,
-        radius: this.radius
+        radius: this.corners()
       })
       .shadow(GlassStyle.shadow(this.reduceTransparency))
     } else {
       Stack() {
         this.content()
       }
-      .borderRadius(this.radius)
+      .borderRadius(this.corners())
       .clip(true)
       .systemMaterial(GlassStyle.material(this.strength, this.reduceTransparency))
     }

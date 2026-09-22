@@ -297,11 +297,15 @@ export class ScheduleRepo {
         p.conflictHint, p.myEventId, p.reminderId, p.updatedAt, p.calendarState, p.syncState]);
   }
 
-  /** 回写计划关联的系统日历日程 id（Calendar Kit 写入成功后调用）。 */
-  static async updatePlanEventId(id: string, eventId: string): Promise<void> {
+  /**
+   * 回写日历确认结果（CalendarGateway 返回后调用）：状态 + 日程 id。
+   * eventId 传空串表示系统日历里没有这条（用户取消/无权限/不可用），计划本身照常保留。
+   */
+  static async updatePlanCalendar(id: string, calendarState: string, eventId: string): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'my_event_id': eventId, 'updated_at': Date.now() };
+    const vb: relationalStore.ValuesBucket =
+      { 'calendar_state': calendarState, 'my_event_id': eventId, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 

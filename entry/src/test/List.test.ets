@@ -4,6 +4,7 @@ import commonTimeQueryServiceTest from './CommonTimeQueryServiceTest';
 import rhythmRulesTest from './RhythmRulesTest';
 import dbMigrationTest from './DbMigrationTest';
 import scheduleCommandServiceTest from './ScheduleCommandServiceTest';
+import planUseCaseTest from './PlanUseCaseTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -12,4 +13,5 @@ export default function testsuite() {
   rhythmRulesTest();
   dbMigrationTest();
   scheduleCommandServiceTest();
+  planUseCaseTest();
 }

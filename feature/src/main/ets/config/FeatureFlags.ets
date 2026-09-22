@@ -1,19 +1,56 @@
-import { DEBUG } from '../../../../BuildProfile';
-
 /**
- * 灰度开关：仅由编译期 BuildProfile 映射，禁止远端动态下发。
- * 阶段 0/1 只默认在 debug 构建开启 newShell；其余能力在各自阶段门禁前保持 false，
- * 关闭时必须能退回旧链路而不是让页面空白。
+ * 灰度开关与回退口径（阶段 6 Task 6.2）。三条规则不因排期压力让步：
+ *
+ * 1) 只有本文件的源码常量能改档位：改一行 + 重新出包。禁止远端动态下发——本项目没有可用的
+ *    云端配置通道（云配对仍受 Task 0.4 门禁关闭），"能远程改"本身就是一条未验证的能力。
+ * 2) 每个开关必须有读取方，且关闭分支必须真的能跑。没有读取方的开关是假的安全感
+ *    （docs/testing-checklist.md §11.14）：阶段 1 的 newShell 就因旧四 Tab 壳层已退场、
+ *    关不回任何链路而删掉，壳层的回退方式改成"回退整包"。
+ * 3) 开关只关"能力"，不关"数据"。任一档关闭时本机已落库的事实仍可读、可改、可删。
+ *
+ * 各档的启用条件、监控指标、关闭影响与数据兼容性见 docs/release/rollout-and-rollback.md。
  */
 export class FeatureFlags {
-  /** 三 Tab + Navigation 新壳层（阶段 1）。 */
-  static readonly newShell: boolean = DEBUG;
-  /** 云端配对与加密快照（阶段 3，受 Task 0.4 门禁约束）。 */
+  /**
+   * 系统日历写入链路（阶段 2）。读取方两处：PlanUseCase.writeCalendar 决定是否请系统日历
+   * 落一条日程，PlanFlow.canRetryCalendarSync 决定是否给出「写入日历」入口——入口与链路
+   * 必须同时退场，否则回退档会留下一个点了不会有任何反应的按钮。
+   */
+  static readonly calendarFlow: boolean = true;
+  /**
+   * 云端配对与加密快照（阶段 3）。Task 0.4 门禁结论是 CLOUD_BLOCKED，HUKS 托管长期密钥
+   * 未验证前不得开启，也不允许退回"短码派生长期密钥"。
+   */
   static readonly cloudPairing: boolean = false;
-  /** 扫码配对（阶段 4，需真机验证 Scan Kit）。 */
+  /** 扫码配对（阶段 4）。以 cloudPairing 为前提，门禁未过前保持 false。 */
   static readonly scanPairing: boolean = false;
-  /** 新版桌面卡片（阶段 4）。 */
-  static readonly newCard: boolean = false;
-  /** API 26 响应式与适老化增强（阶段 5）。 */
-  static readonly responsiveV2: boolean = false;
+  /**
+   * 桌面 2×2 卡片内容（阶段 4）。读取方：FormAbility。关闭时卡片照常存在（添加动作在系统侧），
+   * 但下发「桌面卡片已停用」而不是空白，也不是昨天的旧结论。
+   */
+  static readonly newCard: boolean = true;
+  /**
+   * 容器级响应式断点（阶段 5）。读取方：Breakpoints.ofWidth，全站断点唯一入口。
+   * 关闭即一律 compact：宽屏居中封顶、分档留白、共同时间双栏一起退到阶段 4 的单列形态。
+   * 适老化（Senior Mode 低密度）不在本档里，那是用户设置项，不是灰度能力。
+   */
+  static readonly responsiveV2: boolean = true;
+
+  /**
+   * 生效档位的一行摘要，按 rollout 顺序排列，只用于启动日志（entry 的 Index.aboutToAppear）。
+   * 本项目没有远端遥测：出包时把这一行留在 hilog 里，是用户反馈截图之外唯一能证明
+   * "这个包到底开了哪几档"的现场证据，所以五个开关一个都不能漏。
+   */
+  static summary(): string {
+    return 'calendarFlow=' + FeatureFlags.of(FeatureFlags.calendarFlow)
+      + ' cloudPairing=' + FeatureFlags.of(FeatureFlags.cloudPairing)
+      + ' scanPairing=' + FeatureFlags.of(FeatureFlags.scanPairing)
+      + ' newCard=' + FeatureFlags.of(FeatureFlags.newCard)
+      + ' responsiveV2=' + FeatureFlags.of(FeatureFlags.responsiveV2);
+  }
+
+  /** 布尔 → on/off：不让 true/false 混进日志，也避开 ArkTS 的隐式字符串拼接。 */
+  private static of(value: boolean): string {
+    return value ? 'on' : 'off';
+  }
 }

@@ -3,7 +3,9 @@
  *
  * 这里不碰任何 @kit/RDB：设备侧只把 Calendar Kit 的结果归一成 CalendarOutcome，
  * "取消/拒绝时保留哪一份事实"这类判断留在这里，离线单测（tools/test/run.mjs）直接跑本文件。
+ * 唯一的例外是 FeatureFlags：它是编译期常量而不是运行时依赖，读它不引入设备能力。
  */
+import { FeatureFlags } from '../config/FeatureFlags';
 
 /** Calendar Kit 归一后的能力结果；PlanUseCase 不直接看系统错误码。 */
 export enum CalendarOutcome {
@@ -169,8 +171,14 @@ export function calendarBadgeOf(calendarState: string): string {
 /**
  * 是否给出"写入日历"重试入口：设备压根没有日历能力时不给出（点了也不会成，只是打扰）。
  * PENDING 也放行——崩溃/杀进程会把计划留在"等确认"这一格，没有重试入口就永久卡住。
+ *
+ * FeatureFlags.calendarFlow 关闭时一律不给：回退档必须让入口和链路一起退场，
+ * 留一个点了不会写进日历的按钮，比没有按钮更糟（docs/release/rollout-and-rollback.md）。
  */
 export function canRetryCalendarSync(calendarState: string): boolean {
+  if (!FeatureFlags.calendarFlow) {
+    return false;
+  }
   return calendarState === CalendarState.FAILED
     || calendarState === CalendarState.LOCAL_ONLY
     || calendarState === CalendarState.NOT_REQUESTED

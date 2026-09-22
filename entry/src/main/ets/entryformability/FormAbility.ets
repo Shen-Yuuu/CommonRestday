@@ -3,7 +3,7 @@ import { Want } from '@kit.AbilityKit';
 import { MIN_PER_DAY, OWNER_ME, todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
 import {
-  CardInput, CardModel, CardRoutes, CardState, CardSummaryService, CommonTimeQueryService,
+  CardInput, CardModel, CardRoutes, CardState, CardSummaryService, CommonTimeQueryService, FeatureFlags,
   ScheduleOverviewQueryService, ScheduleUseCase
 } from 'feature';
 import { Logger } from 'commons';
@@ -21,6 +21,8 @@ const STATE_LOADING = '';
  * - 卡片进程可能独立于 EntryAbility 启动：本文件自行 Db/SettingsStore 初始化，
  *   任一步失败都降级为占位文案，绝不抛给卡片框架。
  * - 只做本机读算：不拉云快照、不推配对数据（云端不是主库，卡片更不是）。
+ * - 灰度回退（Task 6.2）：FeatureFlags.newCard = false 时两个入口都只下发停用文案，
+ *   不读库也不重算——关掉的是内容链路，不是卡片在桌面上的存在与否。
  * - 跨天刷新：周期更新（updateDuration）与日切后首次拉起会先本机重算一次，
  *   让"结果是上一轮的"只在重算失败时出现，而不是每天早晨必现。
  * - 点击带 route 参数：取值是 NavRoutes 白名单里的名字，壳层落地前还会按白名单再验一次。
@@ -33,6 +35,11 @@ const STATE_LOADING = '';
  */
 export default class FormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
+    if (!FeatureFlags.newCard) {
+      // 回退档：卡片还在桌面（添加动作发生在系统侧，应用拦不住），但一句假结论都不下发
+      Logger.info(TAG, 'onAddForm: card off, publishing disabled placeholder');
+      return formBindingData.createFormBindingData(JSON.stringify(FormAbility.disabled()));
+    }
     let formId = '';
     try {
       const params = want.parameters;
@@ -65,6 +72,17 @@ export default class FormAbility extends FormExtensionAbility {
 
   /** 组装真实卡片数据并回填指定卡片；存储初始化/读取任一步失败均降级（保持占位内容）。 */
   private async refreshCard(formId: string): Promise<void> {
+    if (!FeatureFlags.newCard) {
+      // 周期更新与日切拉起都走这里：关档时连 Db.init 和本机重算都不做，卡片只保留停用文案。
+      // 下发失败要留痕：卡面会一直停在"正在计算…"，没日志就分不清是关档还是故障。
+      try {
+        await formProvider.updateForm(formId,
+          formBindingData.createFormBindingData(JSON.stringify(FormAbility.disabled())));
+      } catch (e) {
+        Logger.warn(TAG, 'disabled card push failed: ' + (e as Error).message);
+      }
+      return;
+    }
     await Db.init(this.context);
     await SettingsStore.init(this.context);
     const data = await FormAbility.buildCardData();
@@ -76,6 +94,21 @@ export default class FormAbility extends FormExtensionAbility {
     const m: CardModel = {
       state: STATE_LOADING, question: '同休日', hero: '正在计算…', heroNote: '',
       second: '', footer: '', route: CardRoutes.HOME
+    };
+    return m;
+  }
+
+  /**
+   * 回退档卡面（FeatureFlags.newCard = false）。
+   * state 借用 STALE 只作数据口径（卡面只渲染下面几个字符串，state 不参与排版，
+   * 见 widget/RestCard2x2.ets）；语义是"这份结论不会再更新"，与 degraded() 同一类。
+   * 文案里不出现日程、时间或计划标题：关档时卡片不再读任何本机数据，文案也就必须是常数。
+   */
+  static disabled(): CardModel {
+    const m: CardModel = {
+      state: CardState.STALE, question: '同休日', hero: '桌面卡片已停用',
+      heroNote: '当前版本未开启卡片内容，打开 App 查看共同时间', second: '', footer: '',
+      route: CardRoutes.HOME
     };
     return m;
   }

@@ -1,8 +1,9 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
-  AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, FeatureFlags,
-  HomeSummary, PlanConflictView, PlanSummary, QuickAnswer, TodaySummary, WindowChannel,
-  WindowDetailData, WindowFilter, WindowFilterKey, WindowSummary
+  AnswerAction, AnswerKind, AnswerState, CalendarState, CommonTimePageData, ExperienceMode,
+  FeatureFlags, HomeSummary, PlanConflictView, PlanSummary, QuickAnswer, TodaySummary,
+  WindowChannel, WindowDetailData, WindowFilter, WindowFilterKey, WindowSummary,
+  canRetryCalendarSync
 } from 'feature';
 
 /**
@@ -161,11 +162,26 @@ export default function presentationModelsTest() {
     });
 
     it('feature_flags_gate_unreleased_capabilities', 0, () => {
-      // 未过阶段门禁的能力必须默认关闭（newShell 随 BuildProfile 构建模式映射，release 下为 false）
+      // 只有云端两档受 Task 0.4 门禁（CLOUD_BLOCKED）压制；本机三档已交付且各自有读取方。
+      // 档位含义与回退口径见 docs/release/rollout-and-rollback.md，改这里必须同时改那份文档。
+      expect(FeatureFlags.calendarFlow).assertTrue();
       expect(FeatureFlags.cloudPairing).assertFalse();
       expect(FeatureFlags.scanPairing).assertFalse();
-      expect(FeatureFlags.newCard).assertFalse();
-      expect(FeatureFlags.responsiveV2).assertFalse();
+      expect(FeatureFlags.newCard).assertTrue();
+      expect(FeatureFlags.responsiveV2).assertTrue();
+
+      // 启动日志摘要：五档一个都不能漏，缺档 = 这个包的现场状态无法从日志复原
+      const line: string = FeatureFlags.summary();
+      expect(line.indexOf('calendarFlow=on') >= 0).assertTrue();
+      expect(line.indexOf('cloudPairing=off') >= 0).assertTrue();
+      expect(line.indexOf('scanPairing=off') >= 0).assertTrue();
+      expect(line.indexOf('newCard=on') >= 0).assertTrue();
+      expect(line.indexOf('responsiveV2=on') >= 0).assertTrue();
+      // 摘要按 rollout 顺序排列：日志读法与文档一致，不靠人记
+      expect(line.indexOf('cloudPairing=off') < line.indexOf('scanPairing=off')).assertTrue();
+      // 关档时日历不给补写入口：入口和链路一起退场，不留点了没反应的按钮
+      expect(canRetryCalendarSync(CalendarState.LOCAL_ONLY)).assertTrue();
+      expect(canRetryCalendarSync(CalendarState.UNSUPPORTED)).assertFalse();
     });
   });
 }

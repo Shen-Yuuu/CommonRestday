@@ -7,6 +7,8 @@
  * 但「自定义阈值 → 枚举值」的映射在 SDK 声明里查不到依据，
  * 所以只取容器自己的 width 做数值分类，语义由本页兜住。
  */
+import { FeatureFlags } from 'feature';
+
 export enum Breakpoint {
   COMPACT = 'compact',
   MEDIUM = 'medium',
@@ -21,7 +23,15 @@ export class Breakpoints {
   /** 共同时间「列表—详情」双栏里详情栏的固定宽度：够放窗口摘要 + 计划表单。 */
   static readonly DETAIL_PANE: number = 380;
 
+  /**
+   * 宽度 → 档位。FeatureFlags.responsiveV2 的回退点就掐在这里：
+   * 全站断点只有这一个入口，返回 COMPACT 等于封顶、分档留白、双栏一起退到阶段 4 的单列形态，
+   * 不会出现"外壳收成了两栏、里面还在按窄屏排版"的半开状态。
+   */
   static ofWidth(vp: number): Breakpoint {
+    if (!FeatureFlags.responsiveV2) {
+      return Breakpoint.COMPACT;
+    }
     if (vp >= Breakpoints.EXPANDED_MIN) {
       return Breakpoint.EXPANDED;
     }

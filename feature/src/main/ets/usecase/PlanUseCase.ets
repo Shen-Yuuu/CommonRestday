@@ -2,6 +2,7 @@ import { PlanRow, ScheduleRepo } from 'data';
 import { decodeConflictHint, encodeConflictHint } from 'domain';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from './ScheduleUseCase';
+import { FeatureFlags } from '../config/FeatureFlags';
 import { CalendarGateway } from '../integration/CalendarGateway';
 import { NotificationGateway } from '../integration/NotificationGateway';
 import {
@@ -246,9 +247,19 @@ export class PlanUseCase {
   /**
    * 请系统日历写入并回写 calendar_state。
    * 异常一律归一成 FAILED：调用方据此把计划标成"待重试"，而不是让整条链路抛出去。
+   *
+   * FeatureFlags.calendarFlow 关闭时这里就是回退点：一条日历调用都不发，状态归一成
+   * NOT_REQUESTED（"从没请求过日历"，与"请求了但没写成"是两件事），my_event_id 留空。
+   * 取消/改期路径上的 removeEventQuietly 不受本档影响——开档时写进去的日程，
+   * 关档后照样清得掉，不会留下没人认领的孤儿事件。
    */
   private static async writeCalendar(id: string, title: string, startMin: number, endMin: number,
     direct: boolean): Promise<string> {
+    if (!FeatureFlags.calendarFlow) {
+      await ScheduleRepo.updatePlanCalendar(id, CalendarState.NOT_REQUESTED, '');
+      Logger.info(TAG, 'calendar flow off, plan stays local only id=' + id);
+      return CalendarState.NOT_REQUESTED;
+    }
     let result: CalendarWriteResult = { outcome: CalendarOutcome.FAILED, eventId: '' };
     try {
       result = await PlanUseCase.cal.confirm(title, startMin, endMin, direct);

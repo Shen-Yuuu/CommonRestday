@@ -1,6 +1,7 @@
 import { AppNavigator } from '../navigation/AppNavigator';
 import { PrivacyDialog } from '../component/PrivacyDialog';
 import { SettingsStore } from 'data';
+import { FeatureFlags } from 'feature';
 import { Logger } from 'commons';
 import { common } from '@kit.AbilityKit';
 import { Breakpoint } from '../responsive/Breakpoints';
@@ -15,7 +16,8 @@ const SHELL_MAX: number = 800;
  * 遮罩盖在 Navigation 之上，未同意前整棵导航树（含栈目的地）都点不到。
  *
  * 响应式（Task 5.1）：外壳由 ResponsiveContainer 量宽，expanded 档把整壳收成居中列，
- * 底色仍铺满窗口；窄屏与中屏不封顶，布局与改造前一致。
+ * 底色仍铺满窗口；窄屏与中屏不封顶，布局与改造前一致。档位开关是
+ * FeatureFlags.responsiveV2，判定只写在 Breakpoints.ofWidth 一处（见 docs/release/rollout-and-rollback.md）。
  */
 @Entry
 @Component
@@ -25,6 +27,9 @@ struct Index {
   @State private bp: Breakpoint = Breakpoint.COMPACT;
 
   aboutToAppear(): void {
+    // 灰度档位一次一记（Task 6.2）：没有远端遥测，hilog 里这一行是"这个包开了哪几档"的
+    // 唯一现场证据。放在隐私拦截之前，拒绝隐私弹窗的冷启动同样留痕。
+    Logger.info('CrdFlags', FeatureFlags.summary());
     this.checkPrivacy();
     // 系统无障碍状态（长辈模式/屏幕朗读/减少动态效果）只在壳层订阅一次，页面读 AppStorage
     AccessibilityPolicy.attach();

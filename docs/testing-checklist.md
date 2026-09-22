@@ -1,8 +1,8 @@
 # 同休日 真机验收清单
 
 > 适用：HarmonyOS NEXT（API 26）**手机**（`deviceTypes` 只声明 phone，其余设备形态不在验收范围）。
-> 口径日期：2026-09-22，对应阶段 6 Task 6.1 完成后的形态：三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 扫码分享入口 + 桌面卡片 + 分层通知 + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义与 Senior Mode 低密度 + 重算的 16ms 预算门槛 + 升级迁移与恢复收口。
-> 云端配对继续关闭：Task 0.4 的门禁结论是 `CLOUD_BLOCKED`，见 `docs/validation/clouddev-api26-spike.md`。
+> 口径日期：2026-09-23，对应阶段 6 Task 6.2 完成后的形态：三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 扫码分享入口 + 桌面卡片 + 分层通知 + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义与 Senior Mode 低密度 + 重算的 16ms 预算门槛 + 升级迁移与恢复收口 + 五档灰度开关全部有读取方。
+> 云端配对继续关闭：Task 0.4 的门禁结论是 `CLOUD_BLOCKED`，见 `docs/validation/clouddev-api26-spike.md`。功能开关档位与回退口径见 `docs/release/rollout-and-rollback.md`。
 > 本清单里的界面文字全部取自当前代码，勾之前请确认屏幕上确实写着这几个字；对不上就是实现偏离，不要脑补通过。
 
 ## 0. 三种证据口径
@@ -11,10 +11,10 @@
 
 | 口径 | 怎么跑 | 能证明 | 当前状态 |
 |---|---|---|---|
-| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排、迁移与恢复决策的口径正确 | **177 passed / 0 failed**（2026-09-22 复跑，含阶段 4 的卡片投影/配对链接与阶段 6.1 的恢复清理用例） |
+| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **177 passed / 0 failed**（2026-09-23 复跑，含阶段 4 的卡片投影/配对链接、阶段 6.1 的恢复清理与 6.2 的档位断言） |
 | 离线预算测量 | `node tools/perf/budget.mjs` | 引擎重算、快照编解码、读模型投影**在开发机上**相对 16ms 的位置（下界） | 已测：120 天稠密配对 P95 14.30ms、366 天 73.45ms（超预算）、codec ≤0.16ms |
 | 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL），**未执行 → 待设备** |
-| 手工走查 | 下面 §1–§17 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返 | **全部待设备** |
+| 手工走查 | 下面 §1–§19 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返、开关关档表现 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
 
@@ -190,7 +190,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 10.9 扫码结果码分支（需临时开 `scanPairing` + 真机）：用户主动退出扫码（Scan Kit `1000500002`）**静默返回**，不提示失败；模拟器/缺 Scan 后端（`1000500001`）→ `扫码结果需真机复验（模拟器不具备完整扫码能力）`，判为**未验证**而不是失败；其他错误 → `扫码失败，请重试或改用 6 位配对码`
 - [ ] 10.10 分享面板（需一次性凭据才能验真）：`link` 为空时不打开面板，直接 `没有可分享的配对链接：链接只承载服务端签发的一次性凭据，请把 6 位配对码告诉 TA`；凭据过期 → `配对链接已失效，请重新生成`；系统分享不可用时**退回剪贴板**而不是报错
 - [ ] 10.11 二维码只画 `crdpair://join?t=<一次性凭据>`：截图、转发、被第三方扫码器记进历史都不该泄露长期密钥或邀请历史（**配对码不进链接**）。扫码器实测：扫出来的文本必须就是这个 scheme，出现 6 位短码或任何密钥片段判失败
-- [ ] 10.12 **本轮已知偏离（不勾通过）**：二维码/分享/短码三屏都缺内容源（`pairToken` 无写入方、等待态只能由违规路径进入），因此"扫码配对"整条闭环在真机上无法端到端验证。它必须等阶段 3 门禁解除 + 服务端 `pairing-init` 上线后按 §18 的 3.5 另立清单复验
+- [ ] 10.12 **本轮已知偏离（不勾通过）**：二维码/分享/短码三屏都缺内容源（`pairToken` 无写入方、等待态只能由违规路径进入），因此"扫码配对"整条闭环在真机上无法端到端验证。它必须等阶段 3 门禁解除 + 服务端 `pairing-init` 上线后按 §19 的 3.5 另立清单复验
 
 ## 11. 桌面 2×2 服务卡片（阶段 4 Task 4.2 出口）
 
@@ -219,7 +219,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 11.11 **隐私负例**：卡面只有日期/时长/结论，不得出现课程名、班次名、地点、计划标题、对方昵称——建一条标题为具体地址的计划后回桌面看一眼
 - [ ] 11.12 卡片链路里**没有云同步**：`cloudPairing=false` 时添加/刷新卡片全程无网络请求、不弹配对提示（`hilog` 抓 `FormAbility` 确认）
 - [ ] 11.13 移除卡片后再添加，能重新拿到结论（旧 formId 不残留）
-- [ ] 11.14 **本轮已知偏离（不勾通过）**：`FeatureFlags.newCard = false` 且**全仓无读取方**——卡片显示与否只由"用户有没有从桌面添加"决定，这个开关目前空转。阶段 6.2 要么把它接上（关掉时卡片下发"暂不可用"），要么删掉，不得留成假的安全感
+- [ ] 11.14 ~~**本轮已知偏离**：`FeatureFlags.newCard = false` 且全仓无读取方~~ → **阶段 6.2 已关闭这条偏离**：开关接在 `FormAbility.onAddForm` 与 `refreshCard` 两处，档位现在是 `true`（与线上表现一致，此前它是 `false` 但没人读，等于谎报）。关档真机表现待验：把 `newCard` 翻成 `false` 重新出包后，桌面卡片应显示「桌面卡片已停用 / 当前版本未开启卡片内容，打开 App 查看共同时间」，且日志出现 `card off, publishing disabled placeholder`。口径见 `docs/release/rollout-and-rollback.md` §3.5 与本文件 §18
 - [ ] 11.15 渲染待真机核验：ArkTS 卡片限制子集下 `linearGradient` / `Divider` / 2.0× 系统字体是否破版（卡面 150vp 见方，`hero` 只留两行）；`@LocalStorageProp` 是否收到 `updateForm` 的新值；`postCardAction` 的 `params` 在 Want 侧的两种形态（平铺 / `key_params` JSON 串）是否都落到 11.8
 - [ ] 11.16 **本轮已知偏离（不勾通过）**：改造文档写的是"卡片点击带路由参数返回**对应窗口**或日程入口"，当前实现只落到 Tab / 栈目的地级（`home / common-time / me / schedule-hub`），**不带窗口 id**，所以点"今晚 19:00–22:30"那条不会直接展开那个窗口的详情。要补得让卡片下发多带一个窗口键、壳层按白名单解析后再开 Sheet——留给阶段 5/6，验收时按"落到共同时间页"记录，不写成"直达窗口"
 
@@ -244,7 +244,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 12.11 关掉「需行动的通知」→ 12.6/12.7 那两类一条都不发；系统日历里的日程与已注册的提醒**不受影响**
 - [ ] 12.12 设备异常不阻断本地：在系统设置里手动关掉本应用通知后再保存班表/建计划/改期 → 全部照常成功，日志出现 `notice degraded` / `weekly summary skipped`（TAG `Notification`）而不是一切失败
 - [ ] 12.13 写设置失败要说人话：三档开关任一处失败（可用 `bm clean` 后并发点或制造 Preferences 异常）→ 开关回弹到真实值 + toast `设置没保存住，稍后再试一次`，**不静默假装保存成功**
-- [ ] 12.14 **本轮无法构造（不勾通过）**：`TA 的加密日程读不了了，需要重新配对才能继续同步` 这条只在"对方快照解密/解码失败"时发，而快照链路受 `CLOUD_BLOCKED` 关闭 → 等阶段 3 门禁解除后随 §18 的 3.5 复验。同时记下：`setPairState` 一变即清"已提示"标记，届时换配对状态后应能再说一次
+- [ ] 12.14 **本轮无法构造（不勾通过）**：`TA 的加密日程读不了了，需要重新配对才能继续同步` 这条只在"对方快照解密/解码失败"时发，而快照链路受 `CLOUD_BLOCKED` 关闭 → 等阶段 3 门禁解除后随 §19 的 3.5 复验。同时记下：`setPairState` 一变即清"已提示"标记，届时换配对状态后应能再说一次
 - [ ] 12.15 **已知遗留（不当通过，也不判失败）**：
   - 通知**没有点击深链**（`NotificationRequest` 未带 `wantAgent`）——点通知不会把你带到冲突那一屏，只是从通知中心消失。要补需要 bundleName 与 WantAgent 构造，本轮刻意不猜；
   - 提醒是否真的**到点响**（`reminderAgentManager` 由系统调度、省电策略影响）只能在真机等一次；周摘要那条跨越后台，重启后是否仍注册缺权威口径，实测记现象即可；
@@ -442,10 +442,43 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - **没测跨进程并发**：卡片进程可能先于 EntryAbility 打开库。谁先跑谁消费标记，两种顺序最终效果相同，但中途失败重试没有测过（同进程内不并发，跨进程由 RDB 串行）。
 - 迁移中断（17.1.3）只有离线证据：真机没有"让第 3 条 ALTER 失败"的开关。
 
-## 18. 尚未纳入验收（按阶段补进本文件）
+## 18. 灰度档位与回退（阶段 6 Task 6.2 出口）
+
+档位表、启用条件、关闭影响与数据兼容性只有一份：`docs/release/rollout-and-rollback.md`。
+本节只列"验收时怎么确认开关不是装饰"，勾之前请确认屏幕上确实写着那几个字。
+
+### 18.1 已测（不需要设备）
+
+- [x] 18.1.1 五个开关各有且只有一处口径落点：`calendarFlow`→`PlanUseCase.writeCalendar` + `PlanFlow.canRetryCalendarSync`；`cloudPairing`→`MeView` 文案 + `PairingShareGateway.acceptOffer` 写库前拦截；`scanPairing`→`PairingShareGateway.channels`（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth`。全仓 `grep -rn "FeatureFlags\."` 无其它读取方
+- [x] 18.1.2 `newShell` 已删除：旧四 Tab 壳层在阶段 1 就被换掉、从来没有可切换分支，release 包里它是 `false` 而无人读，属于谎报型开关（rollout 文档 §3.1）。壳层回退方式＝整包回退
+- [x] 18.1.3 当前档位离线全绿：177 passed / 0 failed；`entry@default` debug 与 `entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` 361（与阶段 5.4/6.1 基线一致，无新增告警）
+- [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **167 passed / 10 failed**，失败项全部是日历口径（`expected WRITTEN but got NOT_REQUESTED`、`direct_write… expected 2 but got 0`＝一次日历调用都没发）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别
+- [x] 18.1.5 `newCard = false`、`responsiveV2 = false` 各自单独编译通过（日志 `../.crdtest/build-6-2-off-newCard.log`、`build-6-2-off-responsiveV2.log`），三档恢复后 `build-6-2-final.log` 再绿一次
+- [x] 18.1.6 档位摘要一行齐全：`FeatureFlags.summary()` 由 `PresentationModelsTest` 断言五档都在、且按 rollout 顺序排列（漏一档 = 日志证明不了这个包的现场状态）
+
+### 18.2 只能真机验（全部待设备）
+
+- [ ] 18.2.1 冷启动日志出现 `CrdFlags` 一行，五个档位与 `docs/release/rollout-and-rollback.md` §2 一致：
+  `hdc shell "hilog | grep CrdFlags"`
+- [ ] 18.2.2 `calendarFlow` 关档包：新建计划后卡上只有「仅保存在应用内」且**没有**「写入日历」字样；系统日历里不新增事件；取消这类计划不报"删除日程失败"
+- [ ] 18.2.3 `calendarFlow` 关档包对**开档时**写过的计划：取消与改期仍能把原日程从系统日历里清掉（关闭不影响既有投影的清理，rollout 文档 §3.2 数据兼容性）
+- [ ] 18.2.4 `newCard` 关档包：桌面卡片显示停用文案，不是"正在计算…"卡死、也不是昨天的旧结论；日志 `card off, publishing disabled placeholder`
+- [ ] 18.2.5 `responsiveV2` 关档包：折叠屏展开/平板宽度下回到单列，共同时间详情改为半模态，无"外壳两栏、内容窄屏排版"的半开状态
+- [ ] 18.2.6 关档包的数据完整性：班表、课程、计划、冲突、TA 档案一条不少（规则 3：只关能力不关数据）
+- [ ] 18.2.7 扫码入口的前置关系：只开 `scanPairing`（`cloudPairing` 仍 false）时「我的」页不出现扫码按钮
+
+### 18.3 本轮明确没做（不勾通过，也不判失败）
+
+- **`cloudPairing = true` / `scanPairing = true` 分支完全不验证**：Task 0.4 门禁没改，验证它等于给"顺手开一下"开门。要开先改 `docs/validation/clouddev-api26-spike.md` 的结论。
+- **没有按用户分流的灰度**：开关是编译期常量，一档一包。应用市场侧的分阶段放量未核对官方控制台，属缺证据。
+- **没有远端遥测**：所谓"监控指标"只有 hilog 与用户回传的截图，不能聚合、不能告警。放量判断只能建立在"关闭影响是否可逆 + 数据是否兼容"上。
+- **适老化不受 `responsiveV2` 控制**：Senior Mode、2.0× 字号、减少动效、读屏语义是用户设置与系统状态（`AccessibilityPolicy`），别把"关掉响应式"当成"回到适老化之前"。
+
+## 19. 尚未纳入验收（按阶段补进本文件）
 
 - 阶段 3.5：双真机配对/短码过期/二维码 token 复用/越权/解除级联删除（另立 `docs/validation/cloud-pairing-e2e.md`）。**门禁解除后要一并复验的现有条目**：§9.5（已配对文案）、§10.8–10.11（短码屏/扫码结果码/分享面板/二维码内容）、§12.14（需重新配对那条通知）
-- 阶段 6.2：灰度与回滚（含 §11.14 的 `newCard` 空转开关）；6.4：发布矩阵（`docs/release/2026-api26-release-checklist.md`）
+- 阶段 6.4：发布矩阵（`docs/release/2026-api26-release-checklist.md`）。阶段 6.2 的灰度与回退已移出去留处 → 见 §18 与 `docs/release/rollout-and-rollback.md`；`§11.14` 那条"空转开关"偏离同时关闭
+- 阶段 5 的 `ContainerReader` 双口径回灌、以及 §18.2 全部关档走查，都要等接上设备一起做，缺任何一条都不算"回退可用"
 
 ---
 

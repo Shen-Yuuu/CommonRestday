@@ -88,7 +88,9 @@ export class PairingShareGateway {
   static channels(): PairChannels {
     const scanCap = canIUse(SYSCAP_SCAN);
     const out: PairChannels = {
-      scan: scanCap && FeatureFlags.scanPairing,
+      // 扫码以云端配对为前提：rollout 顺序是 cloudPairing → scanPairing，
+      // 这里把顺序写成代码，单开 scanPairing 不会露出一个只能失败的入口
+      scan: scanCap && FeatureFlags.cloudPairing && FeatureFlags.scanPairing,
       share: canIUse(SYSCAP_SHARE),
       emphasizeCode: !scanCap
     };

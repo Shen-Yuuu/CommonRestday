@@ -8,8 +8,7 @@ import {
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
-import { notificationManager } from '@kit.NotificationKit';
-import { reminderAgentManager } from '@kit.BackgroundTasksKit';
+import { NotificationGateway } from '../integration/NotificationGateway';
 import { AppConst, Logger } from 'commons';
 
 /** 学期配置。 */
@@ -141,6 +140,12 @@ export class ScheduleUseCase {
     await ScheduleRepo.replaceWindows(result.windows, Date.now());
     // 冲突检测回写（排除计划自身占用的交叠判定 + 替代窗口推荐）
     await ScheduleUseCase.detectAndWriteConflicts(my, partnerIvs, params, startEpochDay, result.windows);
+    // 记录重算日（App 切前台时据此做日切重算；失败不影响主流程）
+    try {
+      await SettingsStore.setLastRecomputeDay(startEpochDay);
+    } catch (e) {
+      Logger.warn('ScheduleUseCase', 'setLastRecomputeDay failed: ' + (e as Error).message);
+    }
     Logger.info('ScheduleUseCase', 'recomputed windows=' + result.windows.length
       + ' fullDays=' + result.fullDays.length + ' partner=' + (partnerBusy != null) + ' in ' + result.computeMs + 'ms');
     return result;
@@ -205,6 +210,8 @@ export class ScheduleUseCase {
       const ivs = partnerIntervalsFromSnapshot(snap, keyHex);
       if (ivs == null) {
         Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
+        // 密钥失配只有用户能修（重新配对），所以这是"需行动"的那一类；云端不可用不提示，那不是用户的事
+        NotificationGateway.notifyRepairNeeded();
         return null;
       }
       await SettingsStore.setPartnerSnapVer(snap.version);
@@ -351,8 +358,13 @@ export class ScheduleUseCase {
       const row = planRows[i];
       if (row.status !== newStatus || row.conflictHint !== newHint) {
         await ScheduleRepo.updatePlanConflict(oc.planId, newStatus, newHint);
+        // 内存行跟着落库结果走，下面的通知判定与数据库用的是同一份事实
+        row.status = newStatus;
+        row.conflictHint = newHint;
       }
     }
+    // 需行动的冲突才提示，同一次冲突不重复提示；策略与去重都在网关，fire-and-forget
+    NotificationGateway.notifyConflicts(planRows);
   }
 
   /**
@@ -372,6 +384,7 @@ export class ScheduleUseCase {
    * UI 保存动作后的统一事件入口：重算 + AppStorage 重算计数广播。
    * 页面通过 AppStorage 监听 recomputeCount 变化刷新（毫秒级同步计算，无需发布订阅）。
    * 已配对时尽力推送我的加密快照（fire-and-forget，内部全捕获不产生未处理拒绝）。
+   * 通知/提醒一律交给 NotificationGateway 判定，这里只负责"有事发生了一次"这个触发点。
    */
   static async onScheduleChanged(): Promise<void> {
     await ScheduleUseCase.recompute(todayEpochDay());
@@ -380,42 +393,7 @@ export class ScheduleUseCase {
     if (SettingsStore.getPairState() === PAIRED) {
       ScheduleUseCase.pushMySnapshot(todayEpochDay());
     }
-    ScheduleUseCase.refreshWeeklyReminder();
-  }
-
-  /**
-   * 周日 20:00 周摘要提醒（ReminderRequestAlarm）：
-   * - 通知未开启时静默跳过（不弹授权窗，避免打断用户）；
-   * - 已注册则先取消旧提醒再重注册，reminder id 存 SettingsStore；
-   * - 任何失败静默降级，不影响重算主流程。
-   */
-  static async refreshWeeklyReminder(): Promise<void> {
-    try {
-      if (!await notificationManager.isNotificationEnabled()) {
-        return;
-      }
-      const old = await SettingsStore.getWeeklyReminderId();
-      if (old >= 0) {
-        try {
-          await reminderAgentManager.cancelReminder(old);
-        } catch (e) {
-          // 旧提醒已被系统清理/过期：忽略取消失败
-        }
-      }
-      const reminder: reminderAgentManager.ReminderRequestAlarm = {
-        reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_ALARM,
-        hour: 20,
-        minute: 0,
-        daysOfWeek: [7], // 1=周一 … 7=周日
-        title: '同休日周报',
-        content: '本周共同空闲已更新，打开看看这周能一起休哪天'
-      };
-      const id = await reminderAgentManager.publishReminder(reminder);
-      await SettingsStore.setWeeklyReminderId(id);
-      Logger.info('ScheduleUseCase', 'weekly reminder registered, id=' + id);
-    } catch (e) {
-      Logger.warn('ScheduleUseCase', 'weekly reminder degraded: ' + (e as Error).message);
-    }
+    NotificationGateway.syncWeeklyReminder();
   }
 
   // ---------- 日视图（DayDetailSheet 数据源） ----------

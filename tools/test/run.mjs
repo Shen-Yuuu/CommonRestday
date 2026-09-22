@@ -41,6 +41,9 @@ const TREES = [
       // 两个门面包 @kit.CalendarKit / reminderAgentManager；PlanUseCase 通过能力端口调用它们，
       // 单测注入确定性端口实现，这里只需要类型壳让默认适配器过编译。
       'CalendarGateway.ets', 'ReminderGateway.ets',
+      // 通知策略门面 @kit.NotificationKit / reminderAgentManager：默认端口适配器经它走，
+      // 同样只留类型壳；开关默认值与授权分支属真机验收（docs/testing-checklist.md）。
+      'NotificationGateway.ets',
       // 扫码/分享门面包 @kit.ScanKit / @kit.ShareKit / 剪贴板；一次性凭据口径由 domain 的
       // PairLinkTest 离线覆盖，这里不参与转译（真机侧行为见 docs/testing-checklist.md）。
       'PairingShareGateway.ets']
@@ -237,6 +240,12 @@ export class ReminderGateway {
   static init(context: Object): void {}
   static async publish(title: string, startMin: number): Promise<number> { return -1; }
   static async cancel(reminderId: number): Promise<void> {}
+}
+`,
+  'NotificationGateway.ts': `
+export class NotificationGateway {
+  static async publishPlanReminder(title: string, startMin: number): Promise<number> { return -1; }
+  static async cancelPlanReminder(reminderId: number): Promise<void> {}
 }
 `
 };

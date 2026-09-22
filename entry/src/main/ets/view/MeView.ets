@@ -1,10 +1,11 @@
 import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { OWNER_ME, OWNER_PARTNER, PairLink, PairOffer } from 'domain';
-import { PAIRED, PAIR_NONE, PAIR_WAITING } from 'data';
+import { PAIRED, PAIR_NONE, PAIR_WAITING, SettingsStore } from 'data';
 import {
-  FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
-  PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult
+  FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, NotificationGateway, PairChannels,
+  PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome,
+  ScanResult, SettingsResult
 } from 'feature';
 import { openPrivacyPolicy } from '../util/PrivacyUtil';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -16,9 +17,10 @@ import { EditorialCard } from '../component/EditorialCard';
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
 
 /**
- * 我的页：四段收纳——伴侣与同步、我的日程、作息、数据与隐私。
+ * 我的页：五段收纳——伴侣与同步、我的日程、作息、提醒与通知、数据与隐私。
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
  * - 班表录入不再是底部 Tab，这里给直达入口（我这侧 / 代录 TA 那侧）；
+ * - 提醒与通知按低打扰排布：默认只有需行动的一类会响，其余都要用户主动开；
  * - 云端配对未开通时全程降级提示，本机代录照常可用。
  */
 @Component
@@ -56,6 +58,12 @@ export struct MeView {
   @State private myHorizon: string = '120';
   @State private myMinSlot: number = 120;
   @State private clearing: boolean = false;
+  // 提醒与通知（Task 4.3 低打扰策略：默认只有"需行动"这一类会响）
+  @State private alertsOn: boolean = true;
+  @State private preciseOn: boolean = false;
+  @State private weeklyOn: boolean = false;
+  /** 系统通知授权态：开关可以照记，但没授权就什么都到不了用户眼前，页面上要说明白。 */
+  @State private notifyOn: boolean = false;
   // 保存动作 → 重算广播：伴侣侧数据或参数变了，摘要文案要跟着走
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   // 一次性配对请求到达（扫到的或从配对链接拉起本机的）：确认页在这页弹
@@ -158,6 +166,82 @@ export struct MeView {
     this.channels = PairingShareGateway.channels();
     this.reloadPartner();
     this.reloadMyParams();
+    this.reloadNotify();
+  }
+
+  /** 开关值读 SettingsStore（默认值就是策略默认值），授权态是异步查询，回来再刷。 */
+  reloadNotify(): void {
+    this.alertsOn = SettingsStore.isActionAlertsOn();
+    this.preciseOn = SettingsStore.isPreciseReminderOn();
+    this.weeklyOn = SettingsStore.isWeeklySummaryOn();
+    NotificationGateway.isEnabled().then((on: boolean) => {
+      this.notifyOn = on;
+    });
+  }
+
+  // ---------- 提醒与通知开关 ----------
+
+  /** 写失败的兜底：把拨过去的视觉状态读回真值，并说一句人话（不静默假装保存成功）。 */
+  private onSwitchFailed(): void {
+    this.reloadNotify();
+    promptAction.showToast({ message: '设置没保存住，稍后再试一次' });
+  }
+
+  pickAlerts(on: boolean): void {
+    if (on === this.alertsOn) {
+      return;
+    }
+    this.alertsOn = on;
+    NotificationGateway.setActionAlerts(on).then((saved: boolean) => {
+      if (!saved) {
+        this.onSwitchFailed();
+      }
+    });
+  }
+
+  pickPrecise(on: boolean): void {
+    if (on === this.preciseOn) {
+      return;
+    }
+    this.preciseOn = on;
+    NotificationGateway.setPreciseReminder(on).then((saved: boolean) => {
+      if (!saved) {
+        this.onSwitchFailed();
+        return;
+      }
+      promptAction.showToast({
+        message: on ? '之后的新计划与改期会加一条本应用提醒' : '已停止新增本应用提醒，日历里的日程不受影响'
+      });
+    });
+  }
+
+  /** 周摘要的开关与那条后台提醒一起收口（关就取消，开且通知可用才注册）。 */
+  pickWeekly(on: boolean): void {
+    if (on === this.weeklyOn) {
+      return;
+    }
+    this.weeklyOn = on;
+    NotificationGateway.setWeeklySummary(on).then((saved: boolean) => {
+      if (!saved) {
+        this.onSwitchFailed();
+        return;
+      }
+      if (on && !this.notifyOn) {
+        promptAction.showToast({ message: '通知还没开启，开启后会补上这条周提醒' });
+      }
+    });
+  }
+
+  /** 只在用户当面点"开启通知"时才弹系统授权窗，重算链路一律静默跳过。 */
+  requestNotify(): void {
+    const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    NotificationGateway.requestEnabled(ctx).then((ok: boolean) => {
+      this.notifyOn = ok;
+      promptAction.showToast({ message: ok ? '通知已开启' : '仍未开启，可以在系统设置里再改' });
+      if (ok) {
+        NotificationGateway.syncWeeklyReminder();
+      }
+    });
   }
 
   reloadPartner(): void {
@@ -500,6 +584,7 @@ export struct MeView {
         this.partnerSyncCard()
         this.scheduleCard()
         this.rhythmCard()
+        this.notifyCard()
         this.dataCard()
       }
       .width('100%')
@@ -1092,6 +1177,78 @@ export struct MeView {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+  }
+
+  /**
+   * 提醒与通知：默认只有"需行动"这一类会响（阶段 4 Task 4.3 低打扰口径）。
+   * 三个开关都写在说明里说清"什么时候会吵到一次"，不留下"开了就天天提醒"的误解。
+   */
+  @Builder
+  notifyCard() {
+    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+      Column({ space: DesignTokens.space2 }) {
+        this.cardHead('提醒与通知', '', () => {
+        })
+
+        this.switchRow('需行动的通知', '只在计划时间撞了还没处理、或需要同重新配对时说一次；同步成功不通知',
+          this.alertsOn, (on: boolean) => this.pickAlerts(on))
+
+        this.divider()
+
+        this.switchRow('计划精确提醒', '计划开始前再给一条本应用提醒。默认不开：计划写进系统日历后，报时由日历负责',
+          this.preciseOn, (on: boolean) => this.pickPrecise(on))
+
+        this.divider()
+
+        this.switchRow('周日周摘要', '每周日 20:00 提醒看一眼下周能一起休哪天。默认不开',
+          this.weeklyOn, (on: boolean) => this.pickWeekly(on))
+
+        if (!this.notifyOn) {
+          Row({ space: DesignTokens.space2 }) {
+            Text('系统通知还没开启，上面这些开关都不会有提示')
+              .fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.textHint)
+              .layoutWeight(1)
+            Text('开启通知')
+              .fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.primary)
+              .padding({ left: DesignTokens.space2, top: DesignTokens.space1, bottom: DesignTokens.space1 })
+              .constraintSize({ minHeight: DesignTokens.hitMin })
+              .onClick(() => this.requestNotify())
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /** 开关行：主副文案 + 右侧开关，整行 44vp 以上热区（开关本身由 Toggle 负责点击）。 */
+  @Builder
+  switchRow(title: string, desc: string, isOn: boolean, onPick: (on: boolean) => void) {
+    Row({ space: DesignTokens.space3 }) {
+      Column({ space: 2 }) {
+        Text(title)
+          .fontSize(DesignTokens.fontBody)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(DesignTokens.textPrimary)
+        Text(desc)
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textTertiary)
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Toggle({ type: ToggleType.Switch, isOn: isOn })
+        .selectedColor(DesignTokens.primary)
+        .onChange((on: boolean) => onPick(on))
+    }
+    .width('100%')
+    .padding(DesignTokens.space2)
+    .constraintSize({ minHeight: DesignTokens.hitMin })
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder

@@ -3,7 +3,7 @@ import { decodeConflictHint, encodeConflictHint } from 'domain';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from './ScheduleUseCase';
 import { CalendarGateway } from '../integration/CalendarGateway';
-import { ReminderGateway } from '../integration/ReminderGateway';
+import { NotificationGateway } from '../integration/NotificationGateway';
 import {
   CalendarCapability, CalendarOutcome, CalendarState, CalendarWriteResult, MIN_PLAN_MIN, PlanDraft,
   PlanOpResult, ReminderCapability, SubmitLatch, calendarStateOf, isOnSystemCalendar, newPlanId,
@@ -48,14 +48,14 @@ class DeviceCalendar implements CalendarCapability {
   }
 }
 
-/** 真机提醒门面 → 端口适配。 */
+/** 真机提醒门面 → 端口适配（要不要提醒由通知策略决定，见 NotificationGateway）。 */
 class DeviceReminder implements ReminderCapability {
   publish(title: string, startMin: number): Promise<number> {
-    return ReminderGateway.publish(title, startMin);
+    return NotificationGateway.publishPlanReminder(title, startMin);
   }
 
   cancel(reminderId: number): Promise<void> {
-    return ReminderGateway.cancel(reminderId);
+    return NotificationGateway.cancelPlanReminder(reminderId);
   }
 }
 
@@ -296,7 +296,8 @@ export class PlanUseCase {
     }
   }
 
-  /** 本地提醒（US8 / FR-014）：任何失败都静默降级，绝不阻塞计划本身。 */
+  /** 本地提醒（US8 / FR-014）：任何失败都静默降级，绝不阻塞计划本身。
+   * 要不要注册由 NotificationGateway 的"精确提醒"开关决定，这里不问策略，只管回写 id。 */
   private static async publishReminder(id: string, title: string, startMin: number): Promise<void> {
     try {
       const reminderId = await PlanUseCase.rem.publish(title, startMin);

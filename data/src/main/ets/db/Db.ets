@@ -1,18 +1,21 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Logger } from 'commons';
+import { MigrationDb, MigrationRunner, SCHEMA_VERSION } from './MigrationRunner';
 
 const TAG = 'CrdDb';
 const DB_NAME = 'commonrestday.db';
 
 /**
- * 建表语句（与技术架构文档 4.1 v1.1 一致，有两处工程化修正）：
+ * 建表语句：始终描述"当前目标结构"（= MigrationRunner.SCHEMA_VERSION），新装库一次建到位；
+ * 存量库的差距由 MigrationRunner 补齐，禁止在此处再写"ALTER 失败就忽略"的兜底。
  * - 日期一律存 epochDay 整数（本地纪元日），避免字符串/时区往返错误；
- * - 术语：anchor_day/term_start/epoch_day 均为 INTEGER；
  * - 班表四表含 owner 列（'ME' | 'PARTNER'，默认 'ME'），schedule_override 复合主键 (owner, epoch_day)；
- * - plan 表含 conflict_hint 列（冲突检测结果 JSON，可空）与 reminder_id 列（本地提醒 id，-1 表示未注册）；
- * - plan 表不建 peer_event_hint 列（全仓库无读写代码，建而无用；对方写入结果后续由 sync_meta 承载）。
- * dev 阶段直接改建表 SQL，无存量迁移负担。
+ * - plan 含 conflict_hint（冲突结果 JSON）与 reminder_id（本地提醒 id，-1 表示未注册）；
+ * - plan.calendar_state/sync_state 为日历确认与云同步状态机占位，updated_at 供增量同步排序；
+ * - computed_window 主键仍是 (start_min, end_min)：常规窗口上限 930 分钟、旅行窗口下限 960 分钟，
+ *   两个通道的同一几何不可能重合，故无需把 channel 纳入主键；
+ * - plan 不建 peer_event_hint 列（全仓库无读写代码，对方写入结果由 sync_meta 承载）。
  */
 const DDL: string[] = [
   `CREATE TABLE IF NOT EXISTS shift_type (
@@ -38,17 +41,77 @@ const DDL: string[] = [
     start_min INTEGER NOT NULL, end_min INTEGER NOT NULL,
     status TEXT DEFAULT 'OK', my_event_id TEXT,
     created_by TEXT, window_ref TEXT, conflict_hint TEXT,
-    reminder_id INTEGER DEFAULT -1)`,
+    reminder_id INTEGER DEFAULT -1,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    calendar_state TEXT NOT NULL DEFAULT 'NOT_REQUESTED',
+    sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY')`,
   `CREATE TABLE IF NOT EXISTS computed_window (
     start_min INTEGER NOT NULL, end_min INTEGER NOT NULL,
     duration_min INTEGER NOT NULL, tags TEXT NOT NULL,
+    computed_at INTEGER NOT NULL DEFAULT 0, channel TEXT NOT NULL DEFAULT 'REGULAR',
     PRIMARY KEY(start_min, end_min))`,
   `CREATE TABLE IF NOT EXISTS sync_meta (k TEXT PRIMARY KEY, v TEXT)`
 ];
 
+/** RdbStore → MigrationDb 适配：迁移层只见这四类能力，事务语义由 RdbStore 原生提供。 */
+class RdbMigration implements MigrationDb {
+  private store: relationalStore.RdbStore;
+
+  constructor(store: relationalStore.RdbStore) {
+    this.store = store;
+  }
+
+  async execute(sql: string): Promise<void> {
+    await this.store.executeSql(sql);
+  }
+
+  /** 只读探测：SQLite 对不存在的表/列直接报错，此处仅把"读不了"折算成 false。 */
+  async canSelect(sql: string): Promise<boolean> {
+    let rs: relationalStore.ResultSet | null = null;
+    try {
+      rs = await this.store.querySql(sql);
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      if (rs != null) {
+        rs.close();
+      }
+    }
+  }
+
+  async getMeta(key: string): Promise<string> {
+    const rs = await this.store.querySql('SELECT v FROM sync_meta WHERE k = ?', [key]);
+    let v = '';
+    if (rs.goToNextRow()) {
+      const idx = rs.getColumnIndex('v');
+      v = rs.isColumnNull(idx) ? '' : rs.getString(idx);
+    }
+    rs.close();
+    return v;
+  }
+
+  async setMeta(key: string, value: string): Promise<void> {
+    await this.store.executeSql('INSERT OR REPLACE INTO sync_meta (k, v) VALUES (?, ?)', [key, value]);
+  }
+
+  begin(): void {
+    this.store.beginTransaction();
+  }
+
+  commit(): void {
+    this.store.commit();
+  }
+
+  rollback(): void {
+    this.store.rollBack();
+  }
+}
+
 /** RDB 单例：应用启动时 init 一次。 */
 export class Db {
   private static store: relationalStore.RdbStore | null = null;
+  private static schemaVersion: number = 0;
 
   /** 初始化 RDB（应用/卡片等任一进程入口调用一次；Context 基类以兼容 FormExtensionAbility）。 */
   static async init(context: common.Context): Promise<void> {
@@ -60,18 +123,13 @@ export class Db {
       securityLevel: relationalStore.SecurityLevel.S1
     };
     const s = await relationalStore.getRdbStore(context, cfg);
+    const db = new RdbMigration(s);
     for (let i = 0; i < DDL.length; i++) {
-      await s.executeSql(DDL[i]);
+      await db.execute(DDL[i]);
     }
-    // 存量升级：旧开发库 plan 表缺 reminder_id 列时补列（新装建表 DDL 已含）；
-    // 列已存在时 ALTER 报错，静默忽略（与 Slice 1 "新装建表为主" 的 DDL 模式一致，此处额外兜底）
-    try {
-      await s.executeSql('ALTER TABLE plan ADD COLUMN reminder_id INTEGER DEFAULT -1');
-    } catch (e) {
-      // 列已存在，无需处理
-    }
+    Db.schemaVersion = await MigrationRunner.upgrade(db);
     Db.store = s;
-    Logger.info(TAG, 'db ready');
+    Logger.info(TAG, 'db ready schema=' + Db.schemaVersion + '/' + SCHEMA_VERSION);
   }
 
   static get(): relationalStore.RdbStore {
@@ -81,7 +139,13 @@ export class Db {
     return Db.store;
   }
 
+  /** 生效中的结构版本；0 表示尚未 init。 */
+  static version(): number {
+    return Db.schemaVersion;
+  }
+
   static reset(): void {
     Db.store = null;
+    Db.schemaVersion = 0;
   }
 }

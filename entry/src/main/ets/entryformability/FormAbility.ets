@@ -1,6 +1,6 @@
 import { FormExtensionAbility, formBindingData, formInfo, formProvider } from '@kit.FormKit';
 import { Want } from '@kit.AbilityKit';
-import { Interval, MIN_PER_DAY, todayEpochDay } from 'domain';
+import { MIN_PER_DAY, Window, todayEpochDay } from 'domain';
 import { Db, ScheduleRepo, SettingsStore } from 'data';
 import { ScheduleUseCase } from 'feature';
 import { DateLabel, Logger } from 'commons';
@@ -95,26 +95,26 @@ export default class FormAbility extends FormExtensionAbility {
     }
     d.title = d.hasPartner ? '下次同休' : '我的下次休息';
     try {
-      let ivs: Interval[] = await ScheduleRepo.listWindows();
-      if (ivs.length === 0) {
+      let wins: Window[] = await ScheduleRepo.listWindows();
+      if (wins.length === 0) {
         // 无缓存（首次添加卡片/清数据后）：触发一次重算再读（毫秒级本地计算）
         await ScheduleUseCase.recompute(todayEpochDay());
-        ivs = await ScheduleRepo.listWindows();
+        wins = await ScheduleRepo.listWindows();
       }
       const today = todayEpochDay();
       const nowMin = today * MIN_PER_DAY + FormAbility.minutesNow();
       // 最近一个未结束窗口（listWindows 已按开始时间升序）；跳过跨多日的旅行长窗口
-      let next: Interval | null = null;
-      for (let i = 0; i < ivs.length; i++) {
-        if (ivs[i].end > nowMin && ivs[i].end - ivs[i].start <= CARD_MAX_WINDOW_MIN) {
-          next = ivs[i];
+      let next: Window | null = null;
+      for (let i = 0; i < wins.length; i++) {
+        if (wins[i].end > nowMin && wins[i].durationMin <= CARD_MAX_WINDOW_MIN) {
+          next = wins[i];
           break;
         }
       }
       if (next == null) {
-        for (let i = 0; i < ivs.length; i++) {
-          if (ivs[i].end > nowMin) {
-            next = ivs[i];
+        for (let i = 0; i < wins.length; i++) {
+          if (wins[i].end > nowMin) {
+            next = wins[i];
             break;
           }
         }

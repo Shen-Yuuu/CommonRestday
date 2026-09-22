@@ -74,7 +74,10 @@ export class PlanUseCase {
       windowRef: JSON.stringify(winRef),
       conflictHint: '',
       myEventId: '',
-      reminderId: -1
+      reminderId: -1,
+      updatedAt: 0,
+      calendarState: 'NOT_REQUESTED',
+      syncState: 'LOCAL_ONLY'
     };
     await ScheduleRepo.upsertPlan(row);
     let calendarWritten = false;

@@ -1,4 +1,4 @@
-import { Interval, MIN_PER_DAY } from 'domain';
+import { Interval, MIN_PER_DAY, Window } from 'domain';
 import { DateLabel } from 'commons';
 import { DayViewData, ScheduleUseCase } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
@@ -21,7 +21,7 @@ interface BarSeg {
 export struct DayDetailSheet {
   @Prop day: number = 0;
   /** 点击某个共同窗口：父页收回本 sheet 并打开创建计划 sheet。 */
-  onPickWindow: (start: number, end: number, tags: string) => void = () => {
+  onPickWindow: (start: number, end: number, tags: string[]) => void = () => {
   };
   onClose: () => void = () => {
   };
@@ -134,15 +134,15 @@ export struct DayDetailSheet {
               if (this.data.windows.length === 0) {
                 Text('当天没有共同空闲窗口').fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
-                ForEach(this.data.windows, (w: Interval) => {
+                ForEach(this.data.windows, (w: Window) => {
                   Row({ space: 8 }) {
                     Column({ space: 2 }) {
                       Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end)
                         + ' · ' + DateLabel.duration(w.end - w.start))
                         .fontSize(13).fontColor($r('app.color.text_primary'))
-                      if (w.tag !== '') {
+                      if (w.tags.length > 0) {
                         Row({ space: 4 }) {
-                          ForEach(w.tag.split('|'), (t: string) => {
+                          ForEach(w.tags, (t: string) => {
                             Text(tagLabel(t))
                               .fontSize(10).fontColor('#FFFFFF')
                               .padding({ left: 6, right: 6, top: 2, bottom: 2 })
@@ -155,8 +155,8 @@ export struct DayDetailSheet {
                   }
                   .width('100%').padding(10).borderRadius(10)
                   .backgroundColor($r('app.color.fill_weakest'))
-                  .onClick(() => this.onPickWindow(w.start, w.end, w.tag))
-                }, (w: Interval) => '' + w.start + '-' + w.end)
+                  .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
+                }, (w: Window) => '' + w.start + '-' + w.end)
               }
             }.width('100%')
 

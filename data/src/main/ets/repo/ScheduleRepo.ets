@@ -1,6 +1,6 @@
 import { relationalStore } from '@kit.ArkData';
 import {
-  Course, CycleTemplate, Interval, OWNER_ME, OWNER_PARTNER, PlanBlock, ScheduleOverride, ShiftType
+  Course, CycleTemplate, OWNER_ME, OWNER_PARTNER, PlanBlock, ScheduleOverride, ShiftType, Window, WindowChannel
 } from 'domain';
 import { Db } from '../db/Db';
 
@@ -27,6 +27,18 @@ export interface PlanRow extends PlanBlock {
   myEventId: string;
   /** 关联的本地提醒 id（reminderAgentManager 发布成功后记录）；-1 表示未注册提醒。 */
   reminderId: number;
+  /** 最后修改时间（epoch ms）；所有 plan 写入方共同维护，供后续增量同步排序。 */
+  updatedAt: number;
+  /** 系统日历确认状态机：NOT_REQUESTED/PENDING/WRITTEN/DECLINED/FAILED/REMOVED。 */
+  calendarState: string;
+  /** 云同步状态机：LOCAL_ONLY/PENDING/SYNCED/ERROR；与配对状态相互独立。 */
+  syncState: string;
+}
+
+/** channel 列的容错解析：迁移前的历史值一律按常规通道解释。 */
+function channelOf(text: string): WindowChannel {
+  const trip: string = WindowChannel.TRIP;
+  return text === trip ? WindowChannel.TRIP : WindowChannel.REGULAR;
 }
 
 export class ScheduleRepo {
@@ -255,18 +267,18 @@ export class ScheduleRepo {
   static async upsertPlan(p: PlanRow): Promise<void> {
     const sql = `INSERT OR REPLACE INTO plan
       (id, title, kind, start_min, end_min, status, created_by, window_ref,
-       conflict_hint, my_event_id, reminder_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+       conflict_hint, my_event_id, reminder_id, updated_at, calendar_state, sync_state)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     await Db.get().executeSql(sql,
       [p.id, p.title, p.kind, p.start, p.end, p.status, p.createdBy, p.windowRef,
-        p.conflictHint, p.myEventId, p.reminderId]);
+        p.conflictHint, p.myEventId, p.reminderId, p.updatedAt, p.calendarState, p.syncState]);
   }
 
   /** 回写计划关联的系统日历日程 id（Calendar Kit 写入成功后调用）。 */
   static async updatePlanEventId(id: string, eventId: string): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'my_event_id': eventId };
+    const vb: relationalStore.ValuesBucket = { 'my_event_id': eventId, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 
@@ -274,14 +286,14 @@ export class ScheduleRepo {
   static async updatePlanReminder(id: string, reminderId: number): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'reminder_id': reminderId };
+    const vb: relationalStore.ValuesBucket = { 'reminder_id': reminderId, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 
   static async updatePlanStatus(id: string, status: string): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'status': status };
+    const vb: relationalStore.ValuesBucket = { 'status': status, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 
@@ -289,7 +301,8 @@ export class ScheduleRepo {
   static async updatePlanTime(id: string, start: number, end: number): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'start_min': start, 'end_min': end };
+    const vb: relationalStore.ValuesBucket =
+      { 'start_min': start, 'end_min': end, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 
@@ -297,7 +310,8 @@ export class ScheduleRepo {
   static async updatePlanConflict(id: string, status: string, conflictHint: string): Promise<void> {
     const pred = new relationalStore.RdbPredicates('plan');
     pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'status': status, 'conflict_hint': conflictHint };
+    const vb: relationalStore.ValuesBucket =
+      { 'status': status, 'conflict_hint': conflictHint, 'updated_at': Date.now() };
     await Db.get().update(vb, pred);
   }
 
@@ -314,6 +328,9 @@ export class ScheduleRepo {
       const ridIdx = rs.getColumnIndex('reminder_id');
       const cbIdx = rs.getColumnIndex('created_by');
       const wrIdx = rs.getColumnIndex('window_ref');
+      const uaIdx = rs.getColumnIndex('updated_at');
+      const csIdx = rs.getColumnIndex('calendar_state');
+      const ssIdx = rs.getColumnIndex('sync_state');
       const p: PlanRow = {
         id: rs.getString(rs.getColumnIndex('id')),
         title: rs.getString(rs.getColumnIndex('title')),
@@ -325,7 +342,11 @@ export class ScheduleRepo {
         end: rs.getLong(rs.getColumnIndex('end_min')),
         conflictHint: rs.isColumnNull(hintIdx) ? '' : rs.getString(hintIdx),
         myEventId: rs.isColumnNull(evIdx) ? '' : rs.getString(evIdx),
-        reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx)
+        reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx),
+        // 迁移补列后旧行为默认值；NULL 兜底同 DDL 默认，避免读取分支依赖迁移顺序
+        updatedAt: rs.isColumnNull(uaIdx) ? 0 : rs.getLong(uaIdx),
+        calendarState: rs.isColumnNull(csIdx) ? 'NOT_REQUESTED' : rs.getString(csIdx),
+        syncState: rs.isColumnNull(ssIdx) ? 'LOCAL_ONLY' : rs.getString(ssIdx)
       };
       out.push(p);
     }
@@ -335,27 +356,39 @@ export class ScheduleRepo {
 
   // ---------- 窗口缓存 ----------
 
-  static async replaceWindows(windows: Interval[]): Promise<void> {
+  /**
+   * 全量覆盖窗口缓存：tags 以 '|' 连接入单列，channel/computedAt 各自成列。
+   * channel 只透传引擎写入的值，仓储不从 tags 反推通道。
+   */
+  static async replaceWindows(windows: Window[], computedAt: number): Promise<void> {
     const s = Db.get();
     await s.executeSql('DELETE FROM computed_window');
     for (let i = 0; i < windows.length; i++) {
-      const sql = 'INSERT OR REPLACE INTO computed_window (start_min, end_min, duration_min, tags) VALUES (?, ?, ?, ?)';
-      await s.executeSql(sql, [windows[i].start, windows[i].end, windows[i].end - windows[i].start, windows[i].tag]);
+      const w = windows[i];
+      const sql = `INSERT OR REPLACE INTO computed_window
+        (start_min, end_min, duration_min, tags, computed_at, channel) VALUES (?, ?, ?, ?, ?, ?)`;
+      await s.executeSql(sql,
+        [w.start, w.end, w.durationMin, w.tags.join('|'), computedAt, w.channel]);
     }
   }
 
-  static async listWindows(): Promise<Interval[]> {
+  /** 窗口缓存，按开始时间升序；tags 还原为数组，channel 原样返回。 */
+  static async listWindows(): Promise<Window[]> {
     const pred = new relationalStore.RdbPredicates('computed_window');
     pred.orderByAsc('start_min');
     const rs = await Db.get().query(pred);
-    const out: Interval[] = [];
+    const out: Window[] = [];
     while (rs.goToNextRow()) {
-      const iv: Interval = {
+      const tagsText = rs.getString(rs.getColumnIndex('tags'));
+      const chIdx = rs.getColumnIndex('channel');
+      const w: Window = {
         start: rs.getLong(rs.getColumnIndex('start_min')),
         end: rs.getLong(rs.getColumnIndex('end_min')),
-        tag: rs.getString(rs.getColumnIndex('tags'))
+        durationMin: rs.getLong(rs.getColumnIndex('duration_min')),
+        tags: tagsText === '' ? [] : tagsText.split('|'),
+        channel: channelOf(rs.isColumnNull(chIdx) ? '' : rs.getString(chIdx))
       };
-      out.push(iv);
+      out.push(w);
     }
     rs.close();
     return out;

@@ -52,6 +52,18 @@ export function tagColor(t: string): ResourceColor {
   return $r('app.color.tag_fallback');
 }
 
+/**
+ * 卡片展示标签文案（精简版三档：完整同休日 / 周末 / 可出行）。
+ * 与 tagLabel 的差别只在出行档：卡片上不区分过夜与短途，与筛选档「可出行」同一口径。
+ * 颜色沿用 tagColor，两者对同一 key 给同一色。
+ */
+export function displayTagLabel(t: string): string {
+  if (t === WindowTag.TRIP || t === WindowTag.OVERNIGHT_TRIP) {
+    return '可出行';
+  }
+  return tagLabel(t);
+}
+
 /** 忙碌区间标签（AvailabilityBuilder/快照的 BlockTag）中文短词。 */
 export function busyTagLabel(tag: string): string {
   if (tag === 'WORK') {

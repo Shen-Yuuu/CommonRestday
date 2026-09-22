@@ -10,6 +10,11 @@ import { ownerFromParams } from '../model/RouteParams';
  */
 export const NAV_TO_ME_KEY = 'navToMeCount';
 export const NAV_TO_COTIME_KEY = 'navToCoTimeCount';
+/** 共同时间页落地分段请求键：与计数广播配套，消费后清空。 */
+export const COTIME_SEGMENT_KEY = 'navToCoTimeSegment';
+/** 共同时间页的两个一级分段（取值与 CoTimeView 的分段常量一致）。 */
+export const COTIME_SEG_WINDOW = 'window';
+export const COTIME_SEG_PLANS = 'plans';
 
 /**
  * 深链参数的宽松视图：只用可选字段，缺键即"没有该意图"。
@@ -25,10 +30,23 @@ export function navToMe(): void {
   AppStorage.setOrCreate<number>(NAV_TO_ME_KEY, cur + 1);
 }
 
-/** 请求切换到「共同」Tab（计划页空态引导"去共同时间页选一个窗口"使用）。 */
-export function navToCoTime(): void {
+/**
+ * 请求切换到「共同」Tab（计划页空态引导、首页冲突条使用）。
+ * segment 非空时一并请求落地分段：分段先写、计数后加，监听方读到的一定是本次请求。
+ */
+export function navToCoTime(segment: string = ''): void {
+  AppStorage.setOrCreate<string>(COTIME_SEGMENT_KEY, segment);
   const cur: number = AppStorage.get<number>(NAV_TO_COTIME_KEY) ?? 0;
   AppStorage.setOrCreate<number>(NAV_TO_COTIME_KEY, cur + 1);
+}
+
+/** 取走并清空分段请求：空串表示"只切 Tab，不动分段"。 */
+export function takeCoTimeSegment(): string {
+  const seg: string = AppStorage.get<string>(COTIME_SEGMENT_KEY) ?? '';
+  if (seg !== '') {
+    AppStorage.setOrCreate<string>(COTIME_SEGMENT_KEY, '');
+  }
+  return seg;
 }
 
 /**

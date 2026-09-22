@@ -45,12 +45,17 @@ export enum WindowFilterKey {
   TRIP = 'TRIP'
 }
 
-/** 单个共同时间窗口的展示模型。channel 来自 domain 计算结果，不得由 tags 反推。 */
+/**
+ * 单个共同时间窗口的展示模型。channel 来自 domain 计算结果，不得由 tags 反推。
+ * tags 是全量领域标签（筛选与详情页用）；displayTags 是压缩后的卡片标签。
+ */
 export interface WindowSummary {
   start: number;
   end: number;
   durationMin: number;
   tags: string[];
+  /** 卡片展示标签：最多三个（完整同休日 / 周末 / 可出行），取值仍是 WindowTag。 */
+  displayTags: string[];
   channel: WindowChannel;
   title: string;
   subtitle: string;
@@ -104,10 +109,19 @@ export interface PlanSummary {
   conflictText: string;
 }
 
-/** 共同时间页整体读模型。 */
+/**
+ * 共同时间页整体读模型。
+ * windows 是当前筛选下的全部窗口（两个通道都在内，周历按日绘制用它）；
+ * rows 是列表展示行：同一天只留最长的一段，常规与旅行通道的重叠顺带去重。
+ */
 export interface CommonTimePageData {
+  rows: WindowSummary[];
   windows: WindowSummary[];
   plans: PlanSummary[];
+  mode: ExperienceMode;
+  partnerName: string;
+  /** 已配对/代录却拿不到对方数据时为 false：此时窗口只是"我的空闲"，不能宣称共同时间。 */
+  partnerKnown: boolean;
   computedAt: number;
   stale: boolean;
 }

@@ -11,10 +11,11 @@ import {
   WindowSummary
 } from 'feature';
 import { NavRoutes } from '../navigation/NavRoutes';
-import { navToCoTime } from '../util/NavUtil';
+import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
+import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { ConflictNotice } from '../component/ConflictNotice';
 import { HeroVariant, NextWindowHero } from '../component/NextWindowHero';
@@ -305,9 +306,9 @@ export struct HomeView {
     this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
   }
 
-  /** 冲突详情在共同时间的计划分段里处理（含改期建议），首页只报数量。 */
+  /** 冲突详情在共同时间的计划分段里处理（含改期建议），首页只报数量并指名分段。 */
   private openConflicts(): void {
-    navToCoTime();
+    navToCoTime(COTIME_SEG_PLANS);
   }
 
   private async openWindow(start: number, end: number): Promise<void> {
@@ -372,57 +373,6 @@ export struct HomeView {
       .width('100%')
       .alignItems(HorizontalAlign.Start)
     }
-  }
-
-  /** 过期 / 刷新失败共用一条提示：有旧结果时保留内容，只说明结论的时效。 */
-  @Builder
-  noticeBar() {
-    Row({ space: DesignTokens.space2 }) {
-      Text(this.failed ? '!' : '↻')
-        .fontSize(DesignTokens.fontCaption)
-        .fontFamily(DesignTokens.fontSerif)
-        .fontWeight(600)
-        .fontColor(this.failed ? DesignTokens.danger : DesignTokens.warn)
-        .textAlign(TextAlign.Center)
-        .width(DesignTokens.space5)
-        .height(DesignTokens.space5)
-        .borderRadius(DesignTokens.radiusCardCut)
-        .backgroundColor(DesignTokens.card)
-      Column({ space: 2 }) {
-        Text(this.noticeTitle())
-          .fontSize(DesignTokens.fontCaption)
-          .fontWeight(600)
-          .fontColor(this.failed ? DesignTokens.danger : DesignTokens.warn)
-        Text(this.noticeBody())
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textTertiary)
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      Text(this.failed ? '重试' : '重新计算')
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.primary)
-        .fontWeight(600)
-        .textAlign(TextAlign.Center)
-        .constraintSize({
-          minWidth: DesignTokens.hitMin,
-          minHeight: DesignTokens.hitMin
-        })
-        .onClick(() => {
-          this.load(true);
-        })
-    }
-    .width('100%')
-    .alignItems(VerticalAlign.Center)
-    .padding({
-      left: DesignTokens.space3,
-      right: DesignTokens.space1,
-      top: DesignTokens.space2,
-      bottom: DesignTokens.space2
-    })
-    .borderRadius(DesignTokens.cardRadius(false))
-    .backgroundColor(this.failed ? DesignTokens.dangerBg : DesignTokens.fillWeak)
   }
 
   // ---------- 页头 ----------
@@ -491,7 +441,15 @@ export struct HomeView {
           }
         } else {
           if (this.failed || this.isStale()) {
-            this.noticeBar()
+            NoticeBar({
+              tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
+              title: this.noticeTitle(),
+              body: this.noticeBody(),
+              actionLabel: this.failed ? '重试' : '重新计算',
+              onAction: () => {
+                this.load(true);
+              }
+            })
           }
 
           NextWindowHero({

@@ -1,8 +1,8 @@
-import { Interval, MIN_PER_DAY, Window } from 'domain';
+import { Interval, MIN_PER_DAY, Window, WindowChannel } from 'domain';
 import { DateLabel } from 'commons';
-import { DayViewData, ScheduleUseCase } from 'feature';
+import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
-import { busyTagLabel, tagColor, tagLabel } from '../util/WindowTagUtil';
+import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
 
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
 interface BarSeg {
@@ -11,11 +11,14 @@ interface BarSeg {
 }
 
 /**
- * 日详情半模态（C2 月历点日期进入）：
+ * 日详情半模态（周历点某一天进入）：
  * - 当日共同窗口列表（点击 → 交由父页打开 WindowDetailSheet 创建计划）；
+ *   只列常规通道，旅行通道单列一行：两个通道在同一段时间各产出一个窗口，
+ *   混在一起会把同一晚算成两段共同时间；
  * - 我的忙碌时间轴（比例条 + 明细行）；
  * - 对方忙碌时间轴：按来源与隐私等级差异化渲染——
  *   LOCAL 全量细节；SNAPSHOT L1 仅"忙"（30 分钟粒度）、L2 量化时段、L3 精确时段。
+ * 标签压缩与文案口径由 CommonTimeQueryService.summaryOf 给出，页面不自行映射领域标签。
  */
 @Component
 export struct DayDetailSheet {
@@ -44,6 +47,32 @@ export struct DayDetailSheet {
 
   dayStart(): number {
     return this.day * MIN_PER_DAY;
+  }
+
+  /** 当日窗口按通道分流，并转成读模型（展示标签、标题、副标题都由服务给）。 */
+  private windowsOf(channel: WindowChannel): WindowSummary[] {
+    const out: WindowSummary[] = [];
+    const d = this.data;
+    if (d == null) {
+      return out;
+    }
+    for (let i = 0; i < d.windows.length; i++) {
+      const w: Window = d.windows[i];
+      if (w.channel !== channel) {
+        continue;
+      }
+      out.push(CommonTimeQueryService.summaryOf(w));
+    }
+    out.sort((a: WindowSummary, b: WindowSummary): number => a.start - b.start);
+    return out;
+  }
+
+  private regularWindows(): WindowSummary[] {
+    return this.windowsOf(WindowChannel.REGULAR);
+  }
+
+  private tripWindows(): WindowSummary[] {
+    return this.windowsOf(WindowChannel.TRIP);
   }
 
   /** 区间列表与当日的交集（裁剪到日内）。 */
@@ -131,33 +160,16 @@ export struct DayDetailSheet {
             // ---------- 当日共同窗口 ----------
             Column({ space: 8 }) {
               SubHeaderV2({ title: new SubHeaderV2Title({ primaryTitle: '当日共同窗口' }) })
-              if (this.data.windows.length === 0) {
+              if (this.regularWindows().length === 0) {
                 Text('当天没有共同空闲窗口').fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
-                ForEach(this.data.windows, (w: Window) => {
-                  Row({ space: 8 }) {
-                    Column({ space: 2 }) {
-                      Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end)
-                        + ' · ' + DateLabel.duration(w.end - w.start))
-                        .fontSize(13).fontColor($r('app.color.text_primary'))
-                      if (w.tags.length > 0) {
-                        Row({ space: 4 }) {
-                          ForEach(w.tags, (t: string) => {
-                            Text(tagLabel(t))
-                              .fontSize(10).fontColor('#FFFFFF')
-                              .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-                              .borderRadius(8).backgroundColor(tagColor(t))
-                          }, (t: string) => t)
-                        }
-                      }
-                    }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                    Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
-                  }
-                  .width('100%').padding(10).borderRadius(10)
-                  .backgroundColor($r('app.color.fill_weakest'))
-                  .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
-                }, (w: Window) => '' + w.start + '-' + w.end)
+                ForEach(this.regularWindows(), (w: WindowSummary) => {
+                  this.windowRow(w)
+                }, (w: WindowSummary) => '' + w.start + '-' + w.end + '-' + w.channel)
               }
+              ForEach(this.tripWindows(), (w: WindowSummary) => {
+                this.tripRow(w)
+              }, (w: WindowSummary) => 'trip-' + w.start + '-' + w.end)
             }.width('100%')
 
             // ---------- 我的忙碌 ----------
@@ -191,6 +203,49 @@ export struct DayDetailSheet {
     .height('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 24 })
     .backgroundColor($r('app.color.page_bg_warm'))
+  }
+
+  /** 常规通道窗口行：时刻 + 时长 + 压缩后的展示标签，点击交给父页建计划。 */
+  @Builder
+  windowRow(w: WindowSummary) {
+    Row({ space: 8 }) {
+      Column({ space: 2 }) {
+        Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end) + ' · ' + DateLabel.duration(w.durationMin))
+          .fontSize(13).fontColor($r('app.color.text_primary'))
+        if (w.displayTags.length > 0) {
+          Row({ space: 4 }) {
+            ForEach(w.displayTags, (t: string) => {
+              Text(displayTagLabel(t))
+                .fontSize(10).fontColor('#FFFFFF')
+                .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                .borderRadius(8).backgroundColor(tagColor(t))
+            }, (t: string) => t)
+          }
+        }
+      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+    }
+    .width('100%').padding(10).borderRadius(10)
+    .backgroundColor($r('app.color.fill_weakest'))
+    .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
+  }
+
+  /** 旅行通道窗口跨日，只报日期范围与时长，不与当日窗口混排（否则同一晚会被算两次）。 */
+  @Builder
+  tripRow(w: WindowSummary) {
+    Row({ space: 8 }) {
+      Column({ space: 2 }) {
+        Text('旅行窗口 · ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
+          + DateLabel.endLabel(w.start, w.end))
+          .fontSize(12).fontColor($r('app.color.text_secondary'))
+        Text('连续 ' + DateLabel.duration(w.durationMin) + '，夜间睡眠不计入忙碌')
+          .fontSize(10).fontColor($r('app.color.text_hint'))
+      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+    }
+    .width('100%').padding(10).borderRadius(10)
+    .backgroundColor($r('app.color.fill_weakest'))
+    .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
   }
 
   /** 忙碌比例条（gap/busy 顺序分段，宽度百分比布局）。 */

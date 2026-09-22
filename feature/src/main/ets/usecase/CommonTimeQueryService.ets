@@ -40,6 +40,12 @@ const SOURCE_NONE = 'NONE';
 /** 筛选档"≥2 小时"的下限（分钟），与 WindowFilterKey.GTE_2H 的语义一一对应。 */
 const GTE_2H_MIN = 120;
 
+/**
+ * 卡片展示标签的压缩顺序（精简版只留三档）。
+ * 餐叙/自习不进卡片：它们已经在答案与筛选里出现，堆满卡片只会盖掉日期与时长。
+ */
+const DISPLAY_TAG_ORDER: string[] = [WindowTag.FULL_DAY, WindowTag.WEEKEND, WindowTag.TRIP];
+
 function tagLabel(tag: string): string {
   if (tag === WindowTag.FULL_DAY) {
     return '完整同休日';
@@ -156,6 +162,27 @@ function matchesFilter(w: Window, key: WindowFilterKey): boolean {
   return hasTagOf(w.tags, WindowTag.TRIP) || hasTagOf(w.tags, WindowTag.OVERNIGHT_TRIP);
 }
 
+/**
+ * 领域标签 → 卡片展示标签：三档各由一组同义标签收敛而来，顺序固定。
+ * 收敛口径与 matchesFilter 完全一致，因此"卡片上出现某个标签"与"该窗口能通过对应筛选档"
+ * 始终是同一件事——用户按标签筛出来的结果，不会与卡片上看到的标签矛盾。
+ * 餐叙/自习/半天不进卡片：它们只在答案与筛选里出现。
+ */
+function toDisplayTags(tags: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < DISPLAY_TAG_ORDER.length; i++) {
+    const key = DISPLAY_TAG_ORDER[i];
+    if (key === WindowTag.TRIP) {
+      if (hasTagOf(tags, WindowTag.TRIP) || hasTagOf(tags, WindowTag.OVERNIGHT_TRIP)) {
+        out.push(key);
+      }
+    } else if (hasTagOf(tags, key)) {
+      out.push(key);
+    }
+  }
+  return out;
+}
+
 /** conflict_hint 存的是替代窗口起止 JSON（不是文案），展示文本必须在这里生成。 */
 function conflictTextOf(row: PlanRow): string {
   if (row.status !== STATUS_CONFLICT) {
@@ -210,6 +237,10 @@ export interface PageInput {
   windows: Window[];
   plans: PlanRow[];
   filter: WindowFilter;
+  mode: ExperienceMode;
+  partnerName: string;
+  /** 当天的对方数据来源（'LOCAL' | 'SNAPSHOT' | 'NONE'）：决定页面能否宣称"共同"。 */
+  partnerSource: string;
   computedAt: number;
   nowEpochMin: number;
 }
@@ -243,15 +274,21 @@ export class CommonTimeQueryService {
     return CommonTimeQueryService.assembleHome(input);
   }
 
-  /** 共同时间页读模型：按筛选档给出窗口与未来计划。 */
+  /** 共同时间页读模型：按筛选档给出窗口与未来计划，并带上"这些窗口算不算共同"的口径。 */
   static async getCommonTimePage(filter: WindowFilter, nowEpochMin: number): Promise<CommonTimePageData> {
+    const today = Math.floor(nowEpochMin / MIN_PER_DAY);
     const windows = await ScheduleRepo.listWindows();
     const plans = await ScheduleRepo.listActivePlans();
     const computedAt = await ScheduleRepo.windowCacheComputedAt();
+    const day = await CommonTimeQueryService.loadDay(today);
+    const profile = SettingsStore.getPartnerProfile();
     const input: PageInput = {
       windows: windows,
       plans: plans,
       filter: filter,
+      mode: CommonTimeQueryService.resolveMode(day.partnerSource),
+      partnerName: profile != null ? profile.nick : '',
+      partnerSource: day.partnerSource,
       computedAt: computedAt,
       nowEpochMin: nowEpochMin
     };
@@ -313,7 +350,7 @@ export class CommonTimeQueryService {
   static assembleHome(input: HomeInput): HomeSummary {
     const stale = CommonTimeQueryService.isStale(input.computedAt, input.nowEpochMin);
     // 已配对/代录却拿不到对方数据时，缓存里的窗口只是"我的空闲"，不能当共同空闲作答
-    const partnerKnown = input.mode === ExperienceMode.SOLO || input.day.partnerSource !== SOURCE_NONE;
+    const partnerKnown = CommonTimeQueryService.partnerKnownOf(input.mode, input.day.partnerSource);
     const dayStart = input.day.epochDay * MIN_PER_DAY;
     const dayEnd = dayStart + MIN_PER_DAY;
     const prefix = '今天 ';
@@ -373,12 +410,62 @@ export class CommonTimeQueryService {
       summaries.push(CommonTimeQueryService.summaryOf(kept[i]));
     }
     const page: CommonTimePageData = {
+      rows: CommonTimeQueryService.mergeByDay(summaries),
       windows: summaries,
       plans: CommonTimeQueryService.planSummaries(input.plans, input.filter.fromEpochMin),
+      mode: input.mode,
+      partnerName: input.partnerName,
+      partnerKnown: CommonTimeQueryService.partnerKnownOf(input.mode, input.partnerSource),
       computedAt: input.computedAt,
       stale: CommonTimeQueryService.isStale(input.computedAt, input.nowEpochMin)
     };
     return page;
+  }
+
+  /**
+   * 列表按日归并：一天只留最长的一段，被覆盖的天不再单列。
+   * 常规与旅行通道在同一时段各产出一个窗口，归并顺带把重复展示去掉；
+   * 归并只挑不造，输出必定是输入的子集，且每个输入窗口触及的自然日都恰好被一行覆盖。
+   */
+  static mergeByDay(summaries: WindowSummary[]): WindowSummary[] {
+    const byDuration: WindowSummary[] = summaries.slice();
+    byDuration.sort((a: WindowSummary, b: WindowSummary): number => {
+      if (b.durationMin !== a.durationMin) {
+        return b.durationMin - a.durationMin;
+      }
+      return a.start - b.start;
+    });
+    const covered = new Set<number>();
+    const rows: WindowSummary[] = [];
+    for (let i = 0; i < byDuration.length; i++) {
+      const w = byDuration[i];
+      const firstDay = Math.floor(w.start / MIN_PER_DAY);
+      const lastDay = Math.floor((w.end - 1) / MIN_PER_DAY);
+      let overlapped = false;
+      for (let d = firstDay; d <= lastDay; d++) {
+        if (covered.has(d)) {
+          overlapped = true;
+          break;
+        }
+      }
+      if (overlapped) {
+        continue;
+      }
+      for (let d = firstDay; d <= lastDay; d++) {
+        covered.add(d);
+      }
+      rows.push(w);
+    }
+    rows.sort((a: WindowSummary, b: WindowSummary): number => a.start - b.start);
+    return rows;
+  }
+
+  /**
+   * 能不能宣称"共同"：单人形态本来就只有我，算；已配对/代录却拿不到对方数据时不算。
+   * 此时缓存里的窗口只是"我的空闲"，页面必须显式降级说明，不能当共同时间展示。
+   */
+  static partnerKnownOf(mode: ExperienceMode, partnerSource: string): boolean {
+    return mode === ExperienceMode.SOLO || partnerSource !== SOURCE_NONE;
   }
 
   static assembleDetail(input: DetailInput): WindowDetailData {
@@ -492,6 +579,7 @@ export class CommonTimeQueryService {
       end: w.end,
       durationMin: w.durationMin,
       tags: w.tags,
+      displayTags: toDisplayTags(w.tags),
       channel: w.channel,
       title: DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' ' + DateLabel.hm(w.start)
         + ' 起 ' + DateLabel.duration(w.durationMin),

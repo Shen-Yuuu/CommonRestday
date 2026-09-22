@@ -100,7 +100,12 @@ export struct AppNavigator {
         .tabBar(this.tabLabel($r('sys.symbol.house'), '同休', NavRoutes.TAB_HOME))
 
         TabContent() {
-          CoTimeView()
+          // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
+          CoTimeView({
+            onOpenRoute: (name: string): void => {
+              this.openRoute(name, undefined);
+            }
+          })
         }
         .tabBar(this.tabLabel($r('sys.symbol.heart'), '共同', NavRoutes.TAB_COMMON_TIME))
 

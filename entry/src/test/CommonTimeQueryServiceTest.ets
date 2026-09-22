@@ -4,7 +4,7 @@ import { PlanRow } from 'data';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, DayBusy, DetailInput, ExperienceMode,
   HomeInput, HomeSummary, PageInput, WindowDetailData, WindowFilter, WindowFilterKey,
-  CommonTimeQueryService
+  WindowSummary, CommonTimeQueryService
 } from 'feature';
 
 /**
@@ -75,9 +75,52 @@ function soloDay(): DayBusy {
 function pageOf(all: Window[], key: WindowFilterKey): CommonTimePageData {
   const f: WindowFilter = { key: key, fromEpochMin: NOW };
   const input: PageInput = {
-    windows: all, plans: [], filter: f, computedAt: FRESH, nowEpochMin: NOW
+    windows: all, plans: [], filter: f,
+    mode: ExperienceMode.LOCAL_PARTNER, partnerName: '小陈', partnerSource: 'LOCAL',
+    computedAt: FRESH, nowEpochMin: NOW
   };
   return CommonTimeQueryService.assemblePage(input);
+}
+
+/** 列表/周历共用的稳定 key：起点+终点+通道（与 UI 的 ForEach key 一致）。 */
+function keyOf(w: WindowSummary): string {
+  return w.start + '-' + w.end + '-' + w.channel;
+}
+
+function sortedKeys(list: WindowSummary[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < list.length; i++) {
+    out.push(keyOf(list[i]));
+  }
+  out.sort();
+  return out.join('|');
+}
+
+/** 一组窗口触及的自然日集合（升序逗号串）：归并前后必须相等，否则列表丢了天。 */
+function daysKey(list: WindowSummary[]): string {
+  const days: number[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const firstDay = Math.floor(list[i].start / MIN_PER_DAY);
+    const lastDay = Math.floor((list[i].end - 1) / MIN_PER_DAY);
+    for (let d = firstDay; d <= lastDay; d++) {
+      if (days.indexOf(d) < 0) {
+        days.push(d);
+      }
+    }
+  }
+  days.sort((a: number, b: number): number => a - b);
+  return days.join(',');
+}
+
+/** 带某个展示标签的窗口 key 集合。 */
+function keysWithDisplayTag(page: CommonTimePageData, tag: string): string {
+  const out: WindowSummary[] = [];
+  for (let i = 0; i < page.windows.length; i++) {
+    if (page.windows[i].displayTags.indexOf(tag) >= 0) {
+      out.push(page.windows[i]);
+    }
+  }
+  return sortedKeys(out);
 }
 
 const TONIGHT_W = win(DAY, 1170, DAY, 1350, WindowChannel.REGULAR, [WindowTag.MEAL]);
@@ -253,6 +296,88 @@ export default function commonTimeQueryServiceTest() {
       expect(tripPage.windows[1].channel).assertEqual(WindowChannel.REGULAR);
       expect(tripPage.stale).assertFalse();
       expect(tripPage.computedAt).assertEqual(FRESH);
+    });
+
+    it('list_rows_merge_by_day_without_losing_days', 0, () => {
+      // 跨三天的旅行窗口与当天的一段常规窗口时间重叠：列表只留最长的一段
+      const trip = win(DAY + 1, 360, DAY + 3, 720, WindowChannel.TRIP,
+        [WindowTag.TRIP, WindowTag.OVERNIGHT_TRIP]);
+      const sameDayRegular = win(DAY + 1, 360, DAY + 1, 720, WindowChannel.REGULAR, []);
+      const later = win(DAY + 5, 480, DAY + 5, 900, WindowChannel.REGULAR, [WindowTag.HALF_DAY]);
+      const page = pageOf([trip, sameDayRegular, later], WindowFilterKey.ALL);
+
+      expect(page.windows.length).assertEqual(3);
+      expect(page.rows.length).assertEqual(2);
+      expect(page.rows[0].start).assertEqual(trip.start);
+      expect(page.rows[0].channel).assertEqual(WindowChannel.TRIP);
+      expect(page.rows[1].start).assertEqual(later.start);
+      // 归并只挑不造：每一行都来自筛选结果
+      expect(sortedKeys(page.windows).indexOf(keyOf(page.rows[0])) >= 0).assertTrue();
+      expect(sortedKeys(page.windows).indexOf(keyOf(page.rows[1])) >= 0).assertTrue();
+      expect(sortedKeys(page.rows).indexOf(keyOf(sameDayRegular)) >= 0).assertFalse();
+      // 归并不丢天：窗口触及的自然日一个不少（列表与周历同一批窗口）
+      expect(daysKey(page.rows)).assertEqual(daysKey(page.windows));
+      // 同一天出现两段常规窗口时，也只留最长的一段
+      const morning = win(DAY + 2, 480, DAY + 2, 720, WindowChannel.REGULAR, []);
+      const afternoon = win(DAY + 2, 780, DAY + 2, 1200, WindowChannel.REGULAR, []);
+      const split = pageOf([morning, afternoon], WindowFilterKey.ALL);
+      expect(split.windows.length).assertEqual(2);
+      expect(split.rows.length).assertEqual(1);
+      expect(split.rows[0].start).assertEqual(afternoon.start);
+    });
+
+    it('display_tags_and_filter_keys_follow_one_rule', 0, () => {
+      const all = [TONIGHT_W, FULL_W, OVERNIGHT_W, TRIP_W,
+        win(DAY + 4, 480, DAY + 4, 900, WindowChannel.REGULAR, [WindowTag.WEEKEND, WindowTag.FULL_DAY])];
+      const page = pageOf(all, WindowFilterKey.ALL);
+
+      // 卡片标签最多三档，且只取这三个 key
+      for (let i = 0; i < page.windows.length; i++) {
+        const tags = page.windows[i].displayTags;
+        expect(tags.length <= 3).assertTrue();
+        for (let j = 0; j < tags.length; j++) {
+          expect([WindowTag.FULL_DAY, WindowTag.WEEKEND, WindowTag.TRIP].indexOf(tags[j]) >= 0).assertTrue();
+        }
+      }
+      // 餐叙/自习/半天不进卡片：带 MEAL 的今晚窗口没有展示标签
+      expect(page.windows[0].start).assertEqual(TONIGHT_W.start);
+      expect(page.windows[0].displayTags.length).assertEqual(0);
+      // 每档筛选的结果，恰好是卡片上带对应标签的那些窗口
+      expect(sortedKeys(pageOf(all, WindowFilterKey.FULL_DAY).windows))
+        .assertEqual(keysWithDisplayTag(page, WindowTag.FULL_DAY));
+      expect(sortedKeys(pageOf(all, WindowFilterKey.WEEKEND).windows))
+        .assertEqual(keysWithDisplayTag(page, WindowTag.WEEKEND));
+      expect(sortedKeys(pageOf(all, WindowFilterKey.TRIP).windows))
+        .assertEqual(keysWithDisplayTag(page, WindowTag.TRIP));
+      expect(keysWithDisplayTag(page, WindowTag.TRIP).length > 0).assertTrue();
+    });
+
+    it('page_states_whether_windows_are_common', 0, () => {
+      const all = [TONIGHT_W];
+      // 本机代录且今天有对方数据：可以说是共同时间
+      expect(pageOf(all, WindowFilterKey.ALL).partnerKnown).assertTrue();
+      expect(pageOf(all, WindowFilterKey.ALL).mode).assertEqual(ExperienceMode.LOCAL_PARTNER);
+      expect(pageOf(all, WindowFilterKey.ALL).partnerName).assertEqual('小陈');
+
+      // 已配对但今天拿不到对方数据：窗口只是"我的空闲"，页面必须降级说明
+      const f: WindowFilter = { key: WindowFilterKey.ALL, fromEpochMin: NOW };
+      const blind: PageInput = {
+        windows: all, plans: [], filter: f,
+        mode: ExperienceMode.PAIRED, partnerName: '小陈', partnerSource: 'NONE',
+        computedAt: FRESH, nowEpochMin: NOW
+      };
+      const blindPage = CommonTimeQueryService.assemblePage(blind);
+      expect(blindPage.partnerKnown).assertFalse();
+      expect(blindPage.mode).assertEqual(ExperienceMode.PAIRED);
+      expect(blindPage.windows.length).assertEqual(1);
+
+      // 单人形态不是"缺数据"：只有我，本来就能作答
+      const solo: PageInput = {
+        windows: all, plans: [], filter: f,
+        mode: ExperienceMode.SOLO, partnerName: '', partnerSource: 'NONE',
+        computedAt: FRESH, nowEpochMin: NOW
+      };
+      expect(CommonTimeQueryService.assemblePage(solo).partnerKnown).assertTrue();
     });
 
     it('plan_conflict_text_is_generated_not_stored', 0, () => {

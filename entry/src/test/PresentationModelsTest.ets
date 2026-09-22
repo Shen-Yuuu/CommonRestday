@@ -9,10 +9,11 @@ import {
  * 页面读模型契约测试：形状与枚举取值必须稳定（枚举承载语义，文案由查询服务填充）。
  */
 
-function mkSummary(start: number, end: number, channel: WindowChannel, tags: string[]): WindowSummary {
+function mkSummary(start: number, end: number, channel: WindowChannel, tags: string[],
+  displayTags: string[] = []): WindowSummary {
   const s: WindowSummary = {
-    start: start, end: end, durationMin: end - start, tags: tags, channel: channel,
-    title: '周六 07:00 起 15小时30分', subtitle: '含晚餐 · 完整同休日'
+    start: start, end: end, durationMin: end - start, tags: tags, displayTags: displayTags,
+    channel: channel, title: '周六 07:00 起 15小时30分', subtitle: '含晚餐 · 完整同休日'
   };
   return s;
 }
@@ -119,12 +120,29 @@ export default function presentationModelsTest() {
         id: 'p1', title: '一起吃饭', start: 29823480, end: 29823570,
         status: 'CONFIRMED', conflictText: '与 TA 的课冲突'
       };
+      const row = mkSummary(29822400, 29823330, WindowChannel.REGULAR, ['MEAL', 'FULL_DAY'], ['FULL_DAY']);
       const page: CommonTimePageData = {
-        windows: [mkSummary(29822400, 29823330, WindowChannel.REGULAR, ['MEAL'])],
-        plans: [plan], computedAt: 29822000, stale: false
+        rows: [row],
+        windows: [row],
+        plans: [plan],
+        mode: ExperienceMode.LOCAL_PARTNER,
+        partnerName: '小陈',
+        partnerKnown: true,
+        computedAt: 29822000,
+        stale: false
       };
       expect(page.windows.length).assertEqual(1);
       expect(page.plans[0].conflictText).assertEqual('与 TA 的课冲突');
+      // 列表行与全量窗口同源：归并只挑不造，稳定 key 一致
+      expect(page.rows[0].start).assertEqual(page.windows[0].start);
+      // 卡片标签与全量标签分离：餐叙留在 tags 里供筛选，不进卡片
+      expect(page.rows[0].displayTags.join('|')).assertEqual('FULL_DAY');
+      expect(page.rows[0].tags.length).assertEqual(2);
+      // 拿不到对方数据时页面据此降级说明，窗口本身照常展示
+      expect(page.partnerKnown).assertTrue();
+      page.partnerKnown = false;
+      expect(page.partnerKnown).assertFalse();
+      expect(page.windows.length).assertEqual(1);
 
       const filter: WindowFilter = { key: WindowFilterKey.GTE_2H, fromEpochMin: 29822400 };
       expect(filter.key).assertEqual(WindowFilterKey.GTE_2H);

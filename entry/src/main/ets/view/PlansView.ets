@@ -2,22 +2,20 @@ import { promptAction } from '@kit.ArkUI';
 import { PlanRow, ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { PlanUseCase } from 'feature';
-import { navToCoTime } from '../util/NavUtil';
 import { planKindLabel } from '../util/PlanKindUtil';
 
 /**
- * 计划页（US5 / FR-010 / FR-012）：
+ * 计划列表（US5 / FR-010 / FR-012）：作为共同时间页「共同计划」分段的内容，页头由宿主分段承担。
  * - listActivePlans 列表：标题/类型/日期起止/状态色（OK 正常 / CONFLICT 红点 + 替代窗口提示）；
  * - 点击计划 → 操作弹窗（取消计划[二次确认 → cancelPlan] / 关闭）；
  * - 监听 recomputeCount 刷新（创建/取消/课表变更自动重算后状态同步）；
- * - 空态引导：去共同时间页选一个窗口创建计划。
+ * - 空态引导：让宿主切回「时间窗口」分段选窗口建计划。
  */
 @Component
 export struct PlansView {
-  // 嵌入态标记：被 CoTimeView 分段嵌入时隐藏页头（分段标签已表达"计划"语义）
-  embedded: boolean = false;
-  // 空态引导回调：嵌入时由宿主切换到"窗口"分段；独立使用时回退 tab 跳转
-  onGoWindow: (() => void) | null = null;
+  /** 宿主切换到"时间窗口"分段：分段归宿主，这里只提请求。 */
+  onGoWindow: () => void = () => {
+  };
   @State plans: PlanRow[] = [];
   @State loading: boolean = true;
   @State cancelling: boolean = false;
@@ -160,13 +158,6 @@ export struct PlansView {
 
   build() {
     List({ space: 12 }) {
-      if (!this.embedded) {
-        ListItem() {
-          Text('共同计划').fontSize(22).fontWeight(FontWeight.Bold)
-            .margin({ top: 16, bottom: 4 }).width('100%')
-        }
-      }
-
       if (this.loading) {
         ListItem() {
           Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
@@ -185,11 +176,7 @@ export struct PlansView {
               .backgroundColor($r('app.color.brand_pink'))
               .borderRadius(22).height(44)
               .onClick(() => {
-                if (this.onGoWindow != null) {
-                  this.onGoWindow();
-                } else {
-                  navToCoTime();
-                }
+                this.onGoWindow();
               })
           }
           .alignItems(HorizontalAlign.Center)
@@ -213,7 +200,7 @@ export struct PlansView {
           })
       }
     }
-    .padding(this.embedded ? 0 : 16)
+    .padding(0)
     .width('100%').height('100%')
   }
 
@@ -272,11 +259,7 @@ export struct PlansView {
                   .onClick(() => this.askAcceptAlternative(p))
                 Text('重新选窗口').fontSize(12).fontColor($r('app.color.info_blue'))
                   .onClick(() => {
-                    if (this.onGoWindow != null) {
-                      this.onGoWindow();
-                    } else {
-                      navToCoTime();
-                    }
+                    this.onGoWindow();
                   })
               }.width('100%')
             }

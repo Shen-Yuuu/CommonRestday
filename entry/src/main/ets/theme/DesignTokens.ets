@@ -47,6 +47,13 @@ export class DesignTokens {
   static readonly dangerBorder: Resource = $r('app.color.danger_border');
   static readonly warn: Resource = $r('app.color.warn_orange');
 
+  // ---- 共同空闲分级色：周历色块按当日共同空闲时长分三档（≥6h 用 primary） ----
+  static readonly freeMid: Resource = $r('app.color.month_free_mid_bg');
+  static readonly freeLow: Resource = $r('app.color.month_free_low_bg');
+  /** 分级色块上的文字：深色块用暖白，浅色块用配套前景，不写死 #FFFFFF。 */
+  static readonly freeOnStrong: Resource = $r('app.color.hero_fg');
+  static readonly freeOnLow: Resource = $r('app.color.month_free_low_fg');
+
   // ---- 间距：4/8/12/16/24/32 ----
   static readonly space1: Resource = $r('app.float.space_1');
   static readonly space2: Resource = $r('app.float.space_2');

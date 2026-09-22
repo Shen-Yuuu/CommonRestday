@@ -154,6 +154,11 @@ export struct HomeView {
     return h == null ? 0 : h.conflictCount;
   }
 
+  private conflictReason(): string {
+    const h = this.home;
+    return h == null ? '' : h.conflictReason;
+  }
+
   private partnerName(): string {
     const h = this.home;
     if (h == null || h.partnerName === '') {
@@ -473,6 +478,7 @@ export struct HomeView {
             if (this.conflictCount() > 0) {
               ConflictNotice({
                 conflictCount: this.conflictCount(),
+                reason: this.conflictReason(),
                 onTap: () => {
                   this.openConflicts();
                 }

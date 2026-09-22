@@ -1,10 +1,14 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag } from 'domain';
+import {
+  CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE, CONFLICT_REASON_PARTNER_CHANGED,
+  CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER, ConflictHint, Interval,
+  encodeConflictHint, MIN_PER_DAY, Window, WindowChannel, WindowTag
+} from 'domain';
 import { PlanRow } from 'data';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, DayBusy, DetailInput, ExperienceMode,
-  HomeInput, HomeSummary, PageInput, WindowDetailData, WindowFilter, WindowFilterKey,
-  WindowSummary, CommonTimeQueryService
+  HomeInput, HomeSummary, PageInput, PlanConflictView, WindowDetailData, WindowFilter,
+  WindowFilterKey, WindowSummary, CommonTimeQueryService
 } from 'feature';
 
 /**
@@ -48,6 +52,17 @@ function plan(id: string, status: string, hint: string, startMin: number, endMin
     calendarState: 'NOT_REQUESTED', syncState: 'LOCAL_ONLY'
   };
   return p;
+}
+
+/** 重算写进 plan.conflict_hint 的持久结构（分钟都是当天时刻）。 */
+function hintOf(reasonCode: string, sourceLevel: string, overlapStart: number, overlapEnd: number,
+  altStart: number, altEnd: number, kept: boolean): string {
+  const h: ConflictHint = {
+    reasonCode: reasonCode, sourceLevel: sourceLevel,
+    overlapStartMin: DAY_START + overlapStart, overlapEndMin: DAY_START + overlapEnd,
+    altStartMin: DAY_START + altStart, altEndMin: DAY_START + altEnd, kept: kept
+  };
+  return encodeConflictHint(h);
 }
 
 function day(source: string, level: number, myBusy: Interval[], partnerBusy: Interval[] | null): DayBusy {
@@ -427,6 +442,60 @@ export default function commonTimeQueryServiceTest() {
       expect(sums[1].conflictText.indexOf('可改到') >= 0).assertTrue();
       expect(sums[1].conflictText.indexOf('18:00') >= 0).assertTrue();
       expect(sums[2].conflictText).assertEqual('与日程冲突 · 暂无替代时段');
+    });
+
+    it('conflict_copy_explains_reason_without_leaking_partner_plans', 0, () => {
+      // 我的课程在本地就写着，可以说"课程"
+      const mine = plan('p1', 'CONFLICT',
+        hintOf(CONFLICT_REASON_MY_COURSE, CONFLICT_SOURCE_MINE, 1140, 1290, 1380, 1500, false),
+        1200, 1290);
+      // 对方只给了粗粒度忙闲（位图标签一律是 BUSY）：只能承认"时间变了"，不能替 TA 说出班次
+      const coarse = plan('p2', 'CONFLICT',
+        hintOf(CONFLICT_REASON_PARTNER_CHANGED, CONFLICT_SOURCE_PARTNER, 1140, 1200, 0, 0, false),
+        1200, 1290);
+      const sums = CommonTimeQueryService.planSummaries([mine, coarse], NOW);
+
+      const m = sums[0].conflict;
+      expect(m != null).assertTrue();
+      const mv = m as PlanConflictView;
+      expect(mv.reasonCode).assertEqual(CONFLICT_REASON_MY_COURSE);
+      expect(mv.reasonText).assertEqual('与你的课程冲突');
+      // 受影响区间与替代窗口分开给：区间说"哪一段被占了"，可改到说"下一步做什么"
+      expect(mv.affectedText.indexOf('冲突时段') >= 0).assertTrue();
+      expect(mv.altText.indexOf('可改到') >= 0).assertTrue();
+      expect(mv.altStart).assertEqual(DAY_START + 1380);
+      expect(sums[0].conflictText.indexOf(mv.reasonText) >= 0).assertTrue();
+      expect(mv.kept).assertFalse();
+
+      expect(sums[1].conflictText.indexOf('班') >= 0).assertFalse();
+      expect(sums[1].conflictText.indexOf('课') >= 0).assertFalse();
+      expect(sums[1].conflictText.indexOf('对方时间发生变化') >= 0).assertTrue();
+      // 没有替代窗口时如实说没有：不能对着一个不存在的时段叫用户"改到"
+      expect(sums[1].conflictText.indexOf('暂无替代时段') >= 0).assertTrue();
+      expect((sums[1].conflict as PlanConflictView).altStart).assertEqual(0);
+
+      // "保留原计划"的标记要能被列表读到，UI 据此收起催改期
+      const kept = plan('p3', 'CONFLICT',
+        hintOf(CONFLICT_REASON_MIXED, CONFLICT_SOURCE_BOTH, 1140, 1200, 1380, 1500, true), 1200, 1290);
+      const keptSums = CommonTimeQueryService.planSummaries([kept], NOW);
+      expect((keptSums[0].conflict as PlanConflictView).kept).assertTrue();
+      expect(keptSums[0].conflictText.indexOf('与你的安排冲突，对方时间也发生了变化') >= 0).assertTrue();
+
+      // 首页一句话摘要按来源级别合并：涉及对方就不细分是谁的哪件事
+      expect(home(ExperienceMode.LOCAL_PARTNER, [], [mine, kept], soloDay(), FRESH, '小陈')
+        .conflictReason).assertEqual('你们的日程有变');
+      expect(home(ExperienceMode.LOCAL_PARTNER, [], [mine], soloDay(), FRESH, '小陈')
+        .conflictReason).assertEqual('你的日程有变');
+      expect(home(ExperienceMode.LOCAL_PARTNER, [], [coarse], soloDay(), FRESH, '小陈')
+        .conflictReason).assertEqual('对方时间发生变化');
+      // 旧格式 hint 归不出因：说不清是谁的时间就不下结论
+      const legacy = plan('p4', 'CONFLICT', '{"altStart":' + (DAY_START + 1380) + ',"altEnd":'
+        + (DAY_START + 1500) + '}', 1200, 1290);
+      expect(home(ExperienceMode.LOCAL_PARTNER, [], [legacy], soloDay(), FRESH, '小陈')
+        .conflictReason).assertEqual('计划时间需要确认');
+      expect(home(ExperienceMode.LOCAL_PARTNER, [], [mine, legacy], soloDay(), FRESH, '小陈')
+        .conflictReason).assertEqual('你的日程有变');
+      expect(home(ExperienceMode.SOLO, [], [], soloDay(), FRESH, '').conflictReason).assertEqual('');
     });
 
     it('detail_clamps_busy_to_the_window_start_day', 0, () => {

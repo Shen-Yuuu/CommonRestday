@@ -1,11 +1,13 @@
 import { PlanRow, ScheduleRepo } from 'data';
+import { decodeConflictHint, encodeConflictHint } from 'domain';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from './ScheduleUseCase';
 import { CalendarGateway } from '../integration/CalendarGateway';
 import { ReminderGateway } from '../integration/ReminderGateway';
 import {
   CalendarCapability, CalendarOutcome, CalendarState, CalendarWriteResult, MIN_PLAN_MIN, PlanDraft,
-  ReminderCapability, SubmitLatch, calendarStateOf, newPlanId, planDraftError
+  PlanOpResult, ReminderCapability, SubmitLatch, calendarStateOf, isOnSystemCalendar, newPlanId,
+  planDraftError
 } from '../model/PlanFlow';
 
 /** 创建计划结果。 */
@@ -27,6 +29,9 @@ export interface CreatePlanOptions {
 }
 
 const TAG = 'PlanUseCase';
+
+/** 计划状态：冲突（与 ScheduleUseCase.detectAndWriteConflicts 写入值一致）。 */
+const STATUS_CONFLICT = 'CONFLICT';
 
 /** 计划创建闩：重复点击/手势重入时只放行第一次，避免同一条计划落两遍。 */
 const CREATE_LATCH = new SubmitLatch();
@@ -59,11 +64,12 @@ class DeviceReminder implements ReminderCapability {
  * - createPlan：校验（PlanFlow 纯口径）→ 先写本地计划（calendar_state=PENDING）
  *   → 请系统日历确认 → 回写 calendar_state → 注册提醒 → 一次重算；
  * - 日历被取消/无权限/不可用时本地计划照常保留，由 UI 显示"仅保存在应用内"；
- * - cancelPlan / acceptAlternative：级联清理日历日程与提醒（尽力而为）→ 回写状态 → 一次重算；
- * - 取消确认由 UI 层完成，本层不弹确认框。
+ * - acceptAlternative / keepOriginalPlan / cancelPlan：冲突四动作（阶段 2 Task 2.3），
+ *   本地计划先落地，日历与提醒只是它的投影，投影失败一律降级成"待重试"而不是回滚；
+ * - 取消/改期的确认弹窗由 UI 层完成，本层不弹窗。
  *
  * 系统能力走 CalendarCapability/ReminderCapability 端口，默认真机门面；
- * 单测注入确定性实现，好让"用户取消/权限拒绝"这些真机不可复现的分支也能被断言。
+ * 单测注入确定性实现，好让"用户取消/权限拒绝/写入抛错"这些真机不可复现的分支也能被断言。
  */
 export class PlanUseCase {
   private static cal: CalendarCapability = new DeviceCalendar();
@@ -123,15 +129,9 @@ export class PlanUseCase {
         syncState: 'LOCAL_ONLY'
       };
       await ScheduleRepo.upsertPlan(row);
-      const cal = await PlanUseCase.cal.confirm(row.title, startMin, endMin, options.directCalendarWrite);
-      const state = calendarStateOf(cal.outcome);
-      await ScheduleRepo.updatePlanCalendar(planId, state,
-        cal.outcome === CalendarOutcome.WRITTEN ? cal.eventId : '');
-      // 本地提醒（US8 / FR-014）：任何一步失败均静默降级，绝不阻塞计划创建
-      const reminderId = await PlanUseCase.rem.publish(row.title, startMin);
-      if (reminderId >= 0) {
-        await ScheduleRepo.updatePlanReminder(planId, reminderId);
-      }
+      const state = await PlanUseCase.writeCalendar(planId, row.title, startMin, endMin,
+        options.directCalendarWrite);
+      await PlanUseCase.publishReminder(planId, row.title, startMin);
       await ScheduleUseCase.onScheduleChanged();
       Logger.info(TAG, 'plan created id=' + planId + ' calendar=' + state);
       return { ok: true, planId: planId, calendarState: state, error: '' };
@@ -145,63 +145,90 @@ export class PlanUseCase {
 
   /**
    * 取消计划（确认弹窗由 UI 层负责）：
-   * 级联删除"同休日"日历日程与本地提醒（都尽力而为，失败只记日志）
-   * → updatePlanStatus CANCELLED → 触发重算（该时段恢复空闲）。
+   * 级联清理"同休日"日历日程与本地提醒（尽力而为，失败只记日志：留下孤儿日程比谎报取消失败更轻）
+   * → updatePlanStatus CANCELLED → 一次重算（该时段恢复空闲）。
    */
-  static async cancelPlan(id: string): Promise<void> {
+  static async cancelPlan(id: string): Promise<PlanOpResult> {
     const row = await PlanUseCase.findPlan(id);
     if (row != null) {
-      await PlanUseCase.cal.remove(row.myEventId);
-      await PlanUseCase.rem.cancel(row.reminderId);
+      await PlanUseCase.clearProjection(row);
     }
-    await ScheduleRepo.updatePlanStatus(id, 'CANCELLED');
-    await ScheduleUseCase.onScheduleChanged();
+    try {
+      await ScheduleRepo.updatePlanStatus(id, 'CANCELLED');
+    } catch (e) {
+      Logger.warn(TAG, 'cancelPlan persist failed: ' + (e as Error).message);
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '取消失败，计划仍在列表里' };
+    }
+    await PlanUseCase.recomputeQuietly();
+    return { ok: true, calendarState: row != null ? row.calendarState : CalendarState.NOT_REQUESTED, error: '' };
   }
 
   /**
-   * 接受冲突替代窗口改期（PRD F7 动作一 / L11 G1）：
+   * 采用替代时间（冲突动作一 / L11 G1）：
    * 计划时长不变、起点对齐替代窗口起点（替代窗口由冲突检测保证时长足够，越界时收缩兜底）；
-   * 级联迁移系统日历日程与本地提醒（旧事件/旧提醒尽力清理，新事件按默认确认路径重写），
-   * 回写新起止后触发重算——重算的冲突检测在新时段无冲突时把计划恢复为 OK。
-   * 替代窗口信息缺失/非法时返回 false，UI 提示重选窗口。
+   * 本地计划先改到新时间，再级联迁移日历日程与提醒——
+   * 迁移失败时计划仍在新时间（不丢），只把 calendar_state 落到"待重试"，UI 给出补写入口。
+   * 替代窗口信息缺失/非法（已被新一次重算覆盖）时 ok=false，UI 提示重选窗口。
    */
-  static async acceptAlternative(id: string): Promise<boolean> {
+  static async acceptAlternative(id: string): Promise<PlanOpResult> {
     const row = await PlanUseCase.findPlan(id);
-    if (row == null || row.status !== 'CONFLICT' || row.conflictHint === '') {
-      return false;
+    const hint = row != null ? decodeConflictHint(row.conflictHint) : null;
+    if (row == null || row.status !== STATUS_CONFLICT || hint == null
+      || !(hint.altStartMin > 0 && hint.altEndMin > hint.altStartMin)) {
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '替代窗口已失效，请重新选择时间' };
     }
-    let altStart = 0;
-    let altEnd = 0;
-    try {
-      const o = JSON.parse(row.conflictHint) as Record<string, number>;
-      altStart = Number(o['altStart']);
-      altEnd = Number(o['altEnd']);
-    } catch (e) {
-      return false;
-    }
-    if (!(altStart > 0 && altEnd > altStart)) {
-      return false;
-    }
-    const duration = row.end - row.start;
-    const newStart = altStart;
-    const newEnd = Math.min(altStart + duration, altEnd);
+    const newStart = hint.altStartMin;
+    const newEnd = Math.min(newStart + (row.end - row.start), hint.altEndMin);
     if (newEnd - newStart < MIN_PLAN_MIN) {
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '替代窗口太短，请重新选择时间' };
+    }
+    try {
+      await ScheduleRepo.updatePlanTime(id, newStart, newEnd);
+    } catch (e) {
+      Logger.warn(TAG, 'reschedule persist failed: ' + (e as Error).message);
+      return { ok: false, calendarState: row.calendarState, error: '改期失败，计划仍在原时间' };
+    }
+    // 到这里本地计划已经是新时间：后面的日历与提醒只做投影，失败都不把计划拉回去
+    const state = await PlanUseCase.migrateCalendar(row, newStart, newEnd);
+    await PlanUseCase.publishReminder(id, row.title, newStart);
+    await PlanUseCase.recomputeQuietly();
+    Logger.info(TAG, 'plan rescheduled to alternative: id=' + id + ' calendar=' + state);
+    return { ok: true, calendarState: state, error: '' };
+  }
+
+  /**
+   * 把"仅保存在应用内"的计划补写到系统日历（改期/创建时没写成的重试入口）。
+   * ok 说的是日历这次有没有写成；本地计划内容一个字都不改，所以不触发重算。
+   */
+  static async syncToCalendar(id: string): Promise<PlanOpResult> {
+    const row = await PlanUseCase.findPlan(id);
+    if (row == null) {
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '计划已不存在' };
+    }
+    const state = await PlanUseCase.writeCalendar(id, row.title, row.start, row.end, false);
+    const written = isOnSystemCalendar(state);
+    return {
+      ok: written, calendarState: state,
+      error: written ? '' : '日历仍未写入，稍后可以再试一次'
+    };
+  }
+
+  /**
+   * 保留原计划（冲突动作三）：冲突事实和状态都留着，只是不再催用户改期。
+   * 标记写进 conflict_hint，由重算在同一冲突签名（原因 + 受影响区间）下结转；
+   * 日程再变动就是新冲突，提示会重新出现。不触发重算——没有任何时间事实发生变化。
+   */
+  static async keepOriginalPlan(id: string): Promise<boolean> {
+    const row = await PlanUseCase.findPlan(id);
+    const hint = row != null ? decodeConflictHint(row.conflictHint) : null;
+    if (row == null || hint == null) {
       return false;
     }
-    // 级联迁移：旧日历日程/旧提醒尽力清理（失败不阻塞改期）
-    await PlanUseCase.cal.remove(row.myEventId);
-    await PlanUseCase.rem.cancel(row.reminderId);
-    await ScheduleRepo.updatePlanTime(id, newStart, newEnd);
-    const cal = await PlanUseCase.cal.confirm(row.title, newStart, newEnd, false);
-    const state = calendarStateOf(cal.outcome);
-    await ScheduleRepo.updatePlanCalendar(id, state,
-      cal.outcome === CalendarOutcome.WRITTEN ? cal.eventId : '');
-    const reminderId = await PlanUseCase.rem.publish(row.title, newStart);
-    if (reminderId >= 0) {
-      await ScheduleRepo.updatePlanReminder(id, reminderId);
+    if (!hint.kept) {
+      hint.kept = true;
+      await ScheduleRepo.updatePlanConflict(id, row.status, encodeConflictHint(hint));
     }
-    await ScheduleUseCase.onScheduleChanged();
-    Logger.info(TAG, 'plan rescheduled to alternative: id=' + id + ' calendar=' + state);
+    Logger.info(TAG, 'plan kept despite conflict: id=' + id);
     return true;
   }
 
@@ -214,6 +241,83 @@ export class PlanUseCase {
       }
     }
     return null;
+  }
+
+  /**
+   * 请系统日历写入并回写 calendar_state。
+   * 异常一律归一成 FAILED：调用方据此把计划标成"待重试"，而不是让整条链路抛出去。
+   */
+  private static async writeCalendar(id: string, title: string, startMin: number, endMin: number,
+    direct: boolean): Promise<string> {
+    let result: CalendarWriteResult = { outcome: CalendarOutcome.FAILED, eventId: '' };
+    try {
+      result = await PlanUseCase.cal.confirm(title, startMin, endMin, direct);
+    } catch (e) {
+      Logger.warn(TAG, 'calendar write threw: ' + (e as Error).message);
+    }
+    const state = calendarStateOf(result.outcome);
+    await ScheduleRepo.updatePlanCalendar(id, state,
+      result.outcome === CalendarOutcome.WRITTEN ? result.eventId : '');
+    return state;
+  }
+
+  /** 改期时的日历迁移：先尽力清掉旧日程，再按默认确认路径写新日程。 */
+  private static async migrateCalendar(row: PlanRow, newStart: number, newEnd: number): Promise<string> {
+    await PlanUseCase.removeEventQuietly(row.myEventId);
+    await PlanUseCase.cancelReminderQuietly(row.reminderId);
+    return PlanUseCase.writeCalendar(row.id, row.title, newStart, newEnd, false);
+  }
+
+  /** 取消计划时的投影清理（日历日程 + 本地提醒），失败只记日志不阻塞取消。 */
+  private static async clearProjection(row: PlanRow): Promise<void> {
+    await PlanUseCase.removeEventQuietly(row.myEventId);
+    await PlanUseCase.cancelReminderQuietly(row.reminderId);
+  }
+
+  private static async removeEventQuietly(eventId: string): Promise<void> {
+    if (eventId === '') {
+      return;
+    }
+    try {
+      await PlanUseCase.cal.remove(eventId);
+    } catch (e) {
+      Logger.warn(TAG, 'calendar event cleanup failed: ' + (e as Error).message);
+    }
+  }
+
+  private static async cancelReminderQuietly(reminderId: number): Promise<void> {
+    if (reminderId < 0) {
+      return;
+    }
+    try {
+      await PlanUseCase.rem.cancel(reminderId);
+    } catch (e) {
+      Logger.warn(TAG, 'reminder cancel failed: ' + (e as Error).message);
+    }
+  }
+
+  /** 本地提醒（US8 / FR-014）：任何失败都静默降级，绝不阻塞计划本身。 */
+  private static async publishReminder(id: string, title: string, startMin: number): Promise<void> {
+    try {
+      const reminderId = await PlanUseCase.rem.publish(title, startMin);
+      if (reminderId >= 0) {
+        await ScheduleRepo.updatePlanReminder(id, reminderId);
+      }
+    } catch (e) {
+      Logger.warn(TAG, 'reminder publish failed: ' + (e as Error).message);
+    }
+  }
+
+  /**
+   * 重算失败只记日志：计划已经落库，重算慢一拍会让列表短暂陈旧，
+   * 但把"保存失败"喊给用户只会换来一次重复提交。
+   */
+  private static async recomputeQuietly(): Promise<void> {
+    try {
+      await ScheduleUseCase.onScheduleChanged();
+    } catch (e) {
+      Logger.warn(TAG, 'recompute after plan change failed: ' + (e as Error).message);
+    }
   }
 
   private static fail(msg: string): CreatePlanResult {

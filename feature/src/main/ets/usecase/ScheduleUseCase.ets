@@ -1,8 +1,10 @@
 import {
-  CommonFreeEngine, CommonFreeResult, ConflictOutcome, EngineInput, EngineParams, Interval,
-  MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule, PlanBlock, PlanLite,
-  ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec, Window,
-  buildAvailability, defaultParams, detectConflicts, mergeIntervals, mkIv, todayEpochDay, unionIntervals
+  CommonFreeEngine, CommonFreeResult, ConflictOutcome, ConflictSources, EngineInput,
+  EngineParams, Interval, MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule,
+  PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
+  Window, buildAvailability, decodeConflictHint, defaultParams, detectConflicts,
+  encodeConflictHint, hintFromOutcome, mergeIntervals, mkIv, todayEpochDay, unionIntervals,
+  withKeepCarried
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
@@ -321,7 +323,7 @@ export class ScheduleUseCase {
     return copy;
   }
 
-  /** 冲突检测并回写 plan 状态与 conflict_hint（含替代窗口起止）。 */
+  /** 冲突检测并回写 plan 状态与 conflict_hint（原因码 + 受影响区间 + 替代窗口起止）。 */
   static async detectAndWriteConflicts(my: MySchedule, partnerBusy: Interval[] | null,
     params: EngineParams, startEpochDay: number, windows: Window[]): Promise<void> {
     const planRows = await ScheduleRepo.listActivePlans();
@@ -334,16 +336,18 @@ export class ScheduleUseCase {
     if (partnerBusy != null) {
       busyUnion = unionIntervals(busyUnion, partnerBusy);
     }
+    // 归因要分侧的区间：并集在合并时只留先到的 tag，事后无从还原"是你的课还是 TA 的班"。
+    const sources: ConflictSources = { my: myAvail.notAvailable, partner: partnerBusy };
     const planLites: PlanLite[] = [];
     for (let i = 0; i < planRows.length; i++) {
       const lite: PlanLite = { id: planRows[i].id, startMin: planRows[i].start, endMin: planRows[i].end };
       planLites.push(lite);
     }
-    const outcomes = detectConflicts(planLites, busyUnion, windows);
+    const outcomes = detectConflicts(planLites, busyUnion, windows, sources);
     for (let i = 0; i < outcomes.length; i++) {
       const oc = outcomes[i];
       const newStatus = oc.conflict ? 'CONFLICT' : 'OK';
-      const newHint = ScheduleUseCase.conflictHintOf(oc);
+      const newHint = ScheduleUseCase.conflictHintOf(oc, planRows[i].conflictHint);
       const row = planRows[i];
       if (row.status !== newStatus || row.conflictHint !== newHint) {
         await ScheduleRepo.updatePlanConflict(oc.planId, newStatus, newHint);
@@ -351,13 +355,17 @@ export class ScheduleUseCase {
     }
   }
 
-  /** conflict_hint 内容：替代窗口起止 JSON；无冲突或无替代时为空串。 */
-  static conflictHintOf(oc: ConflictOutcome): string {
-    if (!oc.conflict || oc.alternativeStartMin <= 0) {
+  /**
+   * conflict_hint 文本：无冲突写空串，有冲突写结构化的原因码/来源/受影响区间/替代窗口。
+   * "保留原计划"的确认标记只在冲突签名（原因 + 受影响区间）没变时结转——
+   * 日程又动了一次就是新冲突，不能拿上一次那句"算了"替用户决定。
+   */
+  static conflictHintOf(oc: ConflictOutcome, previousHint: string): string {
+    if (!oc.conflict) {
       return '';
     }
-    const hint: Record<string, number> = { 'altStart': oc.alternativeStartMin, 'altEnd': oc.alternativeEndMin };
-    return JSON.stringify(hint);
+    return encodeConflictHint(
+      withKeepCarried(hintFromOutcome(oc, false), decodeConflictHint(previousHint)));
   }
 
   /**

@@ -9,8 +9,9 @@ export { CalendarGateway } from './src/main/ets/integration/CalendarGateway';
 export { ReminderGateway } from './src/main/ets/integration/ReminderGateway';
 export {
   CalendarOutcome, CalendarState, CalendarWriteResult, CalendarCapability, ReminderCapability,
-  PlanDraft, SubmitLatch, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN,
-  calendarStateOf, defaultDraft, epochMinToUtcMs, isOnSystemCalendar, newPlanId, planDraftError
+  PlanDraft, PlanOpResult, SubmitLatch, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN,
+  calendarBadgeOf, calendarStateOf, canRetryCalendarSync, defaultDraft, epochMinToUtcMs,
+  isOnSystemCalendar, newPlanId, planDraftError
 } from './src/main/ets/model/PlanFlow';
 export {
   ScheduleCommandService, ScheduleCommandResult
@@ -30,6 +31,6 @@ export {
 export {
   ExperienceMode, AnswerState, AnswerKind, AnswerAction, WindowFilterKey,
   WindowSummary, QuickAnswer, TodaySummary, HomeSummary, WindowFilter,
-  PlanSummary, CommonTimePageData, WindowDetailData, WindowChannel
+  PlanSummary, PlanConflictView, CommonTimePageData, WindowDetailData, WindowChannel
 } from './src/main/ets/model/PresentationModels';
 export { FeatureFlags } from './src/main/ets/config/FeatureFlags';

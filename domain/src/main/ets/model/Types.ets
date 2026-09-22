@@ -232,6 +232,38 @@ export interface PlanLite {
   endMin: number;
 }
 
+/**
+ * 冲突原因码（稳定契约：文案和测试都按码匹配，改文案不改码）。
+ * 码里必须带"是谁的时间变了"——用户看到红点时第一个问题就是这个。
+ */
+export const CONFLICT_REASON_MY_COURSE = 'MY_COURSE';
+export const CONFLICT_REASON_MY_SHIFT = 'MY_SHIFT';
+export const CONFLICT_REASON_MY_RHYTHM = 'MY_RHYTHM';
+/** 对方数据带得出班次语义（L3 快照或本机代录）时才能用这个码。 */
+export const CONFLICT_REASON_PARTNER_TIME = 'PARTNER_TIME';
+/** 对方只共享了粗粒度忙闲（L1/L2 位图，标签全为 BUSY）：只能说"对方时间发生变化"。 */
+export const CONFLICT_REASON_PARTNER_CHANGED = 'PARTNER_CHANGED';
+/** 双方时间都压上了这一段。 */
+export const CONFLICT_REASON_MIXED = 'MIXED';
+/** 未归因：调用方只给了合并后的忙区间并集，说不清是谁的时间。 */
+export const CONFLICT_REASON_UNKNOWN = '';
+
+/** 冲突来源级别（归因到谁）。 */
+export const CONFLICT_SOURCE_MINE = 'MINE';
+export const CONFLICT_SOURCE_PARTNER = 'PARTNER';
+export const CONFLICT_SOURCE_BOTH = 'BOTH';
+
+/**
+ * 归因用的分侧忙区间：必须分开传，合并后的并集已经把 tag 吃掉了，
+ * 拿并集反推"这是你的课还是 TA 的班"必然出错。
+ */
+export interface ConflictSources {
+  /** 我的不可用区间（tag 指示课程 / 班次 / 作息外）。 */
+  my: Interval[];
+  /** 对方不可用区间；单人或拿不到对方数据时为 null。 */
+  partner: Interval[] | null;
+}
+
 /** 冲突检测结果：alternative 为 0 表示无替代窗口。 */
 export interface ConflictOutcome {
   planId: string;
@@ -241,4 +273,12 @@ export interface ConflictOutcome {
   alternativeStartMin: number;
   /** 替代窗口终点（epochMin）；0 表示无替代。 */
   alternativeEndMin: number;
+  /** 原因码（CONFLICT_REASON_*）；无冲突或未归因为 CONFLICT_REASON_UNKNOWN。 */
+  reasonCode: string;
+  /** 来源级别（CONFLICT_SOURCE_*）；无冲突或未归因时空串。 */
+  sourceLevel: string;
+  /** 受影响区间起点（epochMin）：计划与忙区间实际交叠的那一段，不是整段计划。 */
+  overlapStartMin: number;
+  /** 受影响区间终点（epochMin）。 */
+  overlapEndMin: number;
 }

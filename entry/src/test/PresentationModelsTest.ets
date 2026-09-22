@@ -1,8 +1,8 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, FeatureFlags,
-  HomeSummary, PlanSummary, QuickAnswer, TodaySummary, WindowChannel, WindowDetailData,
-  WindowFilter, WindowFilterKey, WindowSummary
+  HomeSummary, PlanConflictView, PlanSummary, QuickAnswer, TodaySummary, WindowChannel,
+  WindowDetailData, WindowFilter, WindowFilterKey, WindowSummary
 } from 'feature';
 
 /**
@@ -36,6 +36,7 @@ function mkHome(mode: ExperienceMode): HomeSummary {
     trip: mkAnswer(AnswerKind.TRIP, AnswerState.UNKNOWN),
     nextWindow: mkSummary(29822820, 29823750, WindowChannel.REGULAR, ['MEAL']),
     conflictCount: 2,
+    conflictReason: '你的日程有变',
     today: today,
     computedAt: 29822000,
     stale: false
@@ -116,9 +117,14 @@ export default function presentationModelsTest() {
     });
 
     it('page_and_detail_readmodels_are_self_contained', 0, () => {
+      const conflict: PlanConflictView = {
+        reasonCode: 'PARTNER_CHANGED', sourceLevel: 'PARTNER', reasonText: '对方时间发生变化',
+        affectedText: '冲突时段 9月16日 周三 19:30–20:00', altStart: 0, altEnd: 0, altText: '', kept: false
+      };
       const plan: PlanSummary = {
-        id: 'p1', title: '一起吃饭', start: 29823480, end: 29823570,
-        status: 'CONFIRMED', conflictText: '与 TA 的课冲突'
+        id: 'p1', title: '一起吃饭', kind: 'MEAL', start: 29823480, end: 29823570,
+        status: 'CONFLICT', conflictText: '与 TA 的课冲突', conflict: conflict,
+        calendarState: 'LOCAL_ONLY'
       };
       const row = mkSummary(29822400, 29823330, WindowChannel.REGULAR, ['MEAL', 'FULL_DAY'], ['FULL_DAY']);
       const page: CommonTimePageData = {

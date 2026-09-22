@@ -1,61 +1,46 @@
 import { promptAction } from '@kit.ArkUI';
-import { PlanRow, ScheduleRepo } from 'data';
+import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult, PlanSummary,
+  PlanUseCase, calendarBadgeOf, canRetryCalendarSync, isOnSystemCalendar } from 'feature';
 import { DateLabel } from 'commons';
-import { PlanUseCase } from 'feature';
 import { planKindLabel } from '../util/PlanKindUtil';
 
 /**
- * 计划列表（US5 / FR-010 / FR-012）：作为共同时间页「共同计划」分段的内容，页头由宿主分段承担。
- * - listActivePlans 列表：标题/类型/日期起止/状态色（OK 正常 / CONFLICT 红点 + 替代窗口提示）；
- * - 点击计划 → 操作弹窗（取消计划[二次确认 → cancelPlan] / 关闭）；
- * - 监听 recomputeCount 刷新（创建/取消/课表变更自动重算后状态同步）；
- * - 空态引导：让宿主切回「时间窗口」分段选窗口建计划。
+ * 计划列表（US5 / FR-010 / FR-012，阶段 2 Task 2.3）：
+ * 共同时间页「共同计划」分段的内容，页头由宿主分段承担，条目一律走 feature 读模型。
+ * - 冲突条目：原因（已按对方隐私等级降维）+ 受影响区间 + 替代窗口，给四个动作——
+ *   采用替代时间 / 重新选择窗口 / 保留原计划 / 取消计划；
+ * - "保留原计划"只是不再催改期，冲突事实与状态都留着，安排再变动会重新提示；
+ * - 日历没写成的条目常驻"仅保存在应用内"，并提供补写入口（改期失败后同一条路径可重试）；
+ * - 监听 recomputeCount 刷新（创建/取消/课表变更自动重算后状态同步）。
  */
 @Component
 export struct PlansView {
   /** 宿主切换到"时间窗口"分段：分段归宿主，这里只提请求。 */
   onGoWindow: () => void = () => {
   };
-  @State plans: PlanRow[] = [];
+  @State plans: PlanSummary[] = [];
   @State loading: boolean = true;
-  @State cancelling: boolean = false;
+  /** 同一时刻只放行一个写操作：改期/取消/补写日历都会重排列表，并发点击只会互相踩。 */
+  @State private working: boolean = false;
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
 
   aboutToAppear(): void {
     this.reload();
   }
 
-  /** 重算广播（创建/取消计划、课表/参数变更）→ 重新读列表（状态与 conflict_hint 同步）。 */
+  /** 重算广播（创建/取消计划、课表/参数变更）→ 重新读列表（状态与冲突解释同步）。 */
   onRecomputeChanged(): void {
     this.reload();
   }
 
   reload(): void {
-    ScheduleRepo.listActivePlans().then((rows: PlanRow[]) => {
+    CommonTimeQueryService.getPlanCards().then((rows: PlanSummary[]) => {
       this.plans = rows;
       this.loading = false;
     }).catch(() => {
       this.plans = [];
       this.loading = false;
     });
-  }
-
-  /** 解析 conflict_hint（{"altStart":..,"altEnd":..}）→ "替代窗口：M月d日 周X HH:mm–HH:mm"。 */
-  altHint(p: PlanRow): string {
-    if (p.status !== 'CONFLICT' || p.conflictHint === '') {
-      return '';
-    }
-    try {
-      const o = JSON.parse(p.conflictHint) as Record<string, number>;
-      const s = Number(o['altStart']);
-      const e = Number(o['altEnd']);
-      if (s <= 0 || e <= 0) {
-        return '';
-      }
-      return '替代窗口：' + DateLabel.mdw(Math.floor(s / 1440)) + ' ' + DateLabel.endLabel(s, e);
-    } catch (err) {
-      return '';
-    }
   }
 
   statusLabel(s: string): string {
@@ -78,15 +63,36 @@ export struct PlansView {
     return $r('app.color.success_green');
   }
 
-  /** 点击计划 → 操作弹窗。 */
-  onPlanTap(p: PlanRow): void {
+  /** 列表键：状态/冲突解释/日历状态任一变化都要重绘卡片（改文案不改键，键只吃解释文本）。 */
+  cardKey(p: PlanSummary): string {
+    const kept = p.conflict != null && p.conflict.kept ? '1' : '0';
+    return p.id + '-' + p.status + '-' + p.conflictText + '-' + kept + '-' + p.calendarState;
+  }
+
+  subLabel(p: PlanSummary): string {
+    return planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
+      + DateLabel.endLabel(p.start, p.end) + ' · ' + DateLabel.duration(p.end - p.start);
+  }
+
+  private say(msg: string): void {
+    promptAction.showToast({ message: msg });
+  }
+
+  /** 点击计划 → 操作弹窗（冲突条目额外给"改到替代时间"）。 */
+  onPlanTap(p: PlanSummary): void {
+    const alt = p.conflict != null && p.conflict.altStart > 0;
     this.getUIContext().showAlertDialog({
       title: p.title,
-      message: planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
-        + DateLabel.endLabel(p.start, p.end),
+      message: this.subLabel(p),
       primaryButton: {
-        value: '取消计划',
-        action: () => this.confirmCancel(p)
+        value: alt ? '改到替代时间' : '取消计划',
+        action: () => {
+          if (alt) {
+            this.askAcceptAlternative(p);
+          } else {
+            this.confirmCancel(p);
+          }
+        }
       },
       secondaryButton: {
         value: '关闭',
@@ -97,7 +103,7 @@ export struct PlansView {
   }
 
   /** 取消计划二次确认。 */
-  confirmCancel(p: PlanRow): void {
+  confirmCancel(p: PlanSummary): void {
     this.getUIContext().showAlertDialog({
       title: '取消计划',
       message: '确定取消「' + p.title + '」？该时段将恢复空闲，系统日历日程（如有）会一并移除。',
@@ -113,27 +119,26 @@ export struct PlansView {
     });
   }
 
-  async doCancel(p: PlanRow): Promise<void> {
-    if (this.cancelling) {
+  async doCancel(p: PlanSummary): Promise<void> {
+    if (this.working) {
       return;
     }
-    this.cancelling = true;
-    try {
-      await PlanUseCase.cancelPlan(p.id);
-      promptAction.showToast({ message: '已取消计划，该时段恢复空闲' });
-      this.reload();
-    } catch (e) {
-      promptAction.showToast({ message: '取消失败：' + (e as Error).message });
-    }
-    this.cancelling = false;
+    this.working = true;
+    const r: PlanOpResult = await PlanUseCase.cancelPlan(p.id);
+    this.say(r.ok ? '已取消计划，该时段恢复空闲' : r.error);
+    this.reload();
+    this.working = false;
   }
 
-  /** 接受替代窗口（PRD F7 动作一）：二次确认后级联改期（日历日程/本地提醒同步迁移）。 */
-  askAcceptAlternative(p: PlanRow): void {
-    const hint = this.altHint(p);
+  /** 采用替代时间（冲突动作一）：二次确认后级联改期（日历日程与提醒同步迁移）。 */
+  askAcceptAlternative(p: PlanSummary): void {
+    const c = p.conflict;
+    const when = c != null && c.altStart > 0
+      ? DateLabel.mdw(Math.floor(c.altStart / 1440)) + ' ' + DateLabel.endLabel(c.altStart, c.altEnd)
+      : '';
     this.getUIContext().showAlertDialog({
-      title: '改期到替代窗口',
-      message: (hint !== '' ? hint : '按建议时间改期') + '？系统日历日程与提醒会一并更新。',
+      title: '改到替代时间',
+      message: (when !== '' ? '新时间：' + when + '。' : '') + '系统日历日程与提醒会一并更新。',
       primaryButton: {
         value: '确认改期',
         action: () => this.doAcceptAlternative(p)
@@ -146,14 +151,45 @@ export struct PlansView {
     });
   }
 
-  async doAcceptAlternative(p: PlanRow): Promise<void> {
-    try {
-      const ok = await PlanUseCase.acceptAlternative(p.id);
-      promptAction.showToast({ message: ok ? '已改期，日历与提醒已同步更新' : '改期失败：替代窗口信息缺失' });
-      this.reload();
-    } catch (e) {
-      promptAction.showToast({ message: '改期失败：' + (e as Error).message });
+  async doAcceptAlternative(p: PlanSummary): Promise<void> {
+    if (this.working) {
+      return;
     }
+    this.working = true;
+    const r: PlanOpResult = await PlanUseCase.acceptAlternative(p.id);
+    if (!r.ok) {
+      this.say(r.error);
+    } else {
+      // 计划已经改到新时间；日历没跟上时不喊失败，条目上的补写入口就是重试
+      this.say(isOnSystemCalendar(r.calendarState) ? '已改期，日历与提醒已同步'
+        : '已改期（' + LOCAL_ONLY_NOTE + '）');
+    }
+    this.reload();
+    this.working = false;
+  }
+
+  /** 保留原计划（冲突动作三）：不再催改期，冲突状态原样留着。 */
+  async doKeepOriginal(p: PlanSummary): Promise<void> {
+    if (this.working) {
+      return;
+    }
+    this.working = true;
+    const kept = await PlanUseCase.keepOriginalPlan(p.id);
+    this.say(kept ? '已按原时间保留，不再提示改期' : '这条计划已经没有待处理的冲突');
+    this.reload();
+    this.working = false;
+  }
+
+  /** 把"仅保存在应用内"的计划补写到系统日历（改期/创建失败后的重试入口）。 */
+  async doSyncCalendar(p: PlanSummary): Promise<void> {
+    if (this.working) {
+      return;
+    }
+    this.working = true;
+    const r: PlanOpResult = await PlanUseCase.syncToCalendar(p.id);
+    this.say(r.ok ? '已写入系统日历' : r.error);
+    this.reload();
+    this.working = false;
   }
 
   build() {
@@ -185,9 +221,9 @@ export struct PlansView {
         }
       } else {
         // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
-        Repeat<PlanRow>(this.plans)
-          .key((p: PlanRow) => p.id + '-' + p.status + '-' + p.conflictHint)
-          .each((ri: RepeatItem<PlanRow>) => {
+        Repeat<PlanSummary>(this.plans)
+          .key((p: PlanSummary) => this.cardKey(p))
+          .each((ri: RepeatItem<PlanSummary>) => {
             ListItem() {
               this.planCard(ri.item)
             }
@@ -206,7 +242,7 @@ export struct PlansView {
 
   /** 左滑露出的"取消计划"按钮（点击走原有二次确认弹窗）。 */
   @Builder
-  cancelSwipe(p: PlanRow) {
+  cancelSwipe(p: PlanSummary) {
     Row() {
       Text('取消计划').fontSize(14).fontColor('#FFFFFF')
     }
@@ -218,9 +254,9 @@ export struct PlansView {
     .onClick(() => this.confirmCancel(p))
   }
 
-  /** 计划卡片：状态竖条 + 标题/类型/时间 + 状态（冲突红点 + 替代窗口提示）。 */
+  /** 计划卡片：状态竖条 + 标题/类型/时间 + 冲突解释与四个动作 + 日历徽标。 */
   @Builder
-  planCard(p: PlanRow) {
+  planCard(p: PlanSummary) {
     Row({ space: 12 }) {
       Column().width(4).height(40).borderRadius(2)
         .backgroundColor(p.status === 'CONFLICT'
@@ -238,38 +274,18 @@ export struct PlansView {
           }
         }.width('100%')
 
-        Text(planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
-          + DateLabel.endLabel(p.start, p.end) + ' · '
-          + DateLabel.duration(p.end - p.start))
+        Text(this.subLabel(p))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
-        if (p.status === 'CONFLICT') {
-          Column({ space: 6 }) {
-            Text('与最新课表/班表冲突，计划时间已不可用').fontSize(11).fontColor($r('app.color.danger_red'))
-            if (this.altHint(p) !== '') {
-              Text(this.altHint(p)).fontSize(12).fontColor($r('app.color.brand_pink'))
-            } else {
-              Text('未来暂无合适的替代窗口，可取消后手动调整').fontSize(11).fontColor($r('app.color.text_hint'))
-            }
-            // PRD F7 三动作：接受替代（级联改期）/ 保留原计划（不操作，红点常驻）/ 重新查找
-            if (this.altHint(p) !== '') {
-              Row({ space: 10 }) {
-                Button('改期到替代窗口').height(32).fontSize(12)
-                  .backgroundColor($r('app.color.brand_pink'))
-                  .onClick(() => this.askAcceptAlternative(p))
-                Text('重新选窗口').fontSize(12).fontColor($r('app.color.info_blue'))
-                  .onClick(() => {
-                    this.onGoWindow();
-                  })
-              }.width('100%')
-            }
-          }
-          .width('100%')
-          .padding({ top: 6, bottom: 6, left: 10, right: 10 })
-          .borderRadius(8)
-          .backgroundColor($r('app.color.danger_bg'))
-          .alignItems(HorizontalAlign.Start)
-        } else {
+        if (p.conflict != null) {
+          this.conflictBlock(p, p.conflict)
+        }
+
+        if (calendarBadgeOf(p.calendarState) !== '') {
+          this.calendarBlock(p, calendarBadgeOf(p.calendarState))
+        }
+
+        if (p.conflict == null) {
           Text('点击可取消计划').fontSize(11).fontColor($r('app.color.text_hint'))
         }
       }
@@ -279,5 +295,62 @@ export struct PlansView {
     .width('100%').padding(16).borderRadius(20).backgroundColor($r('app.color.card_bg'))
     .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
     .onClick(() => this.onPlanTap(p))
+  }
+
+  /** 冲突解释 + 四个动作（Task 2.3）。 */
+  @Builder
+  conflictBlock(p: PlanSummary, c: PlanConflictView) {
+    Column({ space: 6 }) {
+      Text(c.reasonText).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.danger_red'))
+      if (c.affectedText !== '') {
+        Text(c.affectedText).fontSize(11).fontColor($r('app.color.text_tertiary'))
+      }
+      if (c.kept) {
+        Text('已按原时间保留，你们的安排再变动时会重新提示')
+          .fontSize(11).fontColor($r('app.color.text_hint'))
+      } else if (c.altText !== '') {
+        Text(c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
+        Button('改到替代时间').height(32).fontSize(12)
+          .backgroundColor($r('app.color.brand_pink'))
+          .onClick(() => this.askAcceptAlternative(p))
+      } else {
+        Text('未来暂无合适的替代窗口，可以保留原计划或另找时间')
+          .fontSize(11).fontColor($r('app.color.text_hint'))
+      }
+      Row({ space: 16 }) {
+        Text('重新选窗口').fontSize(12).fontColor($r('app.color.info_blue'))
+          .onClick(() => {
+            this.onGoWindow();
+          })
+        if (c.kept && c.altStart > 0) {
+          Text('仍然改期').fontSize(12).fontColor($r('app.color.info_blue'))
+            .onClick(() => this.askAcceptAlternative(p))
+        } else if (!c.kept) {
+          Text('保留原计划').fontSize(12).fontColor($r('app.color.info_blue'))
+            .onClick(() => this.doKeepOriginal(p))
+        }
+        Text('取消计划').fontSize(12).fontColor($r('app.color.danger_red'))
+          .onClick(() => this.confirmCancel(p))
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding({ top: 6, bottom: 6, left: 10, right: 10 })
+    .borderRadius(8)
+    .backgroundColor($r('app.color.danger_bg'))
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  /** 日历徽标：计划只存在应用内时常驻说明，能力可用时给出补写入口。 */
+  @Builder
+  calendarBlock(p: PlanSummary, badge: string) {
+    Row({ space: 8 }) {
+      Text(badge).fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+      if (canRetryCalendarSync(p.calendarState)) {
+        Text('写入日历').fontSize(11).fontColor($r('app.color.info_blue'))
+          .onClick(() => this.doSyncCalendar(p))
+      }
+    }
+    .width('100%')
   }
 }

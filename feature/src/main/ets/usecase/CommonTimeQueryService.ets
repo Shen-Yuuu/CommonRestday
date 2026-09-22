@@ -1,13 +1,17 @@
 import {
-  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, hasTagOf, overlapMin, todayEpochDay
+  CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE, CONFLICT_REASON_MY_RHYTHM,
+  CONFLICT_REASON_MY_SHIFT, CONFLICT_REASON_PARTNER_CHANGED, CONFLICT_REASON_PARTNER_TIME,
+  CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER,
+  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, decodeConflictHint, hasTagOf, overlapMin,
+  todayEpochDay
 } from 'domain';
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
 import { DayViewData, ScheduleUseCase } from './ScheduleUseCase';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, HomeSummary,
-  PlanSummary, QuickAnswer, TodaySummary, WindowDetailData, WindowFilter, WindowFilterKey,
-  WindowSummary
+  PlanConflictView, PlanSummary, QuickAnswer, TodaySummary, WindowDetailData, WindowFilter,
+  WindowFilterKey, WindowSummary
 } from '../model/PresentationModels';
 
 /**
@@ -183,27 +187,106 @@ function toDisplayTags(tags: string[]): string[] {
   return out;
 }
 
-/** conflict_hint 存的是替代窗口起止 JSON（不是文案），展示文本必须在这里生成。 */
-function conflictTextOf(row: PlanRow): string {
+/**
+ * conflict_hint 的解释文案（不是存起来的字符串）：归因 + 替代窗口。
+ * 原因码是 domain 的稳定契约；对方隐私等级不足时码本身就不会是 PARTNER_TIME，
+ * 所以这里不存在"不小心说出对方班次"的分支。
+ */
+function conflictViewOf(row: PlanRow): PlanConflictView | null {
   if (row.status !== STATUS_CONFLICT) {
+    return null;
+  }
+  const h = decodeConflictHint(row.conflictHint);
+  const altOk = h != null && h.altStartMin > 0 && h.altEndMin > h.altStartMin;
+  const view: PlanConflictView = {
+    reasonCode: h != null ? h.reasonCode : '',
+    sourceLevel: h != null ? h.sourceLevel : '',
+    reasonText: conflictReasonText(h != null ? h.reasonCode : ''),
+    affectedText: h != null && h.overlapStartMin > 0 && h.overlapEndMin > h.overlapStartMin
+      ? '冲突时段 ' + timeSpanText(h.overlapStartMin, h.overlapEndMin) : '',
+    altStart: altOk ? h.altStartMin : 0,
+    altEnd: altOk ? h.altEndMin : 0,
+    altText: altOk ? '可改到 ' + timeSpanText(h.altStartMin, h.altEndMin) : '',
+    kept: h != null && h.kept
+  };
+  return view;
+}
+
+/** 某天的 M月d日 + 起止时刻（跨零点区间只按起点日标注，与计划列表口径一致）。 */
+function timeSpanText(start: number, end: number): string {
+  return DateLabel.mdw(Math.floor(start / MIN_PER_DAY)) + ' ' + DateLabel.endLabel(start, end);
+}
+
+/** 原因码 → 文案；'' 覆盖 Task 2.3 之前写入的旧 hint。 */
+function conflictReasonText(code: string): string {
+  if (code === CONFLICT_REASON_MY_COURSE) {
+    return '与你的课程冲突';
+  }
+  if (code === CONFLICT_REASON_MY_SHIFT) {
+    return '与你的班次冲突';
+  }
+  if (code === CONFLICT_REASON_MY_RHYTHM) {
+    return '落在你的作息时段外';
+  }
+  if (code === CONFLICT_REASON_PARTNER_TIME) {
+    return 'TA 的这段时间已有安排';
+  }
+  if (code === CONFLICT_REASON_PARTNER_CHANGED) {
+    return '对方时间发生变化';
+  }
+  if (code === CONFLICT_REASON_MIXED) {
+    return '与你的安排冲突，对方时间也发生了变化';
+  }
+  return '与日程冲突';
+}
+
+/** 一行式冲突摘要（首页与计划卡共用）。 */
+function conflictTextOf(row: PlanRow): string {
+  const view = conflictViewOf(row);
+  if (view == null) {
     return '';
   }
-  let altStart = 0;
-  let altEnd = 0;
-  if (row.conflictHint !== '') {
-    try {
-      const o = JSON.parse(row.conflictHint) as Record<string, number>;
-      altStart = Number(o['altStart']);
-      altEnd = Number(o['altEnd']);
-    } catch (e) {
-      altStart = 0;
+  return view.reasonText + ' · ' + (view.altText !== '' ? view.altText : '暂无替代时段');
+}
+
+/**
+ * 首页冲突归因摘要：一句话说清"该找谁"。
+ * 对方数据可能只是粗粒度忙闲，所以涉及对方时一律只说"对方时间发生变化"。
+ */
+function conflictReasonTextOf(rows: PlanRow[]): string {
+  let mine = false;
+  let partner = false;
+  let any = false;
+  for (let i = 0; i < rows.length; i++) {
+    const view = conflictViewOf(rows[i]);
+    if (view == null) {
+      continue;
+    }
+    any = true;
+    const s = view.sourceLevel;
+    if (s === CONFLICT_SOURCE_MINE) {
+      mine = true;
+    } else if (s === CONFLICT_SOURCE_PARTNER) {
+      partner = true;
+    } else if (s === CONFLICT_SOURCE_BOTH) {
+      mine = true;
+      partner = true;
     }
   }
-  if (altStart > 0 && altEnd > altStart) {
-    return '与日程冲突 · 可改到 ' + DateLabel.mdw(Math.floor(altStart / MIN_PER_DAY))
-      + ' ' + DateLabel.endLabel(altStart, altEnd);
+  if (!any) {
+    return '';
   }
-  return '与日程冲突 · 暂无替代时段';
+  if (mine && partner) {
+    return '你们的日程有变';
+  }
+  if (partner) {
+    return '对方时间发生变化';
+  }
+  if (mine) {
+    return '你的日程有变';
+  }
+  // 只有 Task 2.3 之前写入的未归因 hint：说不清是谁的时间，就不下结论
+  return '计划时间需要确认';
 }
 
 /** 当天某一方的忙闲装配结果（getDayView 的只读投影，纯函数只依赖它）。 */
@@ -293,6 +376,15 @@ export class CommonTimeQueryService {
       nowEpochMin: nowEpochMin
     };
     return CommonTimeQueryService.assemblePage(input);
+  }
+
+  /**
+   * 计划分段读模型：全部活动计划（含已结束的历史条目——计划列表按开始时间升序全量展示，
+   * 不套用"未来窗口"那套筛选口径）。起点传 0 即只取全部，投影口径仍走 planSummaries。
+   */
+  static async getPlanCards(): Promise<PlanSummary[]> {
+    const rows = await ScheduleRepo.listActivePlans();
+    return CommonTimeQueryService.planSummaries(rows, 0);
   }
 
   /** 窗口详情读模型：窗口展示模型 + 双方忙闲说明 + 对方隐私等级。 */
@@ -385,6 +477,7 @@ export class CommonTimeQueryService {
       trip: trip,
       nextWindow: next != null ? CommonTimeQueryService.summaryOf(next) : null,
       conflictCount: CommonTimeQueryService.countConflicts(input.plans),
+      conflictReason: conflictReasonTextOf(input.plans),
       today: today,
       computedAt: input.computedAt,
       stale: stale
@@ -609,8 +702,9 @@ export class CommonTimeQueryService {
         continue;
       }
       const p: PlanSummary = {
-        id: r.id, title: r.title, start: r.start, end: r.end,
-        status: r.status, conflictText: conflictTextOf(r)
+        id: r.id, title: r.title, kind: r.kind, start: r.start, end: r.end,
+        status: r.status, conflictText: conflictTextOf(r), conflict: conflictViewOf(r),
+        calendarState: r.calendarState
       };
       out.push(p);
     }

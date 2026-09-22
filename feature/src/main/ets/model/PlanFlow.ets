@@ -143,9 +143,38 @@ export function isOnSystemCalendar(calendarState: string): boolean {
   return calendarState === CalendarState.WRITTEN;
 }
 
-/** 日历没写成时是否回滚本地计划：一律不回滚，日历只是计划的一份投影。 */
-export function keepsPlanWhenCalendarMisses(outcome: CalendarOutcome): boolean {
-  return outcome !== CalendarOutcome.WRITTEN;
+/**
+ * 计划写操作的结果：ok 说的是"本地计划这件事实有没有改成"，
+ * calendarState 说的是"系统日历那份投影跟上了没有"——两件事必须分开报，
+ * 否则改期成功但日历没写成时，UI 只能谎报失败、诱使用户再点一次。
+ */
+export interface PlanOpResult {
+  ok: boolean;
+  calendarState: string;
+  /** 失败原因文案；ok 为真时是空串。 */
+  error: string;
+}
+
+/** 计划卡片的日历徽标：'' = 已在系统日历里，无需提示。 */
+export function calendarBadgeOf(calendarState: string): string {
+  if (calendarState === CalendarState.WRITTEN) {
+    return '';
+  }
+  if (calendarState === CalendarState.UNSUPPORTED) {
+    return '这台设备没有可用日历';
+  }
+  return LOCAL_ONLY_NOTE;
+}
+
+/**
+ * 是否给出"写入日历"重试入口：设备压根没有日历能力时不给出（点了也不会成，只是打扰）。
+ * PENDING 也放行——崩溃/杀进程会把计划留在"等确认"这一格，没有重试入口就永久卡住。
+ */
+export function canRetryCalendarSync(calendarState: string): boolean {
+  return calendarState === CalendarState.FAILED
+    || calendarState === CalendarState.LOCAL_ONLY
+    || calendarState === CalendarState.NOT_REQUESTED
+    || calendarState === CalendarState.PENDING;
 }
 
 /**

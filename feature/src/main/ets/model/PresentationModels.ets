@@ -88,6 +88,8 @@ export interface HomeSummary {
   trip: QuickAnswer;
   nextWindow: WindowSummary | null;
   conflictCount: number;
+  /** 冲突归因摘要（如"对方时间发生变化"）；无冲突为 ''。 */
+  conflictReason: string;
   today: TodaySummary;
   computedAt: number;
   stale: boolean;
@@ -99,14 +101,42 @@ export interface WindowFilter {
   fromEpochMin: number;
 }
 
+/**
+ * 计划冲突解释（阶段 2 Task 2.3）。
+ * 文案由 feature 生成，reasonCode 是稳定契约：UI 按码决定给不给"改到替代时间"，
+ * 不靠猜文案；对方隐私等级不足时 reasonText 只会是"对方时间发生变化"。
+ */
+export interface PlanConflictView {
+  /** CONFLICT_REASON_*（domain）；'' = 旧数据未归因。 */
+  reasonCode: string;
+  /** CONFLICT_SOURCE_*（domain）；'' = 未知。 */
+  sourceLevel: string;
+  /** 归因文案，如"与你的课程冲突"。 */
+  reasonText: string;
+  /** 受影响区间文案，如"冲突时段 周三 19:30–21:00"；'' = 旧数据没给区间。 */
+  affectedText: string;
+  altStart: number;
+  altEnd: number;
+  /** 替代窗口文案；'' = 暂无替代时段。 */
+  altText: string;
+  /** 用户已选"保留原计划"：红点留着，但不再催改期。 */
+  kept: boolean;
+}
+
 /** 计划条目展示模型。 */
 export interface PlanSummary {
   id: string;
   title: string;
+  /** plan.kind 原值（entry 用 PlanKindUtil 翻成文案）。 */
+  kind: string;
   start: number;
   end: number;
   status: string;
   conflictText: string;
+  /** status 非 CONFLICT 时为 null。 */
+  conflict: PlanConflictView | null;
+  /** plan.calendar_state：非 WRITTEN 时 UI 要常驻"仅保存在应用内"。 */
+  calendarState: string;
 }
 
 /**

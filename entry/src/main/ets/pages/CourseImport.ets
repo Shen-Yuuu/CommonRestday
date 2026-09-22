@@ -1,4 +1,4 @@
-import { DatePickerComponent, DatePickerComponentResult, DateMode, DisplayMode, promptAction, router } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import {
   OWNER_ME, Course, ParsedCourseLine, SectionTime, hhmmToMin, minToHHmm,
@@ -9,6 +9,14 @@ import { DateLabel } from 'commons';
 import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
 import { ownerFromParams, OwnerRouteParam } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
+
+/**
+ * 学期起点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
+ * 官方目录仍标 Beta，P0 不把它当唯一入口（改造文档 Task 5.2 规则）。
+ */
+const TERM_RANGE_START: Date = new Date(2024, 0, 1);
+const TERM_RANGE_END: Date = new Date(2032, 11, 31);
+const MS_PER_DAY: number = 86400000;
 
 /** 课程表导入：学期锚点 + 节次模板 + 粘贴文本解析 + 手动添加 + 课程列表（owner 双侧复用）。 */
 @Entry
@@ -28,9 +36,9 @@ struct CourseImport {
   // 节次模板编辑器（每行一节 "HH:MM-HH:MM"）
   @State showSections: boolean = false;
   @State sectionText: string = '';
-  // 学期起点 sheet（DatePickerComponent，API 26）：临时选择值，确认才保存
+  // 学期起点 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才保存
   @State termSheetVisible: boolean = false;
-  @State termPick: number = -1;
+  @State termPick: Date = new Date();
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -122,9 +130,11 @@ struct CourseImport {
     this.reportImport(r, list.length);
   }
 
-  /** 导入/新增结果提示。 */
+  /** 导入结果提示；未设置学期锚点时附带提醒（课程暂不产生忙碌时间，spec 边缘用例）。 */
   reportImport(r: ScheduleCommandResult, n: number): void {
-    toastCommand(r, '已导入 ' + n + ' 门课程');
+    const done = '已导入 ' + n + ' 门课程'
+      + (r.ok && n > 0 && this.termStart <= 0 ? '；注意：未设置学期起点，暂不参与计算' : '');
+    toastCommand(r, done);
   }
 
   async saveManual(): Promise<void> {
@@ -150,7 +160,7 @@ struct CourseImport {
       this.manualName = '';
       this.reload();
     }
-    toastCommand(r, '已添加');
+    this.reportImport(r, 1);
   }
 
   async removeCourse(id: string): Promise<void> {
@@ -161,19 +171,27 @@ struct CourseImport {
     toastCommand(r, '已删除');
   }
 
-  /** 打开学期起点 sheet：DatePickerComponent 滚轮选值（带触感反馈），确认后保存。 */
+  /** epochDay → 本地 Date：先按 UTC 拆出年月日，再按本地年月日建，避免时区把日期挪一天。 */
+  private dateOf(ep: number): Date {
+    const p = DateLabel.ymd(ep);
+    return new Date(p.y, p.m - 1, p.d);
+  }
+
+  /** 本地 Date → epochDay：只取用户看到的年月日，按 UTC 归一，不受夏令时影响。 */
+  private epochOf(d: Date): number {
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY);
+  }
+
+  /** 打开学期起点 sheet：稳定 DatePicker 滚轮选值，确认才保存。 */
   pickTermStart(): void {
-    this.termPick = this.termStart;
+    this.termPick = this.termStart > 0 ? this.dateOf(this.termStart) : new Date();
     this.termSheetVisible = true;
   }
 
   /** 确认学期起点：保留已自定义的节次模板（仅当未自定义时写入默认模板）。 */
   confirmTermStart(): void {
-    const ed = this.termPick;
+    const ed = this.epochOf(this.termPick);
     this.termSheetVisible = false;
-    if (ed <= 0) {
-      return;
-    }
     ScheduleRepo.getSectionTimes().then((json: string) => {
       // 保留已自定义节次；未保存过（空串/解析失败）时回退默认模板
       return ScheduleCommandService.saveTerm(ed, ScheduleUseCase.sectionTimesFromJson(json));
@@ -235,7 +253,7 @@ struct CourseImport {
               Text('第 N 节对应第 N 行；课程按"第 X-X 节"映射到这里的起止时间。')
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             } else {
-              Text('默认模板：上午 8:00 起、下午 14:00 起、晚上 19:00 起，每节 45+10 分钟；点"编辑"可自定义。')
+              Text('默认每节 45+10 分钟，08:00 / 14:00 / 19:00 起；点「编辑」可自定义。')
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             }
           }
@@ -359,28 +377,20 @@ struct CourseImport {
     })
   }
 
-  /** 学期起点 sheet：DatePickerComponent（API 26）滚轮 + 确认/取消。 */
+  /** 学期起点 sheet：稳定 DatePicker（API 8）滚轮 + 确认/取消。 */
   @Builder
   termSheet() {
     Column({ space: 12 }) {
       Text('选择学期起点（第一周周一）').fontSize(16).fontWeight(FontWeight.Medium)
-      DatePickerComponent({
-        options: {
-          displayMode: DisplayMode.DATE,
-          dateOptions: {
-            mode: DateMode.DATE,
-            start: new Date(2024, 0, 1),
-            end: new Date(2032, 11, 31),
-            selected: this.termPick > 0 ? new Date(this.termPick * 86400000) : new Date(),
-            onChange: (r: DatePickerComponentResult) => {
-              if (r.year != null && r.month != null && r.day != null) {
-                this.termPick = Math.floor(Date.UTC(r.year, r.month - 1, r.day) / 86400000);
-              }
-            }
-          }
-        }
+      DatePicker({
+        start: TERM_RANGE_START,
+        end: TERM_RANGE_END,
+        selected: this.termPick
       })
-      .width('100%')
+        .width('100%')
+        .onDateChange((d: Date) => {
+          this.termPick = d;
+        })
       Row({ space: 10 }) {
         Button('取消').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.btn_neutral'))

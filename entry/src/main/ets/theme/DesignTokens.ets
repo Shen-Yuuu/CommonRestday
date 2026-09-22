@@ -1,3 +1,5 @@
+import { ColorMetrics, LengthMetrics } from '@kit.ArkUI';
+
 /** 减少动效开关的 AppStorage 键：设置页写入，组件用 @StorageProp 订阅。 */
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
 /**
@@ -146,8 +148,36 @@ export class DesignTokens {
     return reduceMotion ? 0 : vp;
   }
 
-  /** 列表错峰延迟：减少动效时不错峰。 */
+  /** 列表错峰延迟：减少动效时不错峰（Task 5.2 规则，须与 offset 同时关闭）。 */
   static stagger(reduceMotion: boolean, index: number): number {
     return reduceMotion ? 0 : DesignTokens.staggerStep * index;
+  }
+
+  // ---- ChipV2（API 26 筛选 Chip）：颜色与几何仍复用上面同一套令牌 ----
+  // 用方法而不是静态字段：ColorMetrics/LengthMetrics 在 build 期取值，避免模块加载期解析资源。
+  /** 未选中文字，与自制 Chip 时期同一份次级文本色。 */
+  static chipText(): ColorMetrics {
+    return ColorMetrics.resourceColor(DesignTokens.textSecondary);
+  }
+
+  /** 选中文字：压在品牌粉上的暖白前景。 */
+  static chipTextOn(): ColorMetrics {
+    return ColorMetrics.resourceColor(DesignTokens.heroText);
+  }
+
+  static chipBg(): ColorMetrics {
+    return ColorMetrics.resourceColor(DesignTokens.fillWeak);
+  }
+
+  static chipBgOn(): ColorMetrics {
+    return ColorMetrics.resourceColor(DesignTokens.primary);
+  }
+
+  static chipFontSize(): LengthMetrics {
+    return LengthMetrics.resource(DesignTokens.fontCaption);
+  }
+
+  static chipRadius(): LengthMetrics {
+    return LengthMetrics.resource(DesignTokens.radiusPill);
   }
 }

@@ -5,7 +5,8 @@ import {
   WindowFilter, WindowFilterKey, WindowSummary
 } from 'feature';
 import {
-  CapsuleSegmentButtonV2, ColorMetrics, LengthMetrics, SegmentButtonV2Items
+  CapsuleSegmentButtonV2, ChipV2, ChipV2Label, ChipV2Options, ColorMetrics, LengthMetrics,
+  SegmentButtonV2Items
 } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
@@ -83,15 +84,48 @@ export struct CoTimeView {
   /** 详情栏是否已选中一个窗口（离开 expanded 时清掉，回到窄屏不残留半开状态）。 */
   @State private detailOpen: boolean = false;
   segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '时间窗口' }, { text: '共同计划' }]);
+  /**
+   * 筛选 Chip 的配置对象：ChipV2 是 @ComponentV2，选中态靠 @Trace activated 驱动，
+   * 所以这里刻意不进 @State —— 建一次，切档时在 selectFilter 里逐项写回。
+   */
+  private chips: ChipV2Options[] = [];
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   // 跨 Tab 导航广播（首页冲突条、计划页空态引导）：切 Tab 由壳层做，分段由本页认领
   @StorageProp('navToCoTimeCount') @Watch('onNavRequest') navToCoTimeCount: number = 0;
 
   aboutToAppear(): void {
+    this.buildChips();
     // Tab 内容可能在广播之后才创建，此时 @Watch 不会触发，进页面时补消费一次
     this.applySegmentRequest();
     this.load(true);
+  }
+
+  /**
+   * 一次性建好筛选 Chip。ChipV2Options/ChipV2Label 都是 @ObservedV2，
+   * 之后只改 activated，不再换对象，避免整行重建。
+   */
+  private buildChips(): void {
+    const chips: ChipV2Options[] = [];
+    for (let i = 0; i < FILTERS.length; i++) {
+      const f: FilterChip = FILTERS[i];
+      chips.push(new ChipV2Options({
+        label: new ChipV2Label({
+          text: f.label,
+          fontSize: DesignTokens.chipFontSize(),
+          fontColor: DesignTokens.chipText(),
+          activatedFontColor: DesignTokens.chipTextOn()
+        }),
+        activated: this.filterKey === f.key,
+        backgroundColor: DesignTokens.chipBg(),
+        activatedBackgroundColor: DesignTokens.chipBgOn(),
+        borderRadius: DesignTokens.chipRadius(),
+        onClicked: () => {
+          this.selectFilter(f.key);
+        }
+      }));
+    }
+    this.chips = chips;
   }
 
   onRecomputeChanged(): void {
@@ -171,6 +205,10 @@ export struct CoTimeView {
       return;
     }
     this.filterKey = key;
+    // ChipV2 不自带互斥：选中态由调用方写回 activated（@Trace 会直接刷那一颗）。
+    for (let i = 0; i < this.chips.length; i++) {
+      this.chips[i].activated = FILTERS[i].key === key;
+    }
     this.load(false);
   }
 
@@ -534,19 +572,8 @@ export struct CoTimeView {
   filterRow() {
     Scroll() {
       Row({ space: DesignTokens.space2 }) {
-        ForEach(FILTERS, (f: FilterChip) => {
-          Text(f.label)
-            .fontSize(DesignTokens.fontCaption)
-            .fontWeight(this.filterKey === f.key ? FontWeight.Medium : FontWeight.Normal)
-            .fontColor(this.filterKey === f.key ? DesignTokens.heroText : DesignTokens.textSecondary)
-            .textAlign(TextAlign.Center)
-            .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-            .constraintSize({ minHeight: DesignTokens.hitMin })
-            .borderRadius(DesignTokens.radiusPill)
-            .backgroundColor(this.filterKey === f.key ? DesignTokens.primary : DesignTokens.fillWeak)
-            .onClick(() => {
-              this.selectFilter(f.key);
-            })
+        ForEach(FILTERS, (f: FilterChip, idx: number) => {
+          ChipV2({ chipV2Options: this.chips[idx] })
         }, (f: FilterChip) => f.key.toString())
       }
       .padding({ left: 2, right: 2 })

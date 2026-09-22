@@ -1,10 +1,18 @@
-import { DatePickerComponent, DatePickerComponentResult, DateMode, DisplayMode, LengthMetrics, promptAction, router } from '@kit.ArkUI';
+import { LengthMetrics, promptAction, router } from '@kit.ArkUI';
 import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
 import { ScheduleRepo } from 'data';
 import { AppConst, DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
+
+/**
+ * 锚点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
+ * 官方目录仍标 Beta，P0 不把它当唯一入口（改造文档 Task 5.2 规则）。
+ */
+const ANCHOR_RANGE_START: Date = new Date(2020, 0, 1);
+const ANCHOR_RANGE_END: Date = new Date(2030, 11, 31);
+const MS_PER_DAY: number = 86400000;
 
 /** 循环模板编辑：班次序列 + 锚点日期（owner 双侧复用）。 */
 @Entry
@@ -15,9 +23,9 @@ struct CycleEditor {
   @State seq: string[] = [];
   @State anchor: number = todayEpochDay();
   @State hasTemplate: boolean = false;
-  // 锚点日期 sheet（DatePickerComponent，API 26）：临时选择值，确认才落锚
+  // 锚点日期 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才落锚
   @State anchorSheetVisible: boolean = false;
-  @State anchorPick: number = todayEpochDay();
+  @State anchorPick: Date = new Date();
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -119,15 +127,26 @@ struct CycleEditor {
     });
   }
 
-  /** 打开锚点日期 sheet：DatePickerComponent 滚轮选值（带触感反馈），确认后落锚。 */
+  /** epochDay → 本地 Date：先按 UTC 拆出年月日，再按本地年月日建，避免时区把日期挪一天。 */
+  private dateOf(ep: number): Date {
+    const p = DateLabel.ymd(ep);
+    return new Date(p.y, p.m - 1, p.d);
+  }
+
+  /** 本地 Date → epochDay：只取用户看到的年月日，按 UTC 归一，不受夏令时影响。 */
+  private epochOf(d: Date): number {
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY);
+  }
+
+  /** 打开锚点日期 sheet：稳定 DatePicker 滚轮选值，确认才落锚。 */
   pickAnchor(): void {
-    this.anchorPick = this.anchor;
+    this.anchorPick = this.dateOf(this.anchor);
     this.anchorSheetVisible = true;
   }
 
   /** 确认锚点：把 sheet 中的临时选择值写回。 */
   confirmAnchor(): void {
-    this.anchor = this.anchorPick;
+    this.anchor = this.epochOf(this.anchorPick);
     this.anchorSheetVisible = false;
   }
 
@@ -196,8 +215,7 @@ struct CycleEditor {
           Button(this.hasTemplate ? '更新模板' : '保存并展开班表')
             .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink')).onClick(() => this.save())
 
-          Text('说明：保存后系统按循环自动展开未来 ' + AppConst.HORIZON_DAYS
-            + ' 天；临时换班请到「月历涂抹」覆盖单日。')
+          Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班到「月历涂抹」覆盖单日。')
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .padding(12).width('100%')
@@ -213,28 +231,20 @@ struct CycleEditor {
     })
   }
 
-  /** 锚点日期 sheet：DatePickerComponent（API 26）滚轮 + 确认/取消。 */
+  /** 锚点日期 sheet：稳定 DatePicker（API 8）滚轮 + 确认/取消。 */
   @Builder
   anchorSheet() {
     Column({ space: 12 }) {
       Text('选择锚点日期').fontSize(16).fontWeight(FontWeight.Medium)
-      DatePickerComponent({
-        options: {
-          displayMode: DisplayMode.DATE,
-          dateOptions: {
-            mode: DateMode.DATE,
-            start: new Date(2020, 0, 1),
-            end: new Date(2030, 11, 31),
-            selected: new Date(this.anchorPick * 86400000),
-            onChange: (r: DatePickerComponentResult) => {
-              if (r.year != null && r.month != null && r.day != null) {
-                this.anchorPick = Math.floor(Date.UTC(r.year, r.month - 1, r.day) / 86400000);
-              }
-            }
-          }
-        }
+      DatePicker({
+        start: ANCHOR_RANGE_START,
+        end: ANCHOR_RANGE_END,
+        selected: this.anchorPick
       })
-      .width('100%')
+        .width('100%')
+        .onDateChange((d: Date) => {
+          this.anchorPick = d;
+        })
       Row({ space: 10 }) {
         Button('取消').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.btn_neutral'))

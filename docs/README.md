@@ -16,7 +16,8 @@
 | 文档 | 内容 |
 |------|------|
 | [总体改造方案](./superpowers/plans/2026-09-21-overall-project-redesign.md) | 阶段 0–6 的改造任务、门禁与不可擅自更改的决策 |
-| [真机验收清单](./testing-checklist.md) | 四种证据口径（离线单测 / 离线预算 / 真机插桩 / 手工走查）与逐条验收项 |
+| [真机验收清单](./testing-checklist.md) | 五种证据口径（离线单测 / 离线预算 / 真机插桩 / 命令行出包 / 手工走查）与逐条验收项 |
+| [发布验收清单](./release/2026-api26-release-checklist.md) | 发布门禁五条的逐条判定、9 维发布矩阵、提审材料清单、**当前 4 条阻断项**（Task 6.4） |
 | [灰度与回退](./release/rollout-and-rollback.md) | 功能开关档位、启用条件、关闭影响、数据兼容性、回退操作 |
 | [云开发门禁结论](./validation/clouddev-api26-spike.md) | `CLOUD_BLOCKED`：HUKS 长期密钥链路未验证前，云端配对保持关闭 |
 | [云侧协议与运维](./cloud/pairing-protocol-v1.md) | 配对协议 v1 + [运维手册](./cloud/operations-runbook.md)（**待授权**，云侧资源尚不存在） |

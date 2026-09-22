@@ -1,7 +1,7 @@
 # 同休日 真机验收清单
 
 > 适用：HarmonyOS NEXT（API 26）**手机**（`deviceTypes` 只声明 phone，其余设备形态不在验收范围）。
-> 口径日期：2026-09-22，对应阶段 5 Task 5.4 完成后的形态：三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 扫码分享入口 + 桌面卡片 + 分层通知 + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义与 Senior Mode 低密度 + 重算的 16ms 预算门槛。
+> 口径日期：2026-09-22，对应阶段 6 Task 6.1 完成后的形态：三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 扫码分享入口 + 桌面卡片 + 分层通知 + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义与 Senior Mode 低密度 + 重算的 16ms 预算门槛 + 升级迁移与恢复收口。
 > 云端配对继续关闭：Task 0.4 的门禁结论是 `CLOUD_BLOCKED`，见 `docs/validation/clouddev-api26-spike.md`。
 > 本清单里的界面文字全部取自当前代码，勾之前请确认屏幕上确实写着这几个字；对不上就是实现偏离，不要脑补通过。
 
@@ -11,16 +11,16 @@
 
 | 口径 | 怎么跑 | 能证明 | 当前状态 |
 |---|---|---|---|
-| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排的口径正确 | **171 passed / 0 failed**（2026-09-22 复跑，含阶段 4 的卡片投影与配对链接用例） |
+| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排、迁移与恢复决策的口径正确 | **177 passed / 0 failed**（2026-09-22 复跑，含阶段 4 的卡片投影/配对链接与阶段 6.1 的恢复清理用例） |
 | 离线预算测量 | `node tools/perf/budget.mjs` | 引擎重算、快照编解码、读模型投影**在开发机上**相对 16ms 的位置（下界） | 已测：120 天稠密配对 P95 14.30ms、366 天 73.45ms（超预算）、codec ≤0.16ms |
 | 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL），**未执行 → 待设备** |
-| 手工走查 | 下面 §1–§16 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样 | **全部待设备** |
+| 手工走查 | 下面 §1–§17 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
 
 ### 0.1 插桩用例覆盖什么
 
-`entry/src/ohosTest/ets/test/Ability.test.ets`，describe 名 `ActsAbilityTest`：
+`entry/src/ohosTest/ets/test/Ability.test.ets`，describe 名 `ActsAbilityTest`（阶段 2 端到端）。阶段 6.1 另起一份 `UpgradeMigrationTest.ets`，那 6 条用例列在 §17.2：
 
 - [ ] `uiability_launch_leaves_a_valid_window_cache`：拉起真实 `EntryAbility` 后，内置班次就绪、冷启动重算把窗口缓存写成有效值（US6 / FR-011）。
 - [ ] `home_answer_points_at_a_window_the_page_offers`：首页答案指向的那段空闲，必须在共同时间页的窗口里能找到（同源，否则点进去是空的）。
@@ -34,9 +34,9 @@
 
 **造冲突的口径差异**：改造文档的场景写的是"修改课程制造冲突"。手工走查按 §7 用课程；插桩用的是"临时班次类型 + 单日覆盖"，因为课程展开依赖学期锚点与节次表，那是本机真实数据，测试不该动。两者落到引擎里是同一条判定（都是"我的忙碌"），归因文案不同（`与你的课程冲突` / `与你的班次冲突`）。
 
-**执行方式**：仓库里的 `entry/src/ohosTest` 只有 `ets/test/List.test.ets` 与 `ets/test/Ability.test.ets`，**没有 testrunner 入口文件**。本轮只做到"插桩包编译通过"，因此不要照抄 `aa test -s unittest OpenHarmonyTestRunner` 当成可用命令——设备接入后先用 DevEco 的 OhosTest 运行配置跑通，再把确认过的命令行补回本节。
+**执行方式**：仓库里的 `entry/src/ohosTest` 只有 `ets/test/List.test.ets`、`ets/test/Ability.test.ets` 与 `ets/test/UpgradeMigrationTest.ets`，**没有 testrunner 入口文件**。本轮只做到"插桩包编译通过"，因此不要照抄 `aa test -s unittest OpenHarmonyTestRunner` 当成可用命令——设备接入后先用 DevEco 的 OhosTest 运行配置跑通，再把确认过的命令行补回本节。
 
-**残留数据**：插桩跑完会清掉临时班次类型 `test-e2e-fullday`、临时单日覆盖并取消计划；但计划表没有硬删除，库里会留一条标题为 `E2E 阶段2验收计划`、状态 `CANCELLED` 的行——一眼能认出是验收数据，需要干净现场就执行一次 §1 的 `bm clean`。
+**残留数据**：插桩跑完会清掉临时班次类型 `test-e2e-fullday`、临时单日覆盖并取消计划；但计划表没有硬删除，库里会留两条状态 `CANCELLED` 的行——标题 `E2E 阶段2验收计划` 与 `恢复验收计划`，一眼能认出是验收数据，需要干净现场就执行一次 §1 的 `bm clean`。
 
 ## 工具命令（Git Bash）
 
@@ -190,7 +190,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 10.9 扫码结果码分支（需临时开 `scanPairing` + 真机）：用户主动退出扫码（Scan Kit `1000500002`）**静默返回**，不提示失败；模拟器/缺 Scan 后端（`1000500001`）→ `扫码结果需真机复验（模拟器不具备完整扫码能力）`，判为**未验证**而不是失败；其他错误 → `扫码失败，请重试或改用 6 位配对码`
 - [ ] 10.10 分享面板（需一次性凭据才能验真）：`link` 为空时不打开面板，直接 `没有可分享的配对链接：链接只承载服务端签发的一次性凭据，请把 6 位配对码告诉 TA`；凭据过期 → `配对链接已失效，请重新生成`；系统分享不可用时**退回剪贴板**而不是报错
 - [ ] 10.11 二维码只画 `crdpair://join?t=<一次性凭据>`：截图、转发、被第三方扫码器记进历史都不该泄露长期密钥或邀请历史（**配对码不进链接**）。扫码器实测：扫出来的文本必须就是这个 scheme，出现 6 位短码或任何密钥片段判失败
-- [ ] 10.12 **本轮已知偏离（不勾通过）**：二维码/分享/短码三屏都缺内容源（`pairToken` 无写入方、等待态只能由违规路径进入），因此"扫码配对"整条闭环在真机上无法端到端验证。它必须等阶段 3 门禁解除 + 服务端 `pairing-init` 上线后按 §17 的 3.5 另立清单复验
+- [ ] 10.12 **本轮已知偏离（不勾通过）**：二维码/分享/短码三屏都缺内容源（`pairToken` 无写入方、等待态只能由违规路径进入），因此"扫码配对"整条闭环在真机上无法端到端验证。它必须等阶段 3 门禁解除 + 服务端 `pairing-init` 上线后按 §18 的 3.5 另立清单复验
 
 ## 11. 桌面 2×2 服务卡片（阶段 4 Task 4.2 出口）
 
@@ -244,7 +244,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 12.11 关掉「需行动的通知」→ 12.6/12.7 那两类一条都不发；系统日历里的日程与已注册的提醒**不受影响**
 - [ ] 12.12 设备异常不阻断本地：在系统设置里手动关掉本应用通知后再保存班表/建计划/改期 → 全部照常成功，日志出现 `notice degraded` / `weekly summary skipped`（TAG `Notification`）而不是一切失败
 - [ ] 12.13 写设置失败要说人话：三档开关任一处失败（可用 `bm clean` 后并发点或制造 Preferences 异常）→ 开关回弹到真实值 + toast `设置没保存住，稍后再试一次`，**不静默假装保存成功**
-- [ ] 12.14 **本轮无法构造（不勾通过）**：`TA 的加密日程读不了了，需要重新配对才能继续同步` 这条只在"对方快照解密/解码失败"时发，而快照链路受 `CLOUD_BLOCKED` 关闭 → 等阶段 3 门禁解除后随 §17 的 3.5 复验。同时记下：`setPairState` 一变即清"已提示"标记，届时换配对状态后应能再说一次
+- [ ] 12.14 **本轮无法构造（不勾通过）**：`TA 的加密日程读不了了，需要重新配对才能继续同步` 这条只在"对方快照解密/解码失败"时发，而快照链路受 `CLOUD_BLOCKED` 关闭 → 等阶段 3 门禁解除后随 §18 的 3.5 复验。同时记下：`setPairState` 一变即清"已提示"标记，届时换配对状态后应能再说一次
 - [ ] 12.15 **已知遗留（不当通过，也不判失败）**：
   - 通知**没有点击深链**（`NotificationRequest` 未带 `wantAgent`）——点通知不会把你带到冲突那一屏，只是从通知中心消失。要补需要 bundleName 与 WantAgent 构造，本轮刻意不猜；
   - 提醒是否真的**到点响**（`reminderAgentManager` 由系统调度、省电策略影响）只能在真机等一次；周摘要那条跨越后台，重启后是否仍注册缺权威口径，实测记现象即可；
@@ -390,10 +390,59 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - 未加 `LazyForEach`/`IDataSource`、未把 RDB 读写挪线程、未优化 `replaceWindows` 的批量写入
 - 冷启动没打专用埋点（用的是 `hilog` 系统侧 + 重算的 `PERF` 行，若要求更细的分段耗时需另加 marker）
 
-## 17. 尚未纳入验收（按阶段补进本文件）
+## 17. 升级与恢复（阶段 6 Task 6.1 出口）
+
+一句话口径：**备份能带走"用户做过什么"，带不走"这台机器上真实存在什么"。** 恢复后系统日历里的日程、提醒句柄、云端"已同步"这三样必须一起作废，配对回到未配对。
+
+### 17.1 已经测过的（离线，不必在设备重复）
+
+`entry/src/test/DbMigrationTest.ets`（`node tools/test/run.mjs`，12 条）钉住的是**决策**：该发哪些语句、失败停在哪一格。
+
+- [ ] 17.1.1 新装：建表即目标结构，`upgrade()` 既不发 ALTER 也不发清理 UPDATE
+- [ ] 17.1.2 v1 存量库：恰好 5 条 `ALTER TABLE ... ADD COLUMN`，单一事务、一次 stamp
+- [ ] 17.1.3 迁移中途失败：整体回滚、版本不落库、下次启动重跑补齐（不留半迁移结构）
+- [ ] 17.1.4 恢复标记：三条 UPDATE 按"日历投影 → 提醒句柄 → 云端声明"的顺序在同一事务里执行，成功后才摘标记
+- [ ] 17.1.5 清理中途失败：标记仍是 `1`，下次启动重来——绝不出现"清了一半却标成已清"
+- [ ] 17.1.6 v1 库又是恢复来的：先补列后清理（清理写的正是这次补出来的列）
+- [ ] 17.1.7 库的结构版本比本包高：一条语句都不发，也不把别人的版本号改小
+- [ ] 17.1.8 版本值是脏数据：按"未版本化"重新 stamp，而不是抛异常把启动堵死
+
+### 17.2 真机插桩（`UpgradeMigrationTest`，6 条，编译通过 → 待执行）
+
+- [ ] 17.2.1 `opened_db_matches_the_target_schema`：真库生效后版本 == 2，重复 init 无副作用
+- [ ] 17.2.2 `restore_marker_demotes_stale_device_facts`：假造的"外来"计划行（`WRITTEN` + 事件 id + 提醒 `777` + `SYNCED`）在重开库后变成 `LOCAL_ONLY` / 空 id / `-1` / `LOCAL_ONLY`，**标题与起止一分不少**
+- [ ] 17.2.3 `pending_confirmation_is_demoted_with_the_rest`：停在"等系统日历确认"的行同样降级——换机后没人还在那台设备上等确认页
+- [ ] 17.2.4 `ordinary_launch_touches_nothing`：没有标记的普通启动一条都不改（否则每次冷启都会把用户已写进日历的计划打回"仅本地"）
+- [ ] 17.2.5 `pairing_reset_lands_on_real_preferences`：清 key / 清 pairId / 状态回 `NONE` / 对方快照游标归 0，这四步在真机 Preferences 上落得住
+- [ ] 17.2.6 `newer_schema_is_never_rewritten`：把 stamp 临时写成 `99` 再重开库，值不变；`finally` 里还原
+
+### 17.3 只能手工验的（备份 → 恢复往返）
+
+前置：`hdc shell "hilog | grep CrdRestore"` 挂着看恢复回调有没有被调到。
+
+- [ ] 17.3.1 一次正常备份：日志出现 `onBackup: sandbox default backup covers RDB and preferences`（本应用不自打包）
+- [ ] 17.3.2 换设备恢复（或本机 `bm clean` 后从备份恢复）后首启：
+  - 「我的」配对区显示**未配对**，而不是"已配对"
+  - 计划卡片的日历徽标回到「仅保存在应用内」，并给出「写入日历」重试入口
+  - 班表、课程、计划标题与时间**一条不少**
+  - 日志 `db ready schema=2/2`，且再重启一次不重复降级（标记已摘）
+- [ ] 17.3.3 从旧版本（v1 结构）打的备份恢复：首启即目标结构，用户数据仍在
+- [ ] 17.3.4 系统日历里**不该**出现来源设备那条日程的重复项：旧事件 id 已作废，点「写入日历」只会新增一条本机自己的
+- [ ] 17.3.5 恢复后那一轮重算：`last_recompute_day` 被抹成 `-1`，首启会重算一次窗口缓存（旧引擎算的缓存不沿用）
+
+### 17.4 本轮明确没做（不勾通过，也不判失败）
+
+- **`backup_config.json` 只保留 `allowToBackupRestore` 一个字段**。本机 SDK 与 DevEco 模板里只有这一个字段有落点（全量 grep 只命中模板），`includes` / `excludes` / `fullBackupOnly` 只出现在第三方博客里、且两篇互相不一致 → **缺证据**，不写没验证过的字段：字段名写错会让整个备份配置解析失败，用户看到的是"数据没备份上"。
+  本应用也不靠排除字段守秘密：长期密钥按改造文档 §0.3 必须留在 HUKS，而 HUKS 不在沙箱里、本来就不参与备份；沙箱里那份 `pair_key` 是阶段 3 门禁要拆掉的原型实现，恢复回调顺手清掉它，而不是靠排除字段把它藏起来。
+- **"PAIRED 但没有密钥"的运行时自愈没做**：现在只在 `onRestore` 里抹配对状态。若恢复框架没调到 `onRestore`（换机旁路、或回调里库打不开），界面会短暂留着一个假的"已配对"，直到快照解密失败走 §12.14 那条"需要重新配对"。补它要改 `ScheduleUseCase` / `ProfileSettingsService`，不在本任务的文件清单内。
+- **恢复回调里不重复实现清理语句**：`onRestore` 只置标记，真正的 UPDATE 由下一次 `Db.init` 消费。因此"恢复完成"与"状态作废完成"之间隔着一次启动——日志里能看到，UI 上没有进度。
+- **没测跨进程并发**：卡片进程可能先于 EntryAbility 打开库。谁先跑谁消费标记，两种顺序最终效果相同，但中途失败重试没有测过（同进程内不并发，跨进程由 RDB 串行）。
+- 迁移中断（17.1.3）只有离线证据：真机没有"让第 3 条 ALTER 失败"的开关。
+
+## 18. 尚未纳入验收（按阶段补进本文件）
 
 - 阶段 3.5：双真机配对/短码过期/二维码 token 复用/越权/解除级联删除（另立 `docs/validation/cloud-pairing-e2e.md`）。**门禁解除后要一并复验的现有条目**：§9.5（已配对文案）、§10.8–10.11（短码屏/扫码结果码/分享面板/二维码内容）、§12.14（需重新配对那条通知）
-- 阶段 6.1：升级迁移与备份恢复；6.2：灰度与回滚（含 §11.14 的 `newCard` 空转开关）；6.4：发布矩阵（`docs/release/2026-api26-release-checklist.md`）
+- 阶段 6.2：灰度与回滚（含 §11.14 的 `newCard` 空转开关）；6.4：发布矩阵（`docs/release/2026-api26-release-checklist.md`）
 
 ---
 

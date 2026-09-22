@@ -1,211 +1,382 @@
-import { router, SymbolGlyphModifier, TextModifier } from '@kit.ArkUI';
-import { HdsListItem, IconSize, PrefixIcon, SuffixArrow } from '@kit.UIDesignKit';
-import { OWNER_ME, OWNER_PARTNER } from 'domain';
+import { router } from '@kit.ArkUI';
+import { OWNER_ME, OWNER_PARTNER, todayEpochDay } from 'domain';
+import { ScheduleRepo, SettingsStore } from 'data';
 import { AppConst } from 'commons';
 import { ScheduleUseCase } from 'feature';
-import { OwnerRouteParam } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
+import { ownerFromParams, ownerParam } from '../model/RouteParams';
+import { EditorialCard } from '../component/EditorialCard';
+import { EditorialSection } from '../component/EditorialSection';
+import { DayShiftSheet } from '../component/DayShiftSheet';
+import { StatePanel, StatePanelKind } from '../component/StatePanel';
+import { WeekScheduleView } from '../component/WeekScheduleView';
 import { navToMe } from '../util/NavUtil';
 
-/** 班表页：我/伴侣双侧入口（本机代录），伴侣侧复用同一套录入链路。 */
+/** 录入链路页（仍是 @Entry router 页）：路由名即 pages 下的 url 后缀。 */
+const PAGE_SHIFT = 'pages/ScheduleEditor';
+const PAGE_CYCLE = 'pages/CycleEditor';
+const PAGE_COURSE = 'pages/CourseImport';
+const PAGE_PAINT = 'pages/PaintMonth';
+const PAGE_OCR = 'pages/OcrCourse';
+
+/** 主入口 / 辅助录入条目。sheet=true 的条目开本页的 sheet，不跳页。 */
+interface EntryItem {
+  key: string;
+  glyph: Resource;
+  title: string;
+  desc: string;
+  page: string;
+}
+
+const MAIN_ENTRIES: EntryItem[] = [
+  {
+    key: 'shift', glyph: $r('sys.symbol.gearshape'), title: '班次类型',
+    desc: '定义上下班时刻、通勤与夜班恢复', page: PAGE_SHIFT
+  },
+  {
+    key: 'cycle', glyph: $r('sys.symbol.arrow_clockwise'), title: '循环模板',
+    desc: '白白夜夜休休等序列 + 锚点，自动铺开未来 ' + AppConst.HORIZON_DAYS + ' 天', page: PAGE_CYCLE
+  },
+  {
+    key: 'course', glyph: $r('sys.symbol.square_and_pencil'), title: '课程表',
+    desc: '学生场景：粘贴课表文本或手动添加每周固定课程', page: PAGE_COURSE
+  },
+  {
+    key: 'today', glyph: $r('sys.symbol.paintbrush'), title: '临时调整',
+    desc: '给某一天单独改班或请假，优先于循环模板', page: ''
+  }
+];
+
+const AUX_ENTRIES: EntryItem[] = [
+  {
+    key: 'paint', glyph: $r('sys.symbol.brush_fill'), title: '月历涂抹',
+    desc: '整月连续涂班，适合刚拿到排班表时批量录入', page: PAGE_PAINT
+  },
+  {
+    key: 'ocr', glyph: $r('sys.symbol.camera'), title: '拍照识别课表',
+    desc: '本机 OCR 识别课表照片，识别结果可再编辑', page: PAGE_OCR
+  }
+];
+
+/**
+ * 日程页（班表中心）：从底部 Tab 降级为「我的 · 我的日程」里的栈目的地。
+ * - 默认展示"我"的日程摘要与周视图；只有本机代录了伴侣（有档案或 TA 的班表数据）才出现"TA"侧；
+ * - 四个主入口：班次类型 / 循环模板 / 课程表 / 临时调整（单日改班 sheet）；
+ * - 月历涂抹与拍照识别收进「辅助录入」，旧录入页全部保留可达；
+ * - 点周历日格 = 改这天的班，与主入口「临时调整」是同一条链路（临时调整默认今天）。
+ */
 @Component
 export struct ScheduleHub {
-  @State side: string = OWNER_ME;
-  @State partnerExists: boolean = false;
-  // 保存动作 → 重算广播 → 伴侣档案可能已增删，重新检查
+  /** 壳层 pushPathByName 带入的侧别：从「代录 TA 的班表」进入时直接落在 TA。 */
+  initialOwner: string = OWNER_ME;
+  @State private side: string = OWNER_ME;
+  /** 本机是否代录过伴侣（有档案或 owner=PARTNER 数据）；纯云端配对不算代录。 */
+  @State private partnerLocal: boolean = false;
+  @State private types: number = 0;
+  @State private tplSet: boolean = false;
+  @State private ovs: number = 0;
+  @State private courses: number = 0;
+  // 单日改班 sheet（临时调整 / 点日格）
+  @State private sheetOpen: boolean = false;
+  @State private sheetDay: number = 0;
+  // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
 
   aboutToAppear(): void {
-    this.checkPartner();
+    this.side = this.initialOwner === OWNER_PARTNER ? OWNER_PARTNER : OWNER_ME;
+    this.refresh();
   }
 
   onRecomputeChanged(): void {
-    this.checkPartner();
+    this.refresh();
   }
 
-  checkPartner(): void {
-    ScheduleUseCase.hasPartnerContext().then((ok: boolean) => {
-      this.partnerExists = ok;
+  refresh(): void {
+    this.checkPartnerLocal();
+    this.loadStatus();
+  }
+
+  /** 代录判定只看本机：伴侣档案或 TA 的任何班表数据（快照不落这两张表，故配对态不会误显）。 */
+  checkPartnerLocal(): void {
+    let hasProfile = false;
+    try {
+      hasProfile = SettingsStore.getPartnerProfile() != null;
+    } catch (e) {
+      hasProfile = false;
+    }
+    if (hasProfile) {
+      this.partnerLocal = true;
+      return;
+    }
+    ScheduleUseCase.hasPartnerScheduleData(todayEpochDay()).then((ok: boolean) => {
+      this.partnerLocal = ok;
     }).catch(() => {
-      this.partnerExists = false;
+      this.partnerLocal = false;
     });
   }
 
+  /** 当前侧录入概况：班次/循环/涂抹/课程四项，够判断"还缺哪条链路"。 */
+  async loadStatus(): Promise<void> {
+    try {
+      const types = await ScheduleRepo.listShiftTypes(this.side);
+      const tpl = await ScheduleRepo.getTemplate(this.side);
+      const today = todayEpochDay();
+      const ovs = await ScheduleRepo.listOverrides(today, today + AppConst.HORIZON_DAYS, this.side);
+      const courses = await ScheduleRepo.listCourses(this.side);
+      this.types = types.length;
+      this.tplSet = tpl != null && tpl.seq.length > 0;
+      this.ovs = ovs.length;
+      this.courses = courses.length;
+    } catch (e) {
+      this.types = 0;
+      this.tplSet = false;
+      this.ovs = 0;
+      this.courses = 0;
+    }
+  }
+
+  private sideTitle(): string {
+    return this.isPartnerSide() ? 'TA 的日程' : '我的日程';
+  }
+
+  private isPartnerSide(): boolean {
+    return this.side === OWNER_PARTNER;
+  }
+
   go(page: string): void {
-    const p: OwnerRouteParam = { owner: this.side };
-    router.pushUrl({ url: page, params: p });
+    router.pushUrl({ url: page, params: ownerParam(this.side) });
   }
 
-  sideTitle(): string {
-    return this.side === OWNER_ME ? '我的班表' : 'TA 的班表';
+  private openDay(epochDay: number): void {
+    this.sheetDay = epochDay;
+    this.sheetOpen = true;
   }
 
-  /** 前缀图标：SymbolGlyphModifier 需先实例化再设色（链式返回父类会丢失类型）。 */
-  prefixIcon(res: Resource): SymbolGlyphModifier {
-    const m = new SymbolGlyphModifier(res);
-    m.fontColor([$r('app.color.brand_pink')]);
-    return m;
+  /** 主入口「临时调整」：没有既定点选目标日时默认今天。 */
+  private openToday(): void {
+    this.openDay(todayEpochDay());
+  }
+
+  private pickSide(partner: boolean): void {
+    this.side = partner ? OWNER_PARTNER : OWNER_ME;
+    this.loadStatus();
+  }
+
+  @Builder
+  sidePill(label: string, partner: boolean) {
+    Text(label)
+      .fontSize(DesignTokens.fontCaption)
+      .fontWeight(this.isPartnerSide() === partner ? FontWeight.Medium : FontWeight.Normal)
+      .fontColor(this.isPartnerSide() === partner ? DesignTokens.heroText : DesignTokens.textSecondary)
+      .textAlign(TextAlign.Center)
+      .layoutWeight(1)
+      .padding({ top: DesignTokens.space2, bottom: DesignTokens.space2 })
+      .constraintSize({ minHeight: DesignTokens.hitMin })
+      .borderRadius(DesignTokens.radiusPill)
+      .backgroundColor(this.isPartnerSide() === partner ? DesignTokens.primary : Color.Transparent)
+      .onClick(() => this.pickSide(partner))
+  }
+
+  /** 条目行：图标 + 主副文本 + 箭头，整行 44vp 以上热区。 */
+  @Builder
+  entryRow(item: EntryItem, aux: boolean) {
+    Row({ space: DesignTokens.space3 }) {
+      SymbolGlyph(item.glyph)
+        .fontSize(20)
+        .fontColor([aux ? DesignTokens.textTertiary : DesignTokens.primary])
+      Column({ space: 2 }) {
+        Text(item.title)
+          .fontSize(DesignTokens.fontBody)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(DesignTokens.textPrimary)
+        Text(item.desc)
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textTertiary)
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(16).fontColor([DesignTokens.textDisabled])
+    }
+    .width('100%')
+    .padding(DesignTokens.space3)
+    .constraintSize({ minHeight: DesignTokens.hitMin })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      if (item.page === '') {
+        this.openToday();
+        return;
+      }
+      this.go(item.page);
+    })
+  }
+
+  @Builder
+  summaryCard() {
+    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+      Column({ space: DesignTokens.space3 }) {
+        Row() {
+          Text(this.sideTitle())
+            .fontSize(DesignTokens.fontTitle)
+            .fontFamily(DesignTokens.fontSerif)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(DesignTokens.textPrimary)
+            .letterSpacing(-0.7)
+            .layoutWeight(1)
+          if (this.isConfigured()) {
+            Text('已录入').fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.success)
+          } else {
+            Text('待录入').fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.textTertiary)
+          }
+        }
+        .width('100%')
+
+        Row() {
+          this.stat(this.types + '', '班次')
+          this.stat(this.tplSet ? '已设' : '未设', '循环模板')
+          this.stat(this.ovs + '', '临时调整')
+          this.stat(this.courses + '', '课程')
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  @Builder
+  stat(value: string, label: string) {
+    Column({ space: 2 }) {
+      Text(value)
+        .fontSize(DesignTokens.fontBody)
+        .fontFamily(DesignTokens.fontSerif)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(DesignTokens.primary)
+      Text(label)
+        .fontSize(DesignTokens.fontCaption)
+        .fontColor(DesignTokens.textTertiary)
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  private isConfigured(): boolean {
+    return this.types > 0 && this.tplSet;
   }
 
   build() {
+    // 周历网格本身超过一屏，整页必须可滚
     Scroll() {
-      Column({ space: 12 }) {
-        Text('班表').fontSize(22).fontWeight(FontWeight.Bold)
-          .margin({ top: 16, bottom: 4 })
-          .width('100%')
-
-        // 我 / 伴侣 分段切换
-        Row({ space: 0 }) {
-          Text('我的').fontSize(14).textAlign(TextAlign.Center)
-            .layoutWeight(1).padding({ top: 8, bottom: 8 })
-            .borderRadius(10)
-            .backgroundColor(this.side === OWNER_ME ? $r('app.color.brand_pink') : $r('app.color.card_bg'))
-            .fontColor(this.side === OWNER_ME ? '#FFFFFF' : $r('app.color.text_secondary'))
-            .onClick(() => this.side = OWNER_ME)
-          Text('伴侣').fontSize(14).textAlign(TextAlign.Center)
-            .layoutWeight(1).padding({ top: 8, bottom: 8 })
-            .borderRadius(10)
-            .backgroundColor(this.side === OWNER_PARTNER ? $r('app.color.brand_pink') : $r('app.color.card_bg'))
-            .fontColor(this.side === OWNER_PARTNER ? '#FFFFFF' : $r('app.color.text_secondary'))
-            .onClick(() => {
-              this.side = OWNER_PARTNER;
-              this.checkPartner();
-            })
+      Column({ space: DesignTokens.space3 }) {
+        Column({ space: 2 }) {
+          Text('日程录入')
+            .fontSize(DesignTokens.fontTitle)
+            .fontFamily(DesignTokens.fontSerif)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(DesignTokens.textPrimary)
+            .letterSpacing(-0.9)
+          Text('班次、循环、课程与临时调整都在这里；改完自动重算共同时间')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textTertiary)
         }
-        .width('100%').padding(4).borderRadius(14).backgroundColor($r('app.color.fill_soft'))
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ top: DesignTokens.space5 })
 
-        if (this.side === OWNER_PARTNER && !this.partnerExists) {
-          // 无伴侣档案：引导去「我的」页添加
-          Column({ space: 10 }) {
-            Text('还没有伴侣档案').fontSize(16).fontWeight(FontWeight.Medium)
-            Text('先到「我的」页添加伴侣（本机代录），再回到这里为 TA 录入课表/班表，即可计算你们的共同时间。')
-              .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
-            Button('去添加伴侣').backgroundColor($r('app.color.brand_pink'))
-              .onClick(() => navToMe())
-          }
-          .alignItems(HorizontalAlign.Center)
-          .width('100%').padding({ top: 32, bottom: 32, left: 24, right: 24 })
-          .borderRadius(20).backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
-        } else {
-          Text(this.side === OWNER_ME
-            ? '先录入一次，之后换班只需涂抹修改。配对后这里的数据会按隐私等级共享给对方。'
-            : '在这里代录 TA 的课表/班表（与你的数据完全隔离保存）。保存后共同时间会自动重算。')
-            .fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
-
-          Text(this.sideTitle()).fontSize(16).fontWeight(FontWeight.Medium).width('100%')
-
-          // HDS 规范列表项（@since 20）：图标 + 主副文本 + 箭头，系统按压态与无障碍
-          List({ space: 12 }) {
-            HdsListItem({
-              hdsListItemCard: {
-                prefixItem: new PrefixIcon({
-                  iconSize: IconSize.SYSTEM_ICON,
-                  iconValue: { symbol: this.prefixIcon($r('sys.symbol.arrow_clockwise')) }
-                }),
-                textItem: {
-                  primaryText: {
-                    text: '循环模板',
-                    modifier: new TextModifier().fontSize(16).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary'))
-                  },
-                  secondaryText: {
-                    text: '白白夜夜休休 / 上二休二 / 自定义循环，自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天',
-                    modifier: new TextModifier().fontSize(12).fontColor($r('app.color.text_tertiary'))
-                  }
-                },
-                suffixItem: new SuffixArrow({ color: $r('app.color.text_disabled') }),
-                cardBackgroundColor: $r('app.color.card_bg'),
-                cardBorderRadius: 20,
-                cardPrefixMargin: 0,
-                cardSuffixMargin: 0,
-                onClick: () => this.go('pages/CycleEditor')
-              }
-            })
-            HdsListItem({
-              hdsListItemCard: {
-                prefixItem: new PrefixIcon({
-                  iconSize: IconSize.SYSTEM_ICON,
-                  iconValue: { symbol: this.prefixIcon($r('sys.symbol.paintbrush')) }
-                }),
-                textItem: {
-                  primaryText: {
-                    text: '月历涂抹',
-                    modifier: new TextModifier().fontSize(16).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary'))
-                  },
-                  secondaryText: {
-                    text: '像涂色一样逐日标记班次、换班、请假，长按清除',
-                    modifier: new TextModifier().fontSize(12).fontColor($r('app.color.text_tertiary'))
-                  }
-                },
-                suffixItem: new SuffixArrow({ color: $r('app.color.text_disabled') }),
-                cardBackgroundColor: $r('app.color.card_bg'),
-                cardBorderRadius: 20,
-                cardPrefixMargin: 0,
-                cardSuffixMargin: 0,
-                onClick: () => this.go('pages/PaintMonth')
-              }
-            })
-            HdsListItem({
-              hdsListItemCard: {
-                prefixItem: new PrefixIcon({
-                  iconSize: IconSize.SYSTEM_ICON,
-                  iconValue: { symbol: this.prefixIcon($r('sys.symbol.square_and_pencil')) }
-                }),
-                textItem: {
-                  primaryText: {
-                    text: '课程表导入',
-                    modifier: new TextModifier().fontSize(16).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary'))
-                  },
-                  secondaryText: {
-                    text: '大学生场景：粘贴课表文本 / 拍照识别 / 手动添加',
-                    modifier: new TextModifier().fontSize(12).fontColor($r('app.color.text_tertiary'))
-                  }
-                },
-                suffixItem: new SuffixArrow({ color: $r('app.color.text_disabled') }),
-                cardBackgroundColor: $r('app.color.card_bg'),
-                cardBorderRadius: 20,
-                cardPrefixMargin: 0,
-                cardSuffixMargin: 0,
-                onClick: () => this.go('pages/CourseImport')
-              }
-            })
-            HdsListItem({
-              hdsListItemCard: {
-                prefixItem: new PrefixIcon({
-                  iconSize: IconSize.SYSTEM_ICON,
-                  iconValue: { symbol: this.prefixIcon($r('sys.symbol.gearshape')) }
-                }),
-                textItem: {
-                  primaryText: {
-                    text: '班次类型管理',
-                    modifier: new TextModifier().fontSize(16).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary'))
-                  },
-                  secondaryText: {
-                    text: '配置上下班时间、通勤、夜班恢复时长等参数',
-                    modifier: new TextModifier().fontSize(12).fontColor($r('app.color.text_tertiary'))
-                  }
-                },
-                suffixItem: new SuffixArrow({ color: $r('app.color.text_disabled') }),
-                cardBackgroundColor: $r('app.color.card_bg'),
-                cardBorderRadius: 20,
-                cardPrefixMargin: 0,
-                cardSuffixMargin: 0,
-                onClick: () => this.go('pages/ScheduleEditor')
-              }
-            })
+        // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
+        if (this.partnerLocal) {
+          Row({ space: DesignTokens.space1 }) {
+            this.sidePill('我的班表', false)
+            this.sidePill('TA 的班表', true)
           }
           .width('100%')
-          .scrollBar(BarState.Off)
+          .padding(4)
+          .borderRadius(DesignTokens.radiusPill)
+          .backgroundColor(DesignTokens.fillSoft)
+        }
+
+        if (this.isPartnerSide() && !this.partnerLocal) {
+          // 深链指定了 TA 侧但本机没代录过（纯配对不算代录）：给引导，不显示空的 TA 表单
+          StatePanel({
+            kind: StatePanelKind.EMPTY,
+            title: '还没有代录 TA 的日程',
+            description: '在「我的 · 伴侣与同步」添加伴侣后，就能在这台手机上为 TA 录班表，一起算共同时间。',
+            actionLabel: '去添加伴侣',
+            onAction: () => {
+              navToMe();
+            }
+          })
+        } else {
+          this.summaryCard()
+
+          EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+            Column({ space: DesignTokens.space2 }) {
+              WeekScheduleView({
+                owner: this.side,
+                onPickDay: (epochDay: number) => {
+                  this.openDay(epochDay);
+                }
+              })
+              Text('点周历里的某一天，可直接改这天的班')
+                .fontSize(DesignTokens.fontCaption)
+                .fontColor(DesignTokens.textHint)
+                .width('100%').textAlign(TextAlign.Center)
+            }
+            .width('100%')
+          }
+
+          EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+            EditorialSection({ eyebrow: 'MAIN', title: '四个主入口' }) {
+              ForEach(MAIN_ENTRIES, (item: EntryItem) => {
+                this.entryRow(item, false)
+              }, (item: EntryItem) => this.side + '-' + item.key)
+            }
+          }
+
+          EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+            EditorialSection({ eyebrow: 'EXTRA', title: '辅助录入' }) {
+              ForEach(AUX_ENTRIES, (item: EntryItem) => {
+                this.entryRow(item, true)
+              }, (item: EntryItem) => this.side + '-' + item.key)
+            }
+          }
+
+          Text('TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+            .width('100%')
+            .padding({ bottom: DesignTokens.space6 })
         }
       }
-      .padding(16)
       .width('100%')
     }
-    .width('100%').height('100%')
-    .backgroundColor($r('app.color.page_bg_warm'))
+    .width('100%')
+    .height('100%')
     .align(Alignment.Top)
+    .padding({ left: 18, right: 18 })
+    .scrollBar(BarState.Off)
+    .backgroundColor(DesignTokens.page)
+    .bindSheet($$this.sheetOpen, this.daySheet(), {
+      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+      dragBar: false,
+      showClose: false,
+      blurStyle: BlurStyle.Thick
+    })
+  }
+
+  @Builder
+  daySheet() {
+    if (this.sheetDay > 0) {
+      DayShiftSheet({
+        owner: this.side,
+        epochDay: this.sheetDay,
+        onClose: () => {
+          this.sheetOpen = false;
+        }
+      })
+    }
   }
 }

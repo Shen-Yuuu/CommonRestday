@@ -84,7 +84,7 @@ export struct WeekScheduleView {
   @Prop @Watch('reload') owner: string = 'ME';
   /** 模式由父页决定且运行期不变：日程模式读班表，共同模式读窗口读模型。 */
   mode: string = WEEK_MODE_SCHEDULE;
-  /** 共同模式：点空白处看当日明细。 */
+  /** 点列：日程模式=改这天的班（临时调整），共同模式=看当日明细。 */
   onPickDay: (epochDay: number) => void = () => {
   };
   /** 共同模式：点色块去建计划，回传的是原始窗口起止。 */
@@ -584,6 +584,7 @@ export struct WeekScheduleView {
           .height(GRID_H)
           .clip(true)
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
+          .onClick(() => this.onPickDay(ed))
         }, (ed: number) => 'c' + ed)
       }
       .layoutWeight(1)

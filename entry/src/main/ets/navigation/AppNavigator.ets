@@ -6,6 +6,7 @@ import { MeView } from '../view/MeView';
 import { ScheduleHub } from '../view/ScheduleHub';
 import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
 import { navParamsFrom, routeNameFromParams } from '../util/NavUtil';
+import { ownerFromParams } from '../model/RouteParams';
 
 const TAG = 'AppNavigator';
 
@@ -110,7 +111,12 @@ export struct AppNavigator {
         .tabBar(this.tabLabel($r('sys.symbol.heart'), '共同', NavRoutes.TAB_COMMON_TIME))
 
         TabContent() {
-          MeView()
+          // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
+          MeView({
+            onOpenRoute: (name: string, params?: Object): void => {
+              this.openRoute(name, params);
+            }
+          })
         }
         .tabBar(this.tabLabel($r('sys.symbol.person'), '我的', NavRoutes.TAB_ME))
       }
@@ -134,12 +140,13 @@ export struct AppNavigator {
   /**
    * 栈目的地映射。班表页自带标题与滚动，用系统标题栏会重复，
    * 因此隐藏标题栏，返回交给系统返回键/手势。
+   * owner 由 pushPathByName 的参数带下来：从「我的 · 代录 TA 的班表」进入时直接落在 TA 侧。
    */
   @Builder
-  destinationBuilder(name: string) {
+  destinationBuilder(name: string, param: Object) {
     if (name === NavRoutes.SCHEDULE_HUB) {
       NavDestination() {
-        ScheduleHub()
+        ScheduleHub({ initialOwner: ownerFromParams(param) })
       }
       .hideTitleBar(true)
       .backgroundColor($r('app.color.page_bg_warm'))

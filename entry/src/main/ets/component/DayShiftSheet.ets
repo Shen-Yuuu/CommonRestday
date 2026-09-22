@@ -1,0 +1,239 @@
+import { promptAction } from '@kit.ArkUI';
+import { CycleTemplate, OWNER_ME, ScheduleOverride, ShiftType, expandCycle } from 'domain';
+import { DateLabel } from 'commons';
+import { ScheduleRepo } from 'data';
+import { ScheduleUseCase } from 'feature';
+import { DesignTokens } from '../theme/DesignTokens';
+
+/** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
+const REST_ID = '';
+
+/**
+ * 单日改班半模态（「临时调整」主入口）：只写这一天的覆盖，不动循环模板。
+ * 覆盖与月历涂抹是同一条数据（覆盖优先于模板展开），清除后即回到模板推算值；
+ * 长期规律请去循环模板，这里只解决"就这天不一样"。
+ */
+@Component
+export struct DayShiftSheet {
+  @Prop @Watch('reload') owner: string = OWNER_ME;
+  /** 目标日（epochDay）：点周历日格进入时由父页给。 */
+  @Prop @Watch('reload') epochDay: number = 0;
+  onClose: () => void = () => {
+  };
+  @State private types: ShiftType[] = [];
+  /** 循环模板推算的当日班次（'' = 休）；无模板时恒为 ''。 */
+  @State private baseId: string = '';
+  @State private hasTpl: boolean = false;
+  /** 手动覆盖是否存在（null 覆盖=休息，所以必须单独记一位）。 */
+  @State private hasOv: boolean = false;
+  @State private ovId: string = REST_ID;
+  @State private loading: boolean = true;
+  @State private saving: boolean = false;
+
+  aboutToAppear(): void {
+    this.load();
+  }
+
+  reload(): void {
+    this.load();
+  }
+
+  async load(): Promise<void> {
+    this.loading = true;
+    try {
+      const types = await ScheduleRepo.listShiftTypes(this.owner);
+      const tpl: CycleTemplate | null = await ScheduleRepo.getTemplate(this.owner);
+      const ovs = await ScheduleRepo.listOverrides(this.epochDay, this.epochDay, this.owner);
+      let base = REST_ID;
+      if (tpl != null) {
+        // 传空覆盖列表取"模板原始值"，才能把手动覆盖和它区分开
+        const ex = expandCycle(tpl, [], this.epochDay, 1);
+        base = ex.length > 0 ? ex[0].typeId : REST_ID;
+      }
+      this.types = types;
+      this.hasTpl = tpl != null;
+      this.baseId = base;
+      this.hasOv = ovs.length > 0;
+      this.ovId = ovs.length > 0 && ovs[0].shiftTypeId != null ? ovs[0].shiftTypeId : REST_ID;
+    } catch (e) {
+      this.types = [];
+      this.hasOv = false;
+      this.ovId = REST_ID;
+      this.baseId = REST_ID;
+    }
+    this.loading = false;
+  }
+
+  /** 当日实际生效班次：覆盖优先，其次模板。 */
+  private effectiveId(): string {
+    return this.hasOv ? this.ovId : this.baseId;
+  }
+
+  private isSelected(id: string): boolean {
+    return this.effectiveId() === id;
+  }
+
+  private nameOf(id: string): string {
+    if (id === REST_ID) {
+      return '休息';
+    }
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i].id === id) {
+        return this.types[i].name;
+      }
+    }
+    // 覆盖指向的班次可能已在管理页删除，这里说清状态而不是留空
+    return '已删除的班次';
+  }
+
+  private colorOf(id: string): ResourceColor {
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i].id === id) {
+        return this.types[i].color;
+      }
+    }
+    return DesignTokens.fillWeak;
+  }
+
+  private currentNote(): string {
+    if (this.hasOv) {
+      return '手动覆盖 · ' + this.nameOf(this.ovId);
+    }
+    return (this.hasTpl ? '循环模板推算 · ' : '未配置模板 · ') + this.nameOf(this.baseId);
+  }
+
+  // ---------- 写入（一次一条覆盖，保存后走全局重算广播） ----------
+
+  private write(shiftId: string): void {
+    if (this.saving || (this.hasOv && this.ovId === shiftId)) {
+      return;
+    }
+    this.saving = true;
+    const ov: ScheduleOverride = { epochDay: this.epochDay, shiftTypeId: shiftId === REST_ID ? null : shiftId };
+    ScheduleRepo.upsertOverride(ov, '', this.owner).then(() => {
+      return ScheduleUseCase.onScheduleChanged();
+    }).then(() => {
+      this.hasOv = true;
+      this.ovId = shiftId;
+      this.saving = false;
+      promptAction.showToast({ message: DateLabel.md(this.epochDay) + ' 已改为' + this.nameOf(shiftId) });
+    }).catch((e: Error) => {
+      this.saving = false;
+      promptAction.showToast({ message: '保存失败：' + e.message });
+    });
+  }
+
+  private clearOverride(): void {
+    if (this.saving || !this.hasOv) {
+      return;
+    }
+    this.saving = true;
+    ScheduleRepo.deleteOverride(this.epochDay, this.owner).then(() => {
+      return ScheduleUseCase.onScheduleChanged();
+    }).then(() => {
+      this.hasOv = false;
+      this.ovId = REST_ID;
+      this.saving = false;
+      promptAction.showToast({ message: '已恢复模板排班' });
+    }).catch((e: Error) => {
+      this.saving = false;
+      promptAction.showToast({ message: '清除失败：' + e.message });
+    });
+  }
+
+  private chipBg(id: string): ResourceColor {
+    if (!this.isSelected(id)) {
+      return DesignTokens.fillWeakest;
+    }
+    // 休息没有自带色，用次级文本色即可与真班次区分
+    return id === REST_ID ? DesignTokens.textTertiary : this.colorOf(id);
+  }
+
+  private chipFg(id: string): ResourceColor {
+    return this.isSelected(id) ? DesignTokens.heroText : DesignTokens.textSecondary;
+  }
+
+  build() {
+    Column({ space: DesignTokens.space4 }) {
+      Column({ space: DesignTokens.space1 }) {
+        Text(DateLabel.mdw(this.epochDay))
+          .fontSize(DesignTokens.fontTitle)
+          .fontFamily(DesignTokens.fontSerif)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(DesignTokens.textPrimary)
+          .letterSpacing(-0.7)
+        Text('当前：' + this.currentNote())
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textSecondary)
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+
+      if (this.loading) {
+        Text('加载中…')
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textTertiary)
+          .width('100%').textAlign(TextAlign.Center)
+          .padding({ top: DesignTokens.space5, bottom: DesignTokens.space5 })
+      } else {
+        Column({ space: DesignTokens.space2 }) {
+          Text('这天算什么')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textTertiary)
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(this.types, (st: ShiftType) => {
+              Text(st.name)
+                .fontSize(DesignTokens.fontBody)
+                .fontColor(this.chipFg(st.id))
+                .textAlign(TextAlign.Center)
+                .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
+                .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
+                .constraintSize({ minHeight: DesignTokens.hitMin })
+                .borderRadius(DesignTokens.radiusPill)
+                .backgroundColor(this.chipBg(st.id))
+                .onClick(() => this.write(st.id))
+            }, (st: ShiftType) => st.id)
+            Text('休息')
+              .fontSize(DesignTokens.fontBody)
+              .fontColor(this.chipFg(REST_ID))
+              .textAlign(TextAlign.Center)
+              .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
+              .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
+              .constraintSize({ minHeight: DesignTokens.hitMin })
+              .borderRadius(DesignTokens.radiusPill)
+              .backgroundColor(this.chipBg(REST_ID))
+              .onClick(() => this.write(REST_ID))
+          }
+          .width('100%')
+
+          Text('单日覆盖优先于循环模板，且会立刻重算共同时间；长期规律请到「循环模板」里改序列。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+            .margin({ top: DesignTokens.space2 })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      Row({ space: DesignTokens.space3 }) {
+        Button(this.hasOv ? '清除覆盖' : '无覆盖可清除')
+          .layoutWeight(1)
+          .backgroundColor(DesignTokens.fillWeak)
+          .fontColor(this.hasOv ? DesignTokens.textSecondary : DesignTokens.textDisabled)
+          .enabled(this.hasOv && !this.saving)
+          .onClick(() => this.clearOverride())
+        Button('完成')
+          .layoutWeight(1)
+          .backgroundColor(DesignTokens.primary)
+          .enabled(!this.saving)
+          .onClick(() => this.onClose())
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 20, right: 20, top: DesignTokens.space4, bottom: DesignTokens.space6 })
+    .backgroundColor(DesignTokens.page)
+  }
+}

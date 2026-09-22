@@ -5,6 +5,7 @@ import { todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
 import { CalendarGateway, PairingShareGateway, ReminderGateway, ScheduleUseCase } from 'feature';
 import { Logger } from 'commons';
+import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
 
 const DOMAIN = 0x0000;
 
@@ -20,8 +21,8 @@ export default class EntryAbility extends UIAbility {
     ReminderGateway.init(this.context);
     // 扫码/系统分享同样要上下文；能力不具备时网关按"不可用"回话，页面无需判机型
     PairingShareGateway.init(this.context);
-    // 从配对链接拉起本机（module.json5 的 crdpair 方案）：只收下请求，确认由页面完成
-    this.takePairLink(want);
+    // 从配对链接或卡片点击拉起本机：只登记意图，跳转与确认都留给页面（进程外参数不可信）
+    this.takeDeepLink(want);
     // 初始化本地存储与内置数据（失败不阻塞启动，页面内各自兜底）；
     // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）
     Promise.all([
@@ -39,18 +40,23 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
   }
 
-  /** 已在前台时再次被链接拉起：同样只登记请求，确认仍在页面里由用户点。 */
+  /** 已在前台时再次被拉起：同样只登记意图，跳转与确认仍由壳层/页面在用户这边完成。 */
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    this.takePairLink(want);
+    this.takeDeepLink(want);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
   }
 
-  /** want.uri 来自进程外：交给网关按"一次性凭据"口径识别，认不出的内容无痕丢弃。 */
-  private takePairLink(want: Want): void {
+  /**
+   * want 的 uri 与 parameters 都来自进程外：
+   * uri 交给配对网关按"一次性凭据"口径识别，parameters 里的路由名过白名单后再登记，
+   * 两者认不出都无痕丢弃，绝不按外部传来的名字直接跳页。
+   */
+  private takeDeepLink(want: Want): void {
     const uri: string = want.uri ?? '';
     if (uri !== '') {
       PairingShareGateway.offerIncoming(uri);
     }
+    pushPendingRoute(routeFromWantParams(want.parameters));
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

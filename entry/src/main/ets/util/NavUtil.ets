@@ -15,6 +15,12 @@ export const COTIME_SEGMENT_KEY = 'navToCoTimeSegment';
 /** 共同时间页的两个一级分段（取值与 CoTimeView 的分段常量一致）。 */
 export const COTIME_SEG_WINDOW = 'window';
 export const COTIME_SEG_PLANS = 'plans';
+/** 待消费的深链路由名（卡片/Want 拉起）：EntryAbility 写入，壳层取走后清空。 */
+export const PENDING_ROUTE_KEY = 'crdPendingRoute';
+/** 变更广播键：同一条路由连续拉起两次也要跳第二回，所以触发靠计数而不是名字。 */
+export const PENDING_ROUTE_COUNT_KEY = 'crdPendingRouteCount';
+/** 卡片 postCardAction 的 params 在 Want 侧的封装键（部分版本把整个 params 打成 JSON 串放在这里）。 */
+const WANT_PACKED_PARAMS = 'key_params';
 
 /**
  * 深链参数的宽松视图：只用可选字段，缺键即"没有该意图"。
@@ -72,4 +78,47 @@ export function routeNameFromParams(raw: Object | undefined): string {
 export function navParamsFrom(raw: Object | undefined): NavParams {
   const out: NavParams = { owner: ownerFromParams(raw) };
   return out;
+}
+
+/**
+ * Want.parameters → 深链路由名：卡片 postCardAction 的 params 落在 Want 侧，
+ * 历史上见过两种形态（平铺在 parameters 里、或整包 JSON 串放在 key_params），两种都试一次。
+ * 认不出或不在白名单一律返回空串 = 没有跳转意图：进程外传来的名字绝不当路由用。
+ */
+export function routeFromWantParams(params: Record<string, Object> | undefined): string {
+  if (params == null) {
+    return '';
+  }
+  const flat = routeNameFromParams(params);
+  if (flat !== '') {
+    return flat;
+  }
+  const packed: Object | undefined = params[WANT_PACKED_PARAMS];
+  if (typeof packed === 'string') {
+    try {
+      return routeNameFromParams(JSON.parse(packed as string));
+    } catch (e) {
+      return '';
+    }
+  }
+  return '';
+}
+
+/** 登记一次待消费深链：先写名字再 bump 计数，壳层按计数变化取走。 */
+export function pushPendingRoute(name: string): void {
+  if (name === '') {
+    return;
+  }
+  AppStorage.setOrCreate<string>(PENDING_ROUTE_KEY, name);
+  const cur: number = AppStorage.get<number>(PENDING_ROUTE_COUNT_KEY) ?? 0;
+  AppStorage.setOrCreate<number>(PENDING_ROUTE_COUNT_KEY, cur + 1);
+}
+
+/** 取走并清空待消费深链（空串 = 没有跳转意图）。 */
+export function takePendingRoute(): string {
+  const name: string = AppStorage.get<string>(PENDING_ROUTE_KEY) ?? '';
+  if (name !== '') {
+    AppStorage.setOrCreate<string>(PENDING_ROUTE_KEY, '');
+  }
+  return name;
 }

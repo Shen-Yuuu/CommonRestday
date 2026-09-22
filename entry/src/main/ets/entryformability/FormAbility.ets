@@ -1,36 +1,35 @@
 import { FormExtensionAbility, formBindingData, formInfo, formProvider } from '@kit.FormKit';
 import { Want } from '@kit.AbilityKit';
-import { MIN_PER_DAY, Window, todayEpochDay } from 'domain';
-import { Db, ScheduleRepo, SettingsStore } from 'data';
-import { ScheduleUseCase } from 'feature';
-import { DateLabel, Logger } from 'commons';
+import { MIN_PER_DAY, OWNER_ME, todayEpochDay } from 'domain';
+import { Db, SettingsStore } from 'data';
+import {
+  CardInput, CardModel, CardRoutes, CardState, CardSummaryService, CommonTimeQueryService,
+  ScheduleOverviewQueryService, ScheduleUseCase
+} from 'feature';
+import { Logger } from 'commons';
 
 const TAG = 'FormAbility';
 
-/** 2x2 卡片数据（键与 RestCard2x2 的 LocalStorageProp 一一对应，须以 JSON 字符串下发）。 */
-interface CardData {
-  /** 标题：已配对"下次同休" / 未配对"我的下次休息"。 */
-  title: string;
-  /** 倒计时天数（窗口开始日 - 今天）；-1 表示暂无窗口（占位态）。 */
-  days: number;
-  /** 窗口开始日文案，如"9月20日 周日"。 */
-  dateText: string;
-  /** 次窗口摘要，如"15:00–22:30 · 7小时30分钟"。 */
-  windowText: string;
-  /** 是否存在伴侣档案（未配对时卡片展示引导文案）。 */
-  hasPartner: boolean;
-}
-
-/** 跨多日的旅行长窗口不作为卡片"次窗口摘要"（其信息由首页出行卡呈现）。 */
-const CARD_MAX_WINDOW_MIN: number = 36 * 60;
+/** 卡面加载态：异步回填前 CardModel.state 为空串，卡片按它渲染"正在计算"。 */
+const STATE_LOADING = '';
 
 /**
- * 2x2 服务卡片扩展（US7 / FR-013）：
- * - onAddForm：同步返回占位数据（卡片框架要求立即返回），异步读共同窗口缓存计算后 updateForm 回填；
- * - 数据来源：computed_window 缓存（ScheduleRepo.listWindows）；缓存为空时触发一次重算（毫秒级）；
- * - 卡片进程可能独立于 EntryAbility 启动，先自行初始化 Db/SettingsStore，任何失败静默降级保持占位内容；
- * - onUpdateForm：周期刷新（updateDuration=12，每 6 小时；另每日 00:10 scheduledUpdateTime）时重算倒计时，
- *   与 PRD"每 6h 定时 + 日切刷新"的电量口径一致，保证跨天后天数不过期。
+ * 2×2 服务卡片扩展（US7 / FR-013，阶段 4 Task 4.2）。
+ *
+ * - 内容口径与首页同源：结论一律走 CommonTimeQueryService 的首页读模型，再由 CardSummaryService
+ *   投影成"一大一次"两行。卡片不再自己数窗口，避免出现第二个算法。
+ * - 卡片进程可能独立于 EntryAbility 启动：本文件自行 Db/SettingsStore 初始化，
+ *   任一步失败都降级为占位文案，绝不抛给卡片框架。
+ * - 只做本机读算：不拉云快照、不推配对数据（云端不是主库，卡片更不是）。
+ * - 跨天刷新：周期更新（updateDuration）与日切后首次拉起会先本机重算一次，
+ *   让"结果是上一轮的"只在重算失败时出现，而不是每天早晨必现。
+ * - 点击带 route 参数：取值是 NavRoutes 白名单里的名字，壳层落地前还会按白名单再验一次。
+ *
+ * form_config.json 里刻意去掉了两项，别再顺手加回来：
+ * - formConfigAbility 要的是"卡片配置页"的 UIAbility（activity://...），指到 FormAbility
+ *   这个 FormExtensionAbility 上是空转，本机也没有配置页流程；
+ * - scheduledUpdateTime 与 updateDuration 不能并存：按 form_config 规则，两者同时配置时
+ *   只按定点时间刷新，那样 6 小时刷新就成了摆设，"今晚"的答案会一整天停在凌晨那一版。
  */
 export default class FormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
@@ -73,63 +72,40 @@ export default class FormAbility extends FormExtensionAbility {
   }
 
   /** 占位数据（添加瞬间展示，随后被异步回填覆盖）。 */
-  static placeholder(): CardData {
-    const d: CardData = {
-      title: '下次同休',
-      days: -1,
-      dateText: '',
-      windowText: '正在计算…',
-      hasPartner: false
+  static placeholder(): CardModel {
+    const m: CardModel = {
+      state: STATE_LOADING, question: '同休日', hero: '正在计算…', heroNote: '',
+      second: '', footer: '', route: CardRoutes.HOME
     };
-    return d;
+    return m;
   }
 
-  /** 读缓存组装卡片数据：最近一个未结束窗口 → 倒计时天数 + 次窗口摘要。 */
-  static async buildCardData(): Promise<CardData> {
-    const d = FormAbility.placeholder();
-    d.windowText = '暂无窗口';
+  /** 读失败时的兜底：说"读不到"而不是"没有共同时间"，两者对用户是完全不同的事实。 */
+  static degraded(): CardModel {
+    const m: CardModel = {
+      state: CardState.STALE, question: '共同时间', hero: '暂时读不到结果',
+      heroNote: '打开 App 会自动重新计算', second: '', footer: '', route: CardRoutes.HOME
+    };
+    return m;
+  }
+
+  /** 首页读模型 → 卡片投影；跨天先本机重算一次再投影。 */
+  static async buildCardData(): Promise<CardModel> {
+    const nowMin = todayEpochDay() * MIN_PER_DAY + FormAbility.minutesNow();
     try {
-      d.hasPartner = SettingsStore.getPartnerProfile() != null;
-    } catch (e) {
-      Logger.warn(TAG, 'partner profile read degraded: ' + (e as Error).message);
-    }
-    d.title = d.hasPartner ? '下次同休' : '我的下次休息';
-    try {
-      let wins: Window[] = await ScheduleRepo.listWindows();
-      if (wins.length === 0) {
-        // 无缓存（首次添加卡片/清数据后）：触发一次重算再读（毫秒级本地计算）
+      let home = await CommonTimeQueryService.getHomeSummary(nowMin);
+      const overview = await ScheduleOverviewQueryService.getOverview(OWNER_ME);
+      const hasSchedule = overview.hasTemplate || overview.overrides > 0 || overview.courses > 0;
+      if (hasSchedule && home.stale) {
         await ScheduleUseCase.recompute(todayEpochDay());
-        wins = await ScheduleRepo.listWindows();
+        home = await CommonTimeQueryService.getHomeSummary(nowMin);
       }
-      const today = todayEpochDay();
-      const nowMin = today * MIN_PER_DAY + FormAbility.minutesNow();
-      // 最近一个未结束窗口（listWindows 已按开始时间升序）；跳过跨多日的旅行长窗口
-      let next: Window | null = null;
-      for (let i = 0; i < wins.length; i++) {
-        if (wins[i].end > nowMin && wins[i].durationMin <= CARD_MAX_WINDOW_MIN) {
-          next = wins[i];
-          break;
-        }
-      }
-      if (next == null) {
-        for (let i = 0; i < wins.length; i++) {
-          if (wins[i].end > nowMin) {
-            next = wins[i];
-            break;
-          }
-        }
-      }
-      if (next != null) {
-        const day = Math.floor(next.start / MIN_PER_DAY);
-        d.days = day - today;
-        d.dateText = DateLabel.mdw(day);
-        d.windowText = DateLabel.hm(next.start) + '–' + DateLabel.hm(next.end)
-          + ' · ' + DateLabel.duration(next.end - next.start);
-      }
+      const input: CardInput = { home: home, hasSchedule: hasSchedule };
+      return CardSummaryService.of(input);
     } catch (e) {
-      Logger.warn(TAG, 'window cache read degraded: ' + (e as Error).message);
+      Logger.warn(TAG, 'card read degraded: ' + (e as Error).message);
+      return FormAbility.degraded();
     }
-    return d;
   }
 
   static minutesNow(): number {

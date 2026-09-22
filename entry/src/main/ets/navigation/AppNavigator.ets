@@ -6,7 +6,7 @@ import { CoTimeView } from '../view/CoTimeView';
 import { MeView } from '../view/MeView';
 import { ScheduleHub } from '../view/ScheduleHub';
 import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
-import { navParamsFrom, routeNameFromParams } from '../util/NavUtil';
+import { navParamsFrom, routeNameFromParams, takePendingRoute } from '../util/NavUtil';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { GlassStrength } from '../theme/MaterialPolicy';
@@ -54,6 +54,8 @@ export struct AppNavigator {
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
   // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页
   @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
+  // 服务卡片点击深链广播：EntryAbility 过白名单后登记，壳层取走并落地
+  @StorageProp('crdPendingRouteCount') @Watch('onPendingRoute') pendingRouteCount: number = 0;
   private pathStack: NavPathStack = new NavPathStack();
   /** 冷启动深链：aboutToAppear 时 Navigation 尚未挂载，先记下，挂载后再消费。 */
   private pendingRoute: string = '';
@@ -78,16 +80,26 @@ export struct AppNavigator {
     this.goTab(NavRoutes.TAB_ME);
   }
 
+  /** 应用已在运行时点卡片：登记的深链取走即落地，名字已在 EntryAbility 过白名单。 */
+  onPendingRoute(): void {
+    const name = takePendingRoute();
+    if (name !== '') {
+      this.openRoute(name, undefined);
+    }
+  }
+
   onNavToCoTime(): void {
     this.goTab(NavRoutes.TAB_COMMON_TIME);
   }
 
+  /** 挂载完成后消费冷启动深链：页内参数优先，卡片登记的那条一并清空，一次拉起只跳一次。 */
   private consumePending(): void {
-    const name = this.pendingRoute;
+    const stored = takePendingRoute();
+    const name = this.pendingRoute !== '' ? this.pendingRoute : stored;
+    this.pendingRoute = '';
     if (name === '') {
       return;
     }
-    this.pendingRoute = '';
     this.openRoute(name, this.pendingRaw);
   }
 

@@ -5,6 +5,7 @@ import rhythmRulesTest from './RhythmRulesTest';
 import dbMigrationTest from './DbMigrationTest';
 import scheduleCommandServiceTest from './ScheduleCommandServiceTest';
 import planUseCaseTest from './PlanUseCaseTest';
+import cardSummaryServiceTest from './CardSummaryServiceTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -14,4 +15,5 @@ export default function testsuite() {
   dbMigrationTest();
   scheduleCommandServiceTest();
   planUseCaseTest();
+  cardSummaryServiceTest();
 }

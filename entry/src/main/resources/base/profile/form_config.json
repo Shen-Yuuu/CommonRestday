@@ -3,19 +3,17 @@
     {
       "name": "RestCard2x2",
       "displayName": "同休日",
-      "description": "距下次共同休息的倒计时与次窗口摘要",
+      "description": "今晚与下个完整同休日的结论摘要",
       "src": "./ets/widget/RestCard2x2.ets",
       "uiSyntax": "arkts",
       "isDynamic": true,
       "isDefault": false,
       "updateEnabled": true,
-      "scheduledUpdateTime": "00:10",
       "updateDuration": 12,
       "supportDimensions": [
         "2*2"
       ],
-      "defaultDimension": "2*2",
-      "formConfigAbility": "ability://FormAbility"
+      "defaultDimension": "2*2"
     }
   ]
 }

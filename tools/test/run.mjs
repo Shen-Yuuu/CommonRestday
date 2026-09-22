@@ -257,6 +257,7 @@ function prepare() {
     + "export * from './feature/main/ets/model/PlanFlow';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
+    + "export * from './feature/main/ets/usecase/CardSummaryService';\n"
     + "export * from './feature/main/ets/usecase/ScheduleUseCase';\n"
     + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n"
     + "export * from './feature/main/ets/usecase/PlanUseCase';\n");

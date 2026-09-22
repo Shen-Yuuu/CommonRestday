@@ -33,6 +33,9 @@ export {
   CommonTimeQueryService, DayBusy, HomeInput, PageInput, DetailInput
 } from './src/main/ets/usecase/CommonTimeQueryService';
 export {
+  CardSummaryService, CardState, CardModel, CardInput, CardRoutes
+} from './src/main/ets/usecase/CardSummaryService';
+export {
   ExperienceMode, AnswerState, AnswerKind, AnswerAction, WindowFilterKey,
   WindowSummary, QuickAnswer, TodaySummary, HomeSummary, WindowFilter,
   PlanSummary, PlanConflictView, CommonTimePageData, WindowDetailData, WindowChannel

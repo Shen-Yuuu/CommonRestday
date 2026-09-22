@@ -4,6 +4,9 @@ export {
 } from './src/main/ets/usecase/ScheduleUseCase';
 export { PlanUseCase, CreatePlanResult } from './src/main/ets/usecase/PlanUseCase';
 export {
+  CommonTimeQueryService, DayBusy, HomeInput, PageInput, DetailInput
+} from './src/main/ets/usecase/CommonTimeQueryService';
+export {
   ExperienceMode, AnswerState, AnswerKind, AnswerAction, WindowFilterKey,
   WindowSummary, QuickAnswer, TodaySummary, HomeSummary, WindowFilter,
   PlanSummary, CommonTimePageData, WindowDetailData, WindowChannel

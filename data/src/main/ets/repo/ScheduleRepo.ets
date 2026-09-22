@@ -394,6 +394,20 @@ export class ScheduleRepo {
     return out;
   }
 
+  /**
+   * 窗口缓存的生成时刻（ms）；缓存为空返回 0。
+   * MAX() 在空表上仍返回一行 NULL，必须先判空列再取值。
+   */
+  static async windowCacheComputedAt(): Promise<number> {
+    const rs = await Db.get().querySql('SELECT MAX(computed_at) AS computed_at FROM computed_window');
+    let v = 0;
+    if (rs.goToNextRow() && !rs.isColumnNull(0)) {
+      v = rs.getLong(0);
+    }
+    rs.close();
+    return v;
+  }
+
   // ---------- 同步元数据 ----------
 
   static async setMeta(k: string, v: string): Promise<void> {

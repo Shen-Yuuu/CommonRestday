@@ -1,4 +1,4 @@
-import { promptAction, Chip, ChipSize } from '@kit.ArkUI';
+import { promptAction, Chip } from '@kit.ArkUI';
 import { MIN_PER_DAY } from 'domain';
 import { DateLabel } from 'commons';
 import {
@@ -9,6 +9,7 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { GlassStrength } from '../theme/MaterialPolicy';
 import { GlassSurface } from './GlassSurface';
 import { PLAN_KINDS, PlanKindOption } from '../util/PlanKindUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const STEP_MIN = 15;
 
@@ -46,6 +47,8 @@ export struct WindowDetailSheet {
   /** 高级选项：跳过系统日历确认页直接 addEvent，默认关（写别人的日历该由本人点保存）。 */
   @State directWrite: boolean = false;
   private titleTouched: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
     this.resetDraft();
@@ -197,6 +200,7 @@ export struct WindowDetailSheet {
         Column()
           .width(36).height(4).borderRadius(2).backgroundColor($r('app.color.sheet_handle'))
           .margin({ top: 10, bottom: 12 })
+          .accessibilityLevel('no')
       }
 
       Scroll() {
@@ -214,11 +218,13 @@ export struct WindowDetailSheet {
       // ⑥ 底部操作（胶囊双按钮）
       Row({ space: 10 }) {
         Button(withHandle ? '取消' : '收起')
-          .layoutWeight(1).height(44).borderRadius(22)
+          .layoutWeight(1).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .borderRadius(22)
           .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
           .onClick(() => this.onClose())
         Button(this.saving ? '创建中…' : '创建计划')
-          .layoutWeight(1).height(44).borderRadius(22)
+          .layoutWeight(1).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .borderRadius(22)
           .backgroundColor($r('app.color.brand_pink'))
           .enabled(!this.saving)
           .onClick(() => this.submitPlan())
@@ -254,6 +260,12 @@ export struct WindowDetailSheet {
       colors: [[$r('app.color.sunset_from'), 0], [$r('app.color.sunset_to'), 1]]
     })
     .alignItems(HorizontalAlign.Center)
+    // 日期 / 起止 / 标签三行说的是同一个窗口，合成一句读，避免读屏逐行断句
+    .accessibilityGroup(true)
+    .accessibilityText(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)) + ' '
+      + DateLabel.endLabel(this.winStart, this.winEnd) + '，共 '
+      + DateLabel.duration(this.winEnd - this.winStart)
+      + (this.winTags === '' ? '' : '，' + this.winTags.split('|').join('、')))
   }
 
   /** ② 时间轴：窗口底条 + 计划区间高亮预览。 */
@@ -273,7 +285,10 @@ export struct WindowDetailSheet {
             .backgroundColor($r('app.color.brand_pink'))
             .margin({ left: this.pctOfWindow(this.planStart - this.winStart) })
         }.width('100%')
-      }.width('100%')
+      }
+      .width('100%')
+      // 纯预览条：读屏念下面的起止文字就够了，色块本身没有可朗读内容
+      .accessibilityLevel('no')
 
       Row() {
         Text(DateLabel.hm(this.winStart)).fontSize(10).fontColor($r('app.color.text_hint'))
@@ -283,7 +298,12 @@ export struct WindowDetailSheet {
           .fontSize(10).fontColor($r('app.color.brand_pink'))
         Blank()
         Text(DateLabel.hm(this.winEnd)).fontSize(10).fontColor($r('app.color.text_hint'))
-      }.width('100%')
+      }
+      .width('100%')
+      .accessibilityGroup(true)
+      .accessibilityText('窗口 ' + DateLabel.hm(this.winStart) + ' 到 ' + DateLabel.hm(this.winEnd)
+        + '，计划 ' + DateLabel.endLabel(this.planStart, this.planEnd)
+        + '，共 ' + DateLabel.duration(this.planEnd - this.planStart))
     }
     .width('100%')
     .padding({ left: 4, right: 4 })
@@ -305,10 +325,17 @@ export struct WindowDetailSheet {
                 backgroundColor: $r('app.color.fill_weak'),
                 activatedBackgroundColor: $r('app.color.brand_pink'),
                 allowClose: false,
-                size: ChipSize.SMALL,
                 onClicked: () => this.pickKind(idx)
               })
-            }.margin({ right: 8, bottom: 8 })
+            }
+            .margin({ right: 8, bottom: 8 })
+            // Chip 是自定义组件，吃不到通用无障碍属性，朗读名挂在外层容器上。
+            // 选中态原来只有底色一种表达，色觉与读屏用户都分辨不出选了哪个类型。
+            // 同时去掉 size: ChipSize.SMALL：小档把高度压死，44vp 热区和长辈模式的放大都没了空间。
+            // （SDK 只在 ChipOptions.size 传具体宽高时写明"适老化尺寸调节不生效"，
+            //  api/@ohos.arkui.advanced.Chip.d.ets:939；SMALL 档是否同样禁用无证据，真机实测再判。）
+            .accessibilityGroup(true)
+            .accessibilityText(k.label + (this.kindIdx === idx ? '，当前类型' : '，点按选为计划类型'))
           }, (k: PlanKindOption) => k.key)
         }.width('100%')
       }
@@ -319,7 +346,9 @@ export struct WindowDetailSheet {
       Column({ space: 8 }) {
         Text('标题').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
         TextInput({ text: this.title, placeholder: '给这个计划起个名字' })
-          .height(40).width('100%')
+          // 固定 height 会在大字体下把文字切掉，改成高度下限让输入框跟着文字长
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) }).width('100%')
+          .accessibilityText('计划标题')
           .onChange((v: string) => this.onTitleChange(v))
       }
       .width('100%')
@@ -331,30 +360,42 @@ export struct WindowDetailSheet {
           .fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
 
         Row({ space: 10 }) {
-          Text('开始').fontSize(13).width(36)
+          Text('开始').fontSize(13).constraintSize({ minWidth: 36 })
           Text(DateLabel.hm(this.planStart))
-            .fontSize(15).fontWeight(FontWeight.Medium).width(56).textAlign(TextAlign.Center)
-          Button('−' + STEP_MIN).height(32).fontSize(12)
+            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 56 })
+            .textAlign(TextAlign.Center)
+            .accessibilityText('计划开始 ' + DateLabel.hm(this.planStart))
+          Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftStartEarlier())
+            .accessibilityText('开始时间提前 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftStart(-STEP_MIN))
-          Button('+' + STEP_MIN).height(32).fontSize(12)
+          Button('+' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftStartLater())
+            .accessibilityText('开始时间推迟 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftStart(STEP_MIN))
         }.width('100%')
 
         Row({ space: 10 }) {
-          Text('结束').fontSize(13).width(36)
+          Text('结束').fontSize(13).constraintSize({ minWidth: 36 })
           Text(DateLabel.hm(this.planEnd))
-            .fontSize(15).fontWeight(FontWeight.Medium).width(56).textAlign(TextAlign.Center)
-          Button('−' + STEP_MIN).height(32).fontSize(12)
+            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 56 })
+            .textAlign(TextAlign.Center)
+            .accessibilityText('计划结束 ' + DateLabel.hm(this.planEnd))
+          Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftEndEarlier())
+            .accessibilityText('结束时间提前 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftEnd(-STEP_MIN))
-          Button('+' + STEP_MIN).height(32).fontSize(12)
+          Button('+' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftEndLater())
+            .accessibilityText('结束时间推迟 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftEnd(STEP_MIN))
         }.width('100%')
       }
@@ -375,6 +416,9 @@ export struct WindowDetailSheet {
 
         Toggle({ type: ToggleType.Switch, isOn: this.directWrite })
           .selectedColor($r('app.color.brand_pink'))
+          // 开关自己没有任何文字标签，读屏只会念"开/关"，说不出关的是哪件事
+          .accessibilityText('直接写入系统日历')
+          .accessibilityDescription('打开后不再弹系统日程确认页，由本应用直接保存')
           .onChange((on: boolean) => {
             this.directWrite = on;
           })

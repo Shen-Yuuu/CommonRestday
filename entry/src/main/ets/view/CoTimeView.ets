@@ -5,12 +5,13 @@ import {
   WindowFilter, WindowFilterKey, WindowSummary
 } from 'feature';
 import {
-  CapsuleSegmentButtonV2, ChipV2, ChipV2Label, ChipV2Options, ColorMetrics, LengthMetrics,
-  SegmentButtonV2Items
+  CapsuleSegmentButtonV2, ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options,
+  ColorMetrics, LengthMetrics, SegmentButtonV2Items
 } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
@@ -66,6 +67,10 @@ export struct CoTimeView {
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
   @State private segment: string = COTIME_SEG_WINDOW;
+  /**
+   * 窗口段内的视图：默认列表。长辈模式要的低密度入口就是这个默认值——
+   * 周历网格要逐格摸，列表一行一段，读屏和手指都好落点（docs/06 §D）。
+   */
   @State private viewMode: string = VIEW_LIST;
   @State private filterKey: WindowFilterKey = WindowFilterKey.ALL;
   @State private refreshing: boolean = false;
@@ -93,6 +98,8 @@ export struct CoTimeView {
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   // 跨 Tab 导航广播（首页冲突条、计划页空态引导）：切 Tab 由壳层做，分段由本页认领
   @StorageProp('navToCoTimeCount') @Watch('onNavRequest') navToCoTimeCount: number = 0;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
     this.buildChips();
@@ -120,6 +127,9 @@ export struct CoTimeView {
         backgroundColor: DesignTokens.chipBg(),
         activatedBackgroundColor: DesignTokens.chipBgOn(),
         borderRadius: DesignTokens.chipRadius(),
+        // 选中档只有底色一种表达；声明为"已选中"语义，读屏才知道这颗是当前筛选
+        accessibilitySelectedType: ChipV2AccessibilitySelectedType.SELECTED,
+        accessibilityDescription: '点按按该条件筛选共同时间',
         onClicked: () => {
           this.selectFilter(f.key);
         }
@@ -559,9 +569,12 @@ export struct CoTimeView {
       .fontColor(this.viewMode === mode ? DesignTokens.heroText : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
       .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-      .constraintSize({ minHeight: DesignTokens.hitMin })
+      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .borderRadius(DesignTokens.radiusPill)
       .backgroundColor(this.viewMode === mode ? DesignTokens.primary : DesignTokens.fillWeak)
+      // 纯文字当按钮：焦点、朗读名都得补上，选中档前缀给读屏，页面上仍只靠底色区分
+      .focusable(true)
+      .accessibilityText((this.viewMode === mode ? '当前为' : '切换到') + label + '视图')
       .onClick(() => {
         this.viewMode = mode;
       })
@@ -716,6 +729,9 @@ export struct CoTimeView {
       }
     }
     .width('100%')
+    // 占位灰条没有可朗读内容，只留一句"在读"，否则读屏用户面对一片静默
+    .accessibilityGroup(true)
+    .accessibilityText('正在读取共同时间')
   }
 
   /** 窗口详情半模态内容（时间轴 + 类型 + 起止调节 + 创建计划）。 */

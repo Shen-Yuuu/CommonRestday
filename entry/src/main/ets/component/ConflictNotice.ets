@@ -1,4 +1,5 @@
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /**
  * 计划冲突提示条：只在真有冲突时出现，点进去到共同时间的计划分段处理。
@@ -12,6 +13,8 @@ export struct ConflictNotice {
   @Prop reason: string = '';
   onTap: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State private isPressed: boolean = false;
   @State private hasFocus: boolean = false;
 
@@ -36,6 +39,7 @@ export struct ConflictNotice {
         .height(DesignTokens.space5)
         .borderRadius(DesignTokens.radiusCardCut)
         .backgroundColor(DesignTokens.card)
+        .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(this.conflictCount + ' 个计划的时间需要处理')
           .fontSize(DesignTokens.fontCaption)
@@ -51,11 +55,14 @@ export struct ConflictNotice {
       Text('›')
         .fontSize(DesignTokens.fontBody)
         .fontColor(DesignTokens.textTertiary)
+        .accessibilityLevel('no')
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
+    // 整条是一个可点单元：条数、归因、去哪里一次读完，符号与箭头不单独朗读
+    .accessibilityGroup(true)
     .padding(DesignTokens.space3)
-    .constraintSize({ minHeight: DesignTokens.hitMin })
+    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .backgroundColor(DesignTokens.dangerBg)
     .borderRadius(DesignTokens.cardRadius(false))
     .border({

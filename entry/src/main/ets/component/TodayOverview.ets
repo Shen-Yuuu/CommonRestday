@@ -1,4 +1,5 @@
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from './EditorialCard';
 
 /**
@@ -16,6 +17,10 @@ export struct TodayOverview {
   @Prop weekdayText: string = '';
   onEditSchedule: () => void = () => {};
   onAddPlan: () => void = () => {};
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
+  /** 两颗胶囊共用一个焦点位：-1 表示没有键盘焦点，0/1 是画焦点环的那一颗。 */
+  @State private focusedPill: number = -1;
 
   @Builder
   busyLine(who: string, text: string, dot: Resource) {
@@ -24,6 +29,8 @@ export struct TodayOverview {
         .width(DesignTokens.space2)
         .height(DesignTokens.space2)
         .fill(dot)
+        // 我 / TA 已经在紧邻的文字里，圆点只是颜色分区，不再朗读一遍
+        .accessibilityLevel('no')
       Text(who)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textSecondary)
@@ -77,35 +84,45 @@ export struct TodayOverview {
         .margin({ top: DesignTokens.space3 })
 
       Row({ space: DesignTokens.space2 }) {
-        Text('改班表 / 加课程')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textSecondary)
-          .fontWeight(600)
-          .textAlign(TextAlign.Center)
-          .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-          .constraintSize({ minHeight: DesignTokens.hitMin })
-          .borderRadius(DesignTokens.radiusCardCut)
-          .backgroundColor(DesignTokens.fillWeak)
-          .layoutWeight(1)
-          .onClick(() => {
-            this.onEditSchedule();
-          })
-        Text('＋ 计划')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.heroText)
-          .fontWeight(600)
-          .textAlign(TextAlign.Center)
-          .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-          .constraintSize({ minHeight: DesignTokens.hitMin })
-          .borderRadius(DesignTokens.radiusCardCut)
-          .backgroundColor(DesignTokens.primary)
-          .layoutWeight(1)
-          .onClick(() => {
-            this.onAddPlan();
-          })
+        this.actionPill(0, '改班表 / 加课程', '改班表或加课程', false, () => {
+          this.onEditSchedule();
+        })
+        this.actionPill(1, '＋ 计划', '添加计划', true, () => {
+          this.onAddPlan();
+        })
       }
       .width('100%')
       .margin({ top: DesignTokens.space3 })
     }
+  }
+
+  /** 胶囊动作：文字当按钮用时要自己补齐热区、焦点环与可朗读名（原生 Text 不带这些）。 */
+  @Builder
+  actionPill(idx: number, label: string, readAs: string, primary: boolean, onTap: () => void) {
+    Text(label)
+      .fontSize(DesignTokens.fontCaption)
+      .fontColor(primary ? DesignTokens.heroText : DesignTokens.textSecondary)
+      .fontWeight(600)
+      .textAlign(TextAlign.Center)
+      .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
+      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+      .borderRadius(DesignTokens.radiusCardCut)
+      .backgroundColor(primary ? DesignTokens.primary : DesignTokens.fillWeak)
+      // 焦点环常驻 2vp 透明边，聚焦时不跳动（与首页答案行同一口径）。
+      .border({
+        width: 2,
+        color: this.focusedPill === idx ? DesignTokens.focusRing : Color.Transparent,
+        radius: DesignTokens.radiusCardCut
+      })
+      .layoutWeight(1)
+      .focusable(true)
+      .accessibilityText(readAs)
+      .onFocus(() => {
+        this.focusedPill = idx;
+      })
+      .onBlur(() => {
+        this.focusedPill = -1;
+      })
+      .onClick(onTap)
   }
 }

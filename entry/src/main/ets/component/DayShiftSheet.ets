@@ -5,6 +5,7 @@ import {
   DayShiftState, ScheduleCommandResult, ScheduleCommandService, ScheduleOverviewQueryService
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
 const REST_ID = '';
@@ -30,6 +31,8 @@ export struct DayShiftSheet {
   @State private ovId: string = REST_ID;
   @State private loading: boolean = true;
   @State private saving: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
     this.load();
@@ -152,6 +155,21 @@ export struct DayShiftSheet {
     return this.isSelected(id) ? DesignTokens.heroText : DesignTokens.textSecondary;
   }
 
+  /**
+   * 选中态不能只靠底色（docs/06 §3.10 B）：文字前加记号给眼睛，
+   * 朗读文本再说明当前生效与点按后果，色觉与读屏用户拿到的是同一句事实。
+   */
+  private chipLabel(id: string): string {
+    return (this.isSelected(id) ? '✓ ' : '') + this.nameOf(id);
+  }
+
+  private chipRead(id: string): string {
+    if (this.isSelected(id)) {
+      return this.nameOf(id) + '，当前生效';
+    }
+    return id === REST_ID ? '休息，点按把这天设为休息' : this.nameOf(id) + '，点按把这天改为该班次';
+  }
+
   build() {
     Column({ space: DesignTokens.space4 }) {
       Column({ space: DesignTokens.space1 }) {
@@ -167,6 +185,9 @@ export struct DayShiftSheet {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
+      // 日期和"当前是什么班"是一句话，分开念会听不出后半句在说哪天
+      .accessibilityGroup(true)
+      .accessibilityText(DateLabel.mdw(this.epochDay) + '，' + this.currentNote())
 
       if (this.loading) {
         Text('加载中…')
@@ -181,26 +202,30 @@ export struct DayShiftSheet {
             .fontColor(DesignTokens.textTertiary)
           Flex({ wrap: FlexWrap.Wrap }) {
             ForEach(this.types, (st: ShiftType) => {
-              Text(st.name)
+              Text(this.chipLabel(st.id))
                 .fontSize(DesignTokens.fontBody)
                 .fontColor(this.chipFg(st.id))
                 .textAlign(TextAlign.Center)
                 .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
                 .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-                .constraintSize({ minHeight: DesignTokens.hitMin })
+                .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
                 .borderRadius(DesignTokens.radiusPill)
                 .backgroundColor(this.chipBg(st.id))
+                .focusable(true)
+                .accessibilityText(this.chipRead(st.id))
                 .onClick(() => this.write(st.id))
             }, (st: ShiftType) => st.id)
-            Text('休息')
+            Text(this.chipLabel(REST_ID))
               .fontSize(DesignTokens.fontBody)
               .fontColor(this.chipFg(REST_ID))
               .textAlign(TextAlign.Center)
               .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
               .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-              .constraintSize({ minHeight: DesignTokens.hitMin })
+              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
               .borderRadius(DesignTokens.radiusPill)
               .backgroundColor(this.chipBg(REST_ID))
+              .focusable(true)
+              .accessibilityText(this.chipRead(REST_ID))
               .onClick(() => this.write(REST_ID))
           }
           .width('100%')
@@ -217,12 +242,14 @@ export struct DayShiftSheet {
       Row({ space: DesignTokens.space3 }) {
         Button(this.hasOv ? '清除覆盖' : '无覆盖可清除')
           .layoutWeight(1)
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .backgroundColor(DesignTokens.fillWeak)
           .fontColor(this.hasOv ? DesignTokens.textSecondary : DesignTokens.textDisabled)
           .enabled(this.hasOv && !this.saving)
           .onClick(() => this.clearOverride())
         Button('完成')
           .layoutWeight(1)
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .backgroundColor(DesignTokens.primary)
           .enabled(!this.saving)
           .onClick(() => this.onClose())

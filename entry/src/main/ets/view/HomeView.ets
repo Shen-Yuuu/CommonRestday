@@ -364,25 +364,31 @@ export struct HomeView {
 
   @Builder
   skeleton() {
-    EditorialCard({ hero: true, cutTopLeft: true, tappable: false }) {
-      Column({ space: DesignTokens.space3 }) {
-        this.skeletonBar('52%', DesignTokens.space3, DesignTokens.heroGlow)
-        this.skeletonBar('70%', DesignTokens.space6, DesignTokens.heroGlow)
-        this.skeletonBar('44%', DesignTokens.space3, DesignTokens.heroGlow)
+    Column({ space: DesignTokens.space3 }) {
+      EditorialCard({ hero: true, cutTopLeft: true, tappable: false }) {
+        Column({ space: DesignTokens.space3 }) {
+          this.skeletonBar('52%', DesignTokens.space3, DesignTokens.heroGlow)
+          this.skeletonBar('70%', DesignTokens.space6, DesignTokens.heroGlow)
+          this.skeletonBar('44%', DesignTokens.space3, DesignTokens.heroGlow)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
       }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-    }
-    EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-      Column({ space: DesignTokens.space4 }) {
-        this.skeletonBar('38%', DesignTokens.space4, DesignTokens.fillWeak)
-        this.skeletonBar('86%', DesignTokens.space3, DesignTokens.fillWeak)
-        this.skeletonBar('72%', DesignTokens.space3, DesignTokens.fillWeak)
-        this.skeletonBar('60%', DesignTokens.space3, DesignTokens.fillWeak)
+      EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+        Column({ space: DesignTokens.space4 }) {
+          this.skeletonBar('38%', DesignTokens.space4, DesignTokens.fillWeak)
+          this.skeletonBar('86%', DesignTokens.space3, DesignTokens.fillWeak)
+          this.skeletonBar('72%', DesignTokens.space3, DesignTokens.fillWeak)
+          this.skeletonBar('60%', DesignTokens.space3, DesignTokens.fillWeak)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
       }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
     }
+    // 骨架条本身没有文字，读屏用户只会听到一连串空白；合成一句进度说明
+    .width('100%')
+    .accessibilityGroup(true)
+    .accessibilityText('正在读取本机日程')
   }
 
   // ---------- 页头 ----------
@@ -403,6 +409,9 @@ export struct HomeView {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
+      // 问候语单独念没信息量，和"和谁的时间"合成一句
+      .accessibilityGroup(true)
+      .accessibilityText(this.greeting() + '，' + this.subtitle())
 
       // 日期印章：编辑感的页眉落款，轻微旋转像盖上去的
       Column() {
@@ -424,6 +433,9 @@ export struct HomeView {
       .border({ width: 1, color: DesignTokens.primaryBorder, radius: DesignTokens.radiusPill })
       .rotate({ angle: 8 })
       .margin({ left: DesignTokens.space3 })
+      // 「22 / 9月」两行分开读会变成一个孤零零的数字，这里念成完整日期
+      .accessibilityGroup(true)
+      .accessibilityText('今天 ' + DateLabel.mdw(todayEpochDay()))
     }
     .width('100%')
     .alignItems(VerticalAlign.Top)

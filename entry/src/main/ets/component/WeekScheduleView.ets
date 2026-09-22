@@ -6,6 +6,7 @@ import {
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { tagColor } from '../util/WindowTagUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 周视图模式：某一方的日程，或双方的共同空闲。 */
 export const WEEK_MODE_SCHEDULE = 'SCHEDULE';
@@ -82,6 +83,8 @@ export struct WeekScheduleView {
   @State hourH: number = 24;
   @State horizonDays: number = 0;
   @StorageProp('recomputeCount') @Watch('reload') recomputeCount: number = 0;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
     this.loadWeek();
@@ -318,6 +321,42 @@ export struct WeekScheduleView {
     return DateLabel.hm(b.start) + '\n' + short;
   }
 
+  /**
+   * 空闲块的朗读文本。矮块上面根本没有文字（blockLabel 返回空串），
+   * 但色块仍然是可点的：读屏必须念出「哪天、几点到几点、多久」，否则点下去的人完全不知道点了什么。
+   * 时长分级只靠颜色区分（docs/06 §3.10 B：状态不得只靠颜色），这里把分钟数直接读出来。
+   */
+  private freeBlockRead(b: FreeBlock, epochDay: number): string {
+    return DateLabel.weekday(epochDay) + ' ' + DateLabel.hm(b.start) + ' 到 ' + DateLabel.hm(b.end)
+      + '，' + DateLabel.duration(b.end - b.start) + '共同空闲，点击去计划';
+  }
+
+  /** 日程块的朗读文本：名称 + 当日内的起止（跨天班次已裁剪到本列）。 */
+  private scheduleBlockRead(item: WeekBlock, epochDay: number): string {
+    return DateLabel.weekday(epochDay) + ' ' + item.name + ' ' + DateLabel.hm(item.start) + ' 到 '
+      + DateLabel.hm(item.end);
+  }
+
+  /** 表头一列的朗读文本：日期 + 今天标记 + 当天空闲总量 + 旅行标点（点只靠颜色，读屏要说法）。 */
+  private headRead(epochDay: number): string {
+    let s = DateLabel.mdw(epochDay);
+    if (epochDay === todayEpochDay()) {
+      s += '，今天';
+    }
+    if (this.isCommon()) {
+      if (!this.isKnown(epochDay)) {
+        // 视界外的列画的是「·」，读屏不能把它念成"空闲 —"，要说明是没算
+        s += '，超出计算视界';
+      } else {
+        s += '，当天共同空闲 ' + this.dayTotalLabel(epochDay);
+        if (this.hasTrip(epochDay)) {
+          s += '，有可过夜窗口';
+        }
+      }
+    }
+    return s;
+  }
+
   blockY(startMin: number, epochDay: number): number {
     const axisMin = this.isCommon() ? this.axisStart * 60 : 0;
     const hourH = this.isCommon() ? this.hourH : HOUR_H;
@@ -384,19 +423,30 @@ export struct WeekScheduleView {
       SymbolGlyph($r('sys.symbol.chevron_left'))
         .fontSize(18).fontColor([$r('app.color.text_secondary')])
         .padding({ left: 6, right: 6 })
+        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+        .focusable(true)
+        .accessibilityText('查看上一周')
         .onClick(() => this.prevWeek())
       Text(DateLabel.md(this.weekStart) + ' – ' + DateLabel.md(this.weekStart + 6))
         .fontSize(14).fontWeight(FontWeight.Medium)
         .layoutWeight(1).textAlign(TextAlign.Center)
+        .accessibilityText('当前显示 ' + DateLabel.md(this.weekStart) + ' 至 ' + DateLabel.md(this.weekStart + 6))
         .onClick(() => this.goCurrentWeek())
       SymbolGlyph($r('sys.symbol.chevron_right'))
         .fontSize(18).fontColor([$r('app.color.text_secondary')])
         .padding({ left: 6, right: 6 })
+        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+        .focusable(true)
+        .accessibilityText('查看下一周')
         .onClick(() => this.nextWeek())
       Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
         .borderRadius(10)
         .backgroundColor($r('app.color.brand_pink_bg'))
+        // 纯文字当按钮用：热区、焦点、朗读名都得自己补，缺一项读屏用户就找不到回到本周的入口
+        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+        .focusable(true)
+        .accessibilityText('回到本周')
         .onClick(() => this.goCurrentWeek())
     }.width('100%')
   }
@@ -406,7 +456,7 @@ export struct WeekScheduleView {
   @Builder
   scheduleHead() {
     Row() {
-      Column().width(LABEL_W)
+      Column().width(LABEL_W).accessibilityLevel('no')
       ForEach(this.weekDays(), (ed: number, idx: number) => {
         Column({ space: 1 }) {
           Text(DAY_HEADERS[idx])
@@ -418,6 +468,9 @@ export struct WeekScheduleView {
         }
         .width('14.28%')
         .alignItems(HorizontalAlign.Center)
+        // 星期字 + 日号两枚 Text 读成一句，今天靠颜色额外标出来的部分由文本自己带上
+        .accessibilityGroup(true)
+        .accessibilityText(this.headRead(ed))
       }, (ed: number, idx: number) => '' + ed + '-' + idx)
     }.width('100%')
   }
@@ -436,7 +489,10 @@ export struct WeekScheduleView {
           .height(HOUR_H)
           .alignItems(VerticalAlign.Top)
         }, (h: number) => 'h' + h)
-      }.height(GRID_H)
+      }
+      .height(GRID_H)
+      // 纵轴刻度只给眼睛用：每个日程块自己会念起止时间，逐格念 24 遍纯属噪音
+      .accessibilityLevel('no')
 
       Row() {
         ForEach(this.weekDays(), (ed: number) => {
@@ -449,13 +505,14 @@ export struct WeekScheduleView {
                   .height(HOUR_H)
                   .border({ width: { bottom: 0.5 }, color: $r('app.color.divider') })
               }, (h: number) => 'l' + h)
-            }.width('100%').height(GRID_H)
+            }.width('100%').height(GRID_H).accessibilityLevel('no')
 
             // 今日列高亮
             if (ed === todayEpochDay()) {
               Column()
                 .width('100%').height(GRID_H)
                 .backgroundColor($r('app.color.brand_pink_bg'))
+                .accessibilityLevel('no')
             }
 
             // 日程块
@@ -472,12 +529,16 @@ export struct WeekScheduleView {
               .backgroundColor(item.color)
               .borderRadius(4)
               .clip(true)
+              .accessibilityGroup(true)
+              .accessibilityText(this.scheduleBlockRead(item, ed))
             }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
           }
           .width('14.28%')
           .height(GRID_H)
           .clip(true)
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
+          .focusable(true)
+          .accessibilityDescription('点这一列查看当日明细')
           .onClick(() => this.onPickDay(ed))
         }, (ed: number) => 'c' + ed)
       }
@@ -501,6 +562,7 @@ export struct WeekScheduleView {
       }
       .width(LABEL_W)
       .alignItems(HorizontalAlign.Center)
+      .accessibilityLevel('no')
 
       ForEach(this.weekDays(), (ed: number, idx: number) => {
         Column({ space: 1 }) {
@@ -519,6 +581,9 @@ export struct WeekScheduleView {
         }
         .width('14.28%')
         .alignItems(HorizontalAlign.Center)
+        // 四行（星期/日号/总量/旅行标点）合成一句；标点只有颜色，读屏靠 headRead 里的文字
+        .accessibilityGroup(true)
+        .accessibilityText(this.headRead(ed))
       }, (ed: number, idx: number) => 'ch' + ed + '-' + idx)
     }
     .width('100%')
@@ -540,7 +605,9 @@ export struct WeekScheduleView {
           .height(this.hourH)
           .alignItems(VerticalAlign.Top)
         }, (h: number) => 'ch' + h)
-      }.height(this.gridH())
+      }
+      .height(this.gridH())
+      .accessibilityLevel('no')
 
       Row() {
         ForEach(this.weekDays(), (ed: number) => {
@@ -552,12 +619,13 @@ export struct WeekScheduleView {
                   .height(this.hourH)
                   .border({ width: { bottom: 0.5 }, color: DesignTokens.divider })
               }, (h: number) => 'cl' + h)
-            }.width('100%').height(this.gridH())
+            }.width('100%').height(this.gridH()).accessibilityLevel('no')
 
             if (ed === todayEpochDay()) {
               Column()
                 .width('100%').height(this.gridH())
                 .backgroundColor(DesignTokens.primaryBg)
+                .accessibilityLevel('no')
             }
             if (!this.isKnown(ed)) {
               // 视界外：压暗且不响应点击，避免把"没算"当成"没空"
@@ -565,6 +633,7 @@ export struct WeekScheduleView {
                 .width('100%').height(this.gridH())
                 .backgroundColor(DesignTokens.fillWeak)
                 .opacity(0.6)
+                .accessibilityLevel('no')
             }
 
             ForEach(this.dayFreeBlocks(ed), (b: FreeBlock) => {
@@ -580,6 +649,9 @@ export struct WeekScheduleView {
               .backgroundColor(this.freeBg(b.end - b.start))
               .borderRadius(4)
               .clip(true)
+              .focusable(true)
+              .accessibilityGroup(true)
+              .accessibilityText(this.freeBlockRead(b, ed))
               .onClick(() => this.onPickWindow(b.winStart, b.winEnd))
             }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start)
           }
@@ -587,6 +659,8 @@ export struct WeekScheduleView {
           .height(this.gridH())
           .clip(true)
           .border({ width: { right: 0.5 }, color: DesignTokens.divider })
+          .focusable(this.isKnown(ed))
+          .accessibilityDescription(this.isKnown(ed) ? '点空白处查看当日明细' : '')
           .onClick(() => {
             if (this.isKnown(ed)) {
               this.onPickDay(ed);
@@ -607,6 +681,7 @@ export struct WeekScheduleView {
       Circle().width(8).height(8).fill(color)
       Text(label).fontSize(10).fontColor(DesignTokens.textHint)
     }
+    .accessibilityGroup(true)
   }
 
   @Builder

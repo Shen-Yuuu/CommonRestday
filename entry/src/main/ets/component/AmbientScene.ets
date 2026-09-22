@@ -32,5 +32,7 @@ export struct AmbientScene {
     .height('100%')
     // 背景层不参与命中：滚动与点击全部交给它上面的内容
     .hitTestBehavior(HitTestMode.None)
+    // 读屏同样跳过整层：色带没有信息量，念出来只会把正文挤后
+    .accessibilityLevel('no-hide-descendants')
   }
 }

@@ -1,4 +1,5 @@
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 状态面板种类：加载中 / 空结果 / 可恢复错误 / 降级可用。 */
 export enum StatePanelKind {
@@ -26,6 +27,8 @@ export struct StatePanel {
   actionLabel: ResourceStr = '';
   onAction: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State private isActionPressed: boolean = false;
   @State private hasActionFocus: boolean = false;
 
@@ -63,6 +66,7 @@ export struct StatePanel {
           .width(30)
           .height(30)
           .color(DesignTokens.textTertiary)
+          .accessibilityText('正在加载')
       } else {
         Text(this.markGlyph())
           .fontSize(DesignTokens.fontBody)
@@ -73,6 +77,8 @@ export struct StatePanel {
           .height(40)
           .backgroundColor(this.markBg())
           .borderRadius(DesignTokens.cardRadius(true))
+          // 状态符号 + 底色只是视觉分区，下面的标题才是朗读内容
+          .accessibilityLevel('no')
       }
       if (hasLabel(this.title)) {
         Text(this.title)
@@ -94,7 +100,8 @@ export struct StatePanel {
         Button(this.actionLabel)
           .type(ButtonType.Normal)
           .borderRadius(DesignTokens.radiusPill)
-          .height(DesignTokens.hitMin)
+          // 不用固定 height：2.0× 字体下按钮要跟着文字长高，长辈模式再抬到 48vp
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .padding({ left: DesignTokens.space5, right: DesignTokens.space5 })
           .backgroundColor(DesignTokens.primary)
           .fontColor(DesignTokens.heroText)

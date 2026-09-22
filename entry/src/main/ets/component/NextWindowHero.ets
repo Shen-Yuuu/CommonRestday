@@ -92,6 +92,8 @@ export struct NextWindowHero {
               .borderRadius(DesignTokens.radiusPill)
               .backgroundColor(DesignTokens.heroGlow)
               .margin({ left: DesignTokens.space2 })
+              // 箭头只作视觉提示，"去计划"已经在旁边的文字里
+              .accessibilityLevel('no')
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
@@ -132,6 +134,8 @@ export struct NextWindowHero {
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.heroText)
             .fontWeight(600)
+            // 朗读里不念尾随的箭头符号
+            .accessibilityText(this.experience === ExperienceMode.SOLO ? '去添加伴侣' : '去看看')
             .padding({
               left: DesignTokens.space3,
               right: DesignTokens.space3,

@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { SettingsStore } from 'data';
 import { Logger } from 'commons';
 import { openPrivacyPolicy } from '../util/PrivacyUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const TAG = 'PrivacyDialog';
 
@@ -22,6 +23,8 @@ interface PrivacyPoint {
 export struct PrivacyDialog {
   onAccepted: () => void = () => {};
   @State working: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   /** 同意：持久化标记后回调（Index 移除拦截）。 */
   accept(): void {
@@ -65,7 +68,7 @@ export struct PrivacyDialog {
     Column() {
       // 顶部标题区
       Column({ space: 8 }) {
-        Text('🤝').fontSize(40)
+        Text('🤝').fontSize(40).accessibilityLevel('no')
         Text($r('app.string.privacy_welcome_title')).fontSize(22).fontWeight(FontWeight.Bold)
         Text($r('app.string.privacy_welcome_subtitle')).fontSize(13).fontColor($r('app.color.text_tertiary'))
       }
@@ -78,7 +81,7 @@ export struct PrivacyDialog {
         Column({ space: 14 }) {
           ForEach(this.privacyPoints(), (p: PrivacyPoint) => {
             Row({ space: 10 }) {
-              Text(p.icon).fontSize(18)
+              Text(p.icon).fontSize(18).accessibilityLevel('no')
               Text(p.text).fontSize(13).fontColor($r('app.color.text_primary')).layoutWeight(1).lineHeight(19)
             }.width('100%').alignItems(VerticalAlign.Top)
           }, (p: PrivacyPoint) => p.icon)
@@ -87,6 +90,8 @@ export struct PrivacyDialog {
           Text($r('app.string.privacy_link_fulltext'))
             .fontSize(13).fontColor($r('app.color.brand_pink'))
             .margin({ top: 6 })
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true)
             .onClick(() => {
               const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
               openPrivacyPolicy(ctx, $r('app.string.privacy_fulltext_soon'));

@@ -3,6 +3,8 @@ import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult
   PlanUseCase, calendarBadgeOf, canRetryCalendarSync, isOnSystemCalendar } from 'feature';
 import { DateLabel } from 'commons';
 import { planKindLabel } from '../util/PlanKindUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { DesignTokens } from '../theme/DesignTokens';
 
 /**
  * 计划列表（US5 / FR-010 / FR-012，阶段 2 Task 2.3）：
@@ -22,6 +24,8 @@ export struct PlansView {
   @State loading: boolean = true;
   /** 同一时刻只放行一个写操作：改期/取消/补写日历都会重排列表，并发点击只会互相踩。 */
   @State private working: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
 
   aboutToAppear(): void {
@@ -205,12 +209,14 @@ export struct PlansView {
             SymbolGlyph($r('sys.symbol.heart'))
               .fontSize(44)
               .fontColor([$r('app.color.brand_pink_muted')])
+              .accessibilityLevel('no')
             Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
             Text($r('app.string.plans_empty_desc'))
               .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
             Button('去选一个窗口创建计划')
               .backgroundColor($r('app.color.brand_pink'))
-              .borderRadius(22).height(44)
+              .borderRadius(22)
+              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
               .onClick(() => {
                 this.onGoWindow();
               })
@@ -251,6 +257,8 @@ export struct PlansView {
     .justifyContent(FlexAlign.Center)
     .backgroundColor($r('app.color.danger_red'))
     .borderRadius(14)
+    .focusable(true)
+    .accessibilityText('取消计划：' + p.title)
     .onClick(() => this.confirmCancel(p))
   }
 
@@ -262,31 +270,42 @@ export struct PlansView {
         .backgroundColor(p.status === 'CONFLICT'
           ? $r('app.color.danger_red')
           : (p.status === 'CANCELLED' ? $r('app.color.text_hint') : $r('app.color.brand_pink')))
+        // 状态另有文字标注（冲突/已取消/已确认），色条只是重复信息
+        .accessibilityLevel('no')
       Column({ space: 6 }) {
         Row() {
           Text(p.title).fontSize(15).fontWeight(FontWeight.Medium).layoutWeight(1)
           Row({ space: 4 }) {
             if (p.status === 'CONFLICT') {
               Circle().width(8).height(8).fill($r('app.color.danger_red'))
+                .accessibilityLevel('no')
             }
             Text(this.statusLabel(p.status)).fontSize(12)
               .fontColor(this.statusColor(p.status))
           }
-        }.width('100%')
+        }
+        .width('100%')
+        // 标题和状态各念一遍会打断，合成一句更省事
+        .accessibilityGroup(true)
+        .accessibilityText(p.title + '，' + this.statusLabel(p.status))
 
         Text(this.subLabel(p))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
         if (p.conflict != null) {
           this.conflictBlock(p, p.conflict)
+        } else {
+          // 整卡可点，但读屏用户滑不动也"点整张卡"没有朗读名：
+          // 这条提示就是取消动作的无障碍出口，被打包时也不影响朗读（卡片文案里带着同一句话）
+          Text('点击可取消计划').fontSize(11).fontColor($r('app.color.text_hint'))
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true)
+            .accessibilityText('查看这条计划的取消选项：' + p.title)
+            .onClick(() => this.onPlanTap(p))
         }
 
         if (calendarBadgeOf(p.calendarState) !== '') {
           this.calendarBlock(p, calendarBadgeOf(p.calendarState))
-        }
-
-        if (p.conflict == null) {
-          Text('点击可取消计划').fontSize(11).fontColor($r('app.color.text_hint'))
         }
       }
       .alignItems(HorizontalAlign.Start)
@@ -310,27 +329,24 @@ export struct PlansView {
           .fontSize(11).fontColor($r('app.color.text_hint'))
       } else if (c.altText !== '') {
         Text(c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
-        Button('改到替代时间').height(32).fontSize(12)
+        Button('改到替代时间').fontSize(12)
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .backgroundColor($r('app.color.brand_pink'))
           .onClick(() => this.askAcceptAlternative(p))
       } else {
         Text('未来暂无合适的替代窗口，可以保留原计划或另找时间')
           .fontSize(11).fontColor($r('app.color.text_hint'))
       }
-      Row({ space: 16 }) {
-        Text('重新选窗口').fontSize(12).fontColor($r('app.color.info_blue'))
-          .onClick(() => {
-            this.onGoWindow();
-          })
+      Flex({ wrap: FlexWrap.Wrap }) {
+        this.linkAction('重新选窗口', p.title, $r('app.color.info_blue'), () => {
+          this.onGoWindow();
+        })
         if (c.kept && c.altStart > 0) {
-          Text('仍然改期').fontSize(12).fontColor($r('app.color.info_blue'))
-            .onClick(() => this.askAcceptAlternative(p))
+          this.linkAction('仍然改期', p.title, $r('app.color.info_blue'), () => this.askAcceptAlternative(p))
         } else if (!c.kept) {
-          Text('保留原计划').fontSize(12).fontColor($r('app.color.info_blue'))
-            .onClick(() => this.doKeepOriginal(p))
+          this.linkAction('保留原计划', p.title, $r('app.color.info_blue'), () => this.doKeepOriginal(p))
         }
-        Text('取消计划').fontSize(12).fontColor($r('app.color.danger_red'))
-          .onClick(() => this.confirmCancel(p))
+        this.linkAction('取消计划', p.title, $r('app.color.danger_red'), () => this.confirmCancel(p))
       }
       .width('100%')
     }
@@ -347,10 +363,25 @@ export struct PlansView {
     Row({ space: 8 }) {
       Text(badge).fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
       if (canRetryCalendarSync(p.calendarState)) {
-        Text('写入日历').fontSize(11).fontColor($r('app.color.info_blue'))
-          .onClick(() => this.doSyncCalendar(p))
+        this.linkAction('写入日历', p.title, $r('app.color.info_blue'), () => this.doSyncCalendar(p))
       }
     }
     .width('100%')
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /**
+   * 卡内文字链：朗读名带上计划标题（只剩一句"取消计划"时，列表里第几条无从判断），
+   * 热区按 44/48vp 走，2 倍字号下靠外层 Flex 换行而不是挤出卡片。
+   */
+  @Builder
+  linkAction(label: string, plan: string, tone: ResourceColor, onTap: () => void) {
+    Text(label)
+      .fontSize(12).fontColor(tone)
+      .padding({ right: DesignTokens.space4, top: DesignTokens.space1, bottom: DesignTokens.space1 })
+      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+      .focusable(true)
+      .accessibilityText(label + '：' + plan)
+      .onClick(onTap)
   }
 }

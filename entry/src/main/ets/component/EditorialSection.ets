@@ -1,4 +1,5 @@
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** ResourceStr 既可能是字符串也可能是资源引用，只有空字符串算“没有文案”。 */
 function hasLabel(v: ResourceStr): boolean {
@@ -20,6 +21,8 @@ export struct EditorialSection {
   trailingAction: boolean = false;
   onTrailingTap: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @BuilderParam content: () => void = this.placeholder;
   @State private hasTrailingFocus: boolean = false;
 
@@ -29,7 +32,9 @@ export struct EditorialSection {
 
   build() {
     Column() {
-      if (hasLabel(this.eyebrow)) {
+      // 眉标（MAIN / EXTRA / 三个问题）是版式装饰，长辈模式下按 docs/06 §3.10 C 收起，
+      // 小标题本身已经把这一节是什么说清楚了
+      if (hasLabel(this.eyebrow) && !this.senior) {
         Text(this.eyebrow)
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.primary)
@@ -51,8 +56,8 @@ export struct EditorialSection {
             .fontColor(this.trailingAction ? DesignTokens.primary : DesignTokens.textTertiary)
             .textAlign(TextAlign.End)
             .constraintSize({
-              minWidth: this.trailingAction ? DesignTokens.hitMin : 0,
-              minHeight: this.trailingAction ? DesignTokens.hitMin : 0
+              minWidth: this.trailingAction ? AccessibilityPolicy.minHit(this.senior) : 0,
+              minHeight: this.trailingAction ? AccessibilityPolicy.minHit(this.senior) : 0
             })
             .padding({ left: this.trailingAction ? DesignTokens.space2 : 0 })
             .border({

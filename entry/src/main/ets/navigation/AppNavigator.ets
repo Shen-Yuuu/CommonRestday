@@ -260,6 +260,8 @@ export struct AppNavigator {
       SymbolGlyph(item.icon)
         .fontSize(22)
         .fontColor([this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary')])
+        // 图标下面就是文字标签，读屏念两遍反而挡路
+        .accessibilityLevel('no')
       Text(item.text)
         .fontSize(11)
         .fontColor(this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
@@ -272,6 +274,12 @@ export struct AppNavigator {
     .alignItems(HorizontalAlign.Center)
     .borderRadius(DesignTokens.radiusPill)
     .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
+    .focusable(true)
+    .accessibilityGroup(true)
+    // 底色/字重是视觉信号，读屏要把"你在哪一页、按了会去哪一页"念出来
+    .accessibilityText(this.activeTab === item.tab
+      ? item.text + '，当前所在页'
+      : '切换到' + item.text + '页')
     .onClick(() => {
       this.selectTab(item.tab);
     })

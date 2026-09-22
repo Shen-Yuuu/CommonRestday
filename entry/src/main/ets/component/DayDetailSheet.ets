@@ -3,6 +3,7 @@ import { DateLabel } from 'commons';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
 interface BarSeg {
@@ -30,6 +31,17 @@ export struct DayDetailSheet {
   };
   @State data: DayViewData | null = null;
   @State loading: boolean = true;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
+
+  /** 窗口行的朗读文本：时刻 + 时长 + 展示标签 + 点击后果（标签此前只有颜色区分）。 */
+  private windowRead(w: WindowSummary): string {
+    let s = DateLabel.hm(w.start) + ' 到 ' + DateLabel.hm(w.end) + '，' + DateLabel.duration(w.durationMin);
+    if (w.displayTags.length > 0) {
+      s += '，' + w.displayTags.map((t: string): string => displayTagLabel(t)).join('、');
+    }
+    return s + '，点击去计划';
+  }
 
   aboutToAppear(): void {
     this.load();
@@ -142,6 +154,9 @@ export struct DayDetailSheet {
         Text(DateLabel.mdw(this.day)).fontSize(18).fontWeight(FontWeight.Bold)
         Blank()
         Text('关闭').fontSize(14).fontColor($r('app.color.text_secondary'))
+          .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .focusable(true)
+          .accessibilityText('关闭当日明细')
           .onClick(() => this.onClose())
       }.width('100%')
 
@@ -227,6 +242,10 @@ export struct DayDetailSheet {
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))
+    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+    .focusable(true)
+    .accessibilityGroup(true)
+    .accessibilityText(this.windowRead(w))
     .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
   }
 
@@ -245,6 +264,11 @@ export struct DayDetailSheet {
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))
+    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+    .focusable(true)
+    .accessibilityGroup(true)
+    .accessibilityText('旅行窗口 ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
+      + DateLabel.endLabel(w.start, w.end) + '，连续 ' + DateLabel.duration(w.durationMin) + '，点击去计划')
     .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
   }
 
@@ -263,6 +287,8 @@ export struct DayDetailSheet {
     .height(10)
     .borderRadius(5)
     .clip(true)
+    // 比例条是下方明细行的另一种画法，逐段朗读只会重复；读屏念明细即可
+    .accessibilityLevel('no')
   }
 
   /** 忙碌明细行（起止 + 标签）。 */
@@ -279,6 +305,8 @@ export struct DayDetailSheet {
             Text(busyTagLabel(iv.tag))
               .fontSize(10).fontColor($r('app.color.text_tertiary'))
           }.width('100%')
+          // 时段和类型是一件事的两半，分两段念会听成两条记录
+          .accessibilityGroup(true)
         }, (iv: Interval) => '' + iv.start + '-' + iv.end + iv.tag)
       }.width('100%')
     }

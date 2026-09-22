@@ -1,4 +1,5 @@
 import { DesignTokens } from '../theme/DesignTokens';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 提示条语气：过期/降级用警示色，读取失败用错误色。 */
 export enum NoticeTone {
@@ -21,6 +22,8 @@ export struct NoticeBar {
   actionLabel: string = '';
   onAction: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State private hasActionFocus: boolean = false;
 
   private isError(): boolean {
@@ -50,6 +53,8 @@ export struct NoticeBar {
         .height(DesignTokens.space5)
         .borderRadius(DesignTokens.radiusCardCut)
         .backgroundColor(DesignTokens.card)
+        // 语气符号只作视觉分区，标题文字才是朗读内容
+        .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(this.title)
           .fontSize(DesignTokens.fontCaption)
@@ -71,8 +76,8 @@ export struct NoticeBar {
           .fontWeight(600)
           .textAlign(TextAlign.Center)
           .constraintSize({
-            minWidth: DesignTokens.hitMin,
-            minHeight: DesignTokens.hitMin
+            minWidth: AccessibilityPolicy.minHit(this.senior),
+            minHeight: AccessibilityPolicy.minHit(this.senior)
           })
           .border({
             width: 2,

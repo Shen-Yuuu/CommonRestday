@@ -9,6 +9,7 @@ import { DayShiftSheet } from '../component/DayShiftSheet';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
 import { navToMe } from '../util/NavUtil';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 
@@ -83,6 +84,8 @@ export struct ScheduleHub {
   @State private sheetDay: number = 0;
   /** 本页容器宽度档位：expanded 把两组录入入口并排，正文按可读宽度收拢。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
 
@@ -149,9 +152,12 @@ export struct ScheduleHub {
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
       .padding({ top: DesignTokens.space2, bottom: DesignTokens.space2 })
-      .constraintSize({ minHeight: DesignTokens.hitMin })
+      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .borderRadius(DesignTokens.radiusPill)
       .backgroundColor(this.isPartnerSide() === partner ? DesignTokens.primary : Color.Transparent)
+      .focusable(true)
+      // 选中的那一侧只剩底色区别，读屏要念出"当前"
+      .accessibilityText(this.isPartnerSide() === partner ? '当前查看' + label : '切换到' + label)
       .onClick(() => this.pickSide(partner))
   }
 
@@ -168,6 +174,8 @@ export struct ScheduleHub {
       SymbolGlyph(item.glyph)
         .fontSize(20)
         .fontColor([aux ? DesignTokens.textTertiary : DesignTokens.primary])
+        // 主副文案已经说清了这一条是干什么的，图标只是重复提示
+        .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(item.title)
           .fontSize(DesignTokens.fontBody)
@@ -182,11 +190,15 @@ export struct ScheduleHub {
 
       SymbolGlyph($r('sys.symbol.chevron_right'))
         .fontSize(16).fontColor([DesignTokens.textDisabled])
+        .accessibilityLevel('no')
     }
     .width('100%')
     .padding(DesignTokens.space3)
-    .constraintSize({ minHeight: DesignTokens.hitMin })
+    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .alignItems(VerticalAlign.Center)
+    .focusable(true)
+    .accessibilityGroup(true)
+    .accessibilityText(item.title + '。' + this.descOf(item))
     .onClick(() => {
       if (item.page === '') {
         this.openToday();
@@ -245,6 +257,9 @@ export struct ScheduleHub {
     }
     .layoutWeight(1)
     .alignItems(HorizontalAlign.Start)
+    // 数字和标签合成一句，否则四个格子会念成"3、班次、true、循环模板…"
+    .accessibilityGroup(true)
+    .accessibilityText(label + ' ' + value)
   }
 
   private isConfigured(): boolean {

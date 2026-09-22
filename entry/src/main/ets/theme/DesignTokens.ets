@@ -1,6 +1,6 @@
 import { ColorMetrics, LengthMetrics } from '@kit.ArkUI';
 
-/** 减少动效开关的 AppStorage 键：设置页写入，组件用 @StorageProp 订阅。 */
+/** 减少动效开关的 AppStorage 键：系统「减少动态效果」由 AccessibilityPolicy 写入，组件用 @StorageProp 订阅。 */
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
 /**
  * 降低透明度开关的 AppStorage 键：系统侧没有对应可读设置（本 SDK 只在 settings 里暴露

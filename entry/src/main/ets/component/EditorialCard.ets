@@ -89,6 +89,7 @@ export struct EditorialCard {
           .height(148)
           .fill(DesignTokens.heroGlow)
           .translate({ x: 34, y: 55 })
+          .accessibilityLevel('no')
       }
       Column() {
         this.content()
@@ -115,6 +116,9 @@ export struct EditorialCard {
       ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }
       : { x: 1, y: 1 })
     .focusable(this.tappable)
+    // 可点卡读成一个整体（日期/时长/标签不被拆成三段）；容器卡必须分组关掉，
+    // 否则卡内的按钮与开关在读屏里就没有独立落点了。
+    .accessibilityGroup(this.tappable)
     .onFocus(() => {
       this.hasFocus = true;
     })

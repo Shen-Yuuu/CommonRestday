@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排的口径正确 | **171 passed / 0 failed**（2026-09-22 复跑，含阶段 4 的卡片投影与配对链接用例） |
 | 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL），**未执行 → 待设备** |
-| 手工走查 | 下面 §1–§14 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏 | **全部待设备** |
+| 手工走查 | 下面 §1–§15 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
 
@@ -155,10 +155,10 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 8.2 **深色模式**：首页 / 共同时间（列表 + 周历）/ 我的 / 计划冲突卡 / 三个 Sheet / 班表页无白底残留，文字对比度正常
 - [ ] 8.3 **系统字体 2.0×**：卡片不破版、不出现文字重叠；按钮文字可完整读出
 - [ ] 8.4 **读屏（Screen Reader）**：三个答案、冲突归因、替代时间建议都能被读成完整一句话；状态不只靠颜色表达
-- [ ] 8.5 点击热区实测 ≥ **44vp**（设计令牌 `hit_min = 44vp`）；底栏浮岛单项声明"热区不小于 48vp"（视觉胶囊 74×50vp，不等于热区大小）——两项都用屏幕坐标实测
+- [ ] 8.5 点击热区实测 ≥ **44vp**（设计令牌 `hit_min = 44vp`）；底栏浮岛单项声明"热区不小于 48vp"（视觉胶囊 74×50vp，不等于热区大小）——两项都用屏幕坐标实测。长辈模式下的 48vp 档见 §15.2
 - [ ] 8.6 焦点顺序与视觉顺序一致；Sheet 打开时读屏进入 Sheet、关闭后回到触发元素
 
-> **已知阻塞**：`crd_reduce_motion` / `crd_reduce_transparency` 两个键目前**只有读取方，没有任何写入方**（全仓 `AppStorage.setOrCreate` 写的只有导航广播、重算计数、待消费深链与配对请求计数）。因此"减少动效/减少透明度"的退化渲染在真机上无法验证，判定为**未实现**，由阶段 5.2/5.3 补设置写入后再验。不要在 §8 里勾掉"减少动效"。
+> **§8 的写入方现状（Task 5.3 之后更新）**：`crd_reduce_motion` 现在由 `accessibility/AccessibilityPolicy.ets` 在壳层挂载时从系统读一次（`isAnimationReduceEnabledSync`，API 23）并注册变更监听；`crd_reduce_transparency` 由「我的 · 无障碍」里的应用侧开关写入并落 Preferences（系统侧没有可读的降低透明度开关）。`crd_senior_mode` / `crd_screen_reader` 同源。逐条验收口径与实测限制见 §15，本轮之前"没有写入方"的判定已不成立。
 
 ## 9. 云端入口降级（保持关闭，不是待办）
 
@@ -280,10 +280,10 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 14.1 五档筛选（全部 / ≥2小时 / 完整同休 / 周末 / 可出行）：点任意一颗 → 只有它变选中色（品牌粉底 + 暖白字），其余退回浅灰底；列表随档位重查，口径没变（仍是 `selectFilter` → `load(false)` 只重读）
 - [ ] 14.2 选中态**不靠**父组件刷新：`ChipV2Options` 是 `@ObservedV2`，切档在 `selectFilter` 里逐项写 `activated`。真机若出现"点了没变色""两颗同时亮"，就是这条链路断了 —— 先记现象，别急着改回自制 Chip
 - [ ] 14.3 筛选行仍可横向滚动、不换行、不吃列表高度；360vp 下第五颗能滚出来（与 §13.1 同一形态对照）
-- [ ] 14.4 **热区存疑**：自制 Chip 时每颗用 `constraintSize({ minHeight: hitMin })` 兜到 44vp，ChipV2 的高度由组件自己定、本页没给尺寸。拇指与读屏实测不足 44vp 就记下来，交给 Task 5.3 的无障碍清单一并处理，本轮不改
+- [ ] 14.4 **热区存疑（Task 5.3 没有关掉这条）**：自制 Chip 时每颗用 `constraintSize({ minHeight: hitMin })` 兜到 44vp，ChipV2 的高度仍由组件自己定、本页没给尺寸。5.3 只补了语义（`accessibilitySelectedType: SELECTED` + `accessibilityDescription`，见 §15.3），**没有**设 `ChipV2Options.size`（本机 SDK 里该字段是 `ChipV2Size | SizeT<LengthMetrics>`，注释只写 "Chip size"，没说明钉死尺寸会不会连带关掉系统适老化调节，**缺证据**）。拇指与读屏实测仍不足 44vp 时，按 §15.2 记现象，再决定是给 `size` 传 `SizeT` 还是回退自制 Chip
 - [ ] 14.5 本页未设置 `backgroundSystemMaterial`。若真机上筛选 Chip 带出材质/描边/阴影（规范 §5.5：系统材质只给 Sheet/浮层），说明组件默认值含材质，回退做法是恢复自制 Chip（本轮提交前的 `filterRow` 实现）
 - [ ] 14.6 **减少动效这一轮只做审计，没有新增动画**：现有 `.transition(` 只有五处（ConflictNotice / EditorialCard / EditorialSection / NoticeBar / StatePanel），全部走 `reduceMotion ? TransitionEffect.IDENTITY : 淡入(+14vp 位移)`，即位移已在开关下关闭；`DesignTokens.stagger / offset` 至今**没有调用方**，说明页面里没有错峰可关。可 `rg` 复核，不必上设备
-- [ ] 14.7 **已知缺口（不勾通过）**：`crd_reduce_motion` / `crd_reduce_transparency` 全仓只有 `@StorageProp` 读取方，**没有任何写入方**，所以真机此刻无法进入"减少动效"形态验证 14.6 —— 写入方与设置页开关在 Task 5.3 补，届时回来复测
+- [ ] 14.7 **缺口已由 Task 5.3 补上（本条转为复测项）**：`crd_reduce_motion` 现在由 `AccessibilityPolicy.attach()` 从系统读一次并注册 `onAnimationReduceStateChange` 监听；`crd_reduce_transparency` 由「我的 · 无障碍」的应用侧开关写入 + 落 Preferences（系统侧确无降低透明度开关）。所以 14.6 的"减少动效"形态本轮起可以在真机上进入了，按 §15.1.4 / §15.1.5 走
 - [ ] 14.8 ChipV2 的选中迁移由组件内部驱动、`ChipV2Options` 没有时长入参，因此**不受**应用侧开关控制。自制 Chip 时期没有这段动画，属于渐进增强的代价；真机若观察到明显位移或过长动效，记现象并回到 14.5 的回退口径
 - [ ] 14.9 学期起点 sheet：三列滚轮（年/月/日），范围 2024-01-01 至 2032-12-31；滑到某天 → 取消 → 重开仍显示已保存值；确定后首页与班表按新学期起点重算
 - [ ] 14.10 **行为变化（本轮刻意）**：未设置学期起点时点「确定」，现在会真的写入滚轮当前显示的那一天；改造前 `termPick` 停在 `-1`，确定等于没反应但界面显示着日期。验收时确认这是想要的口径
@@ -291,10 +291,71 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 14.12 日期换算：`dateOf` / `epochOf` 一对私有方法，分解口径只有 `DateLabel.ymd`（UTC）一处。把系统时区改成 UTC-5 各复测一次 14.9 / 14.11 —— 本轮只有编译期证据，没跑过
 - [ ] 14.13 两个 sheet 在深色、2.0× 字体、360vp 下不出现滚轮文字截断、按钮被顶出屏幕（仍是单档 `SheetSize.MEDIUM`，滚轮高度交给系统）
 
-## 15. 尚未纳入验收（按阶段补进本文件）
+## 15. 无障碍与 Senior Mode（阶段 5 Task 5.3 出口）
+
+**代码口径**：系统无障碍状态只有一个读取方 `entry/src/main/ets/accessibility/AccessibilityPolicy.ets`，由 `pages/Index.ets` 的 `aboutToAppear/aboutToDisappear` 挂载与卸载；页面和组件只订阅 AppStorage 的结果，不各自调系统接口。组件侧全部 `@StorageProp` 的键名写成字面量（装饰器入参不收常量），值与 `SENIOR_MODE_KEY / SCREEN_READER_KEY / MOTION_REDUCE_KEY / TRANSPARENCY_REDUCE_KEY` 一致。除清单列出的 `component/` `view/` 外，本轮另改了 `navigation/AppNavigator.ets`（底栏三项是全局导航，读屏扫不到就等于没有出口）。
+
+**API 事实**（本机 SDK `26.0.0`，全部免权限）：长辈模式 `accessibility.isSeniorModeEnabled()` + `onSeniorModeStateChange()` 是 **26.0.0**；屏幕朗读 `isScreenReaderOpenSync()` + `on('screenReaderStateChange')` 是 **18**；减少动态效果 `isAnimationReduceEnabledSync()` + `onAnimationReduceStateChange()` 是 **23**。**降低透明度没有系统开关**（`uiAppearance` 只有深色/字号/字重，`settings.display` 的动画倍量自 API 21 起 deprecated 且无替代），所以它只能是本应用自己的设置项。
+
+下面除注明"可静态核对"的，全部**待设备**。
+
+### 15.1 系统状态读取链路
+
+- [ ] 15.1.1 系统「设置 → 辅助功能 → 长辈模式」打开后进应用：「我的 · 无障碍」第一行显示 `已开启`（异步 `isSeniorModeEnabled()` 的落值；启动时探测失败只降级为未开启并写 warn 日志 `senior mode unavailable`，不崩）
+- [ ] 15.1.2 应用在前台时切换长辈模式开关，无需重进页面即变更（`onSeniorModeStateChange` 监听生效）。**注意**：SDK 在 `on*` 的 NOTE 里点名必须用**具名函数**注册、对象销毁前 `off`，本文件用三个模块级具名函数，`detach()` 与 `attach()` 一一配对——可静态核对
+- [ ] 15.1.3 屏幕朗读：开启读屏后 `crd_screen_reader` 置真（当前应用侧只有这一份状态，页面暂未据此改变布局；登记为"已读到、未使用"，不要当作已实现某种读屏专属形态）
+- [ ] 15.1.4 减少动态效果：系统开关联动到 §14.6 那五处 `.transition()`，开→关动画直接到位；「我的 · 无障碍」第二行同步显示 `已开启`
+- [ ] 15.1.5 降低透明度（应用侧）：关掉再开「我的 · 无障碍」第三行 → 悬浮底栏与两个 Sheet 的近实色/材质切换立刻生效，且**杀进程重开仍是上次值**（`SettingsStore` 键 `a11y_reduce_transparency`）。写入失败时 toast `这次已生效，但没记住，下次打开会回到原设置`，页面不回滚开关——`AccessibilityPolicy.setReduceTransparency` 的 Promise 只报"有没有写住"
+
+### 15.2 热区（44vp 普通 / 48vp 长辈）
+
+`AccessibilityPolicy.minHit(senior)`：普通档回退到令牌 `hit_min = 44vp`，长辈档 **48vp**（docs/06 §3.10 C 的产品目标）。热区一律走 `constraintSize({ minHeight })`——本 SDK 没有 `touchTarget` 属性。
+
+- [ ] 15.2.1 普通模式实测 ≥44vp：底栏三项（视觉 74×50、常量声明不小于 48）、共同时间「列表/周历」两枚胶囊、五档筛选 Chip、我的页每一行入口/开关/编辑文字、日详情/改班 Sheet 的每一行、计划卡的四个冲突动作
+- [ ] 15.2.2 长辈模式实测 ≈48vp：上面同一批点位复量，重点看 `±15 分钟` 四枚按钮（原本是 `height(32)`，现全部改成 `constraintSize`）与 Sheet 底部主按钮（原 `height(44)`）
+- [ ] 15.2.3 **已知不足**：周历里 <15vp 高的短时窗色块（`blockLabel()` 对矮块返回空串）拇指按不准，且 ChipV2 高度仍由组件自定（§14.4）。长辈模式下的替代路径是列表视图——见 15.5.2，不要按"周历必须可点"判失败
+- [ ] 15.2.4 输入框：我的页所有 `TextInput` 已从钉死的 `width(64)/height(38)` 换成 `constraintSize({ minWidth, minHeight: hit_min })`，2.0× 字号下靠外层 `Flex({ wrap })` 换行而不是横向溢出
+
+### 15.3 读屏标签与"状态不只靠颜色"
+
+- [ ] 15.3.1 三个答案、冲突归因、替代时间建议各读成完整一句（§8.4 的同一批点位）；窗口列表卡片由 `EditorialCard(tappable=true)` 自动 `accessibilityGroup`，日期/距今天数/时长/标签连成一段，符合 docs/06 §D「周六 10:00 到 18:00，共 8 小时，完整同休日」的口径
+- [ ] 15.3.2 底栏三项：选中项念 `同休，当前所在页`，未选中念 `切换到我的页`
+- [ ] 15.3.3 共同时间筛选 Chip：`accessibilitySelectedType: SELECTED`（SDK 的 `ChipV2AccessibilitySelectedType`，语义是"选中"而不是"已点击/已勾选"）+ `accessibilityDescription`
+- [ ] 15.3.4 单日改班 Sheet 的班次 Chip：**选中态多了一个 `✓ ` 前缀**（`chipLabel()`），色弱与读屏都能分辨；计划类型 Chip 的选中态写在包裹容器的 `accessibilityText` 里（`… ，当前类型`）
+- [ ] 15.3.5 计划卡：状态竖条与冲突圆点退出朗读树，状态由 `冲突/已取消/已确认` 文字念出；卡内文字链朗读名带计划标题（`取消计划：看电影`），否则列表里只剩一句"取消计划"不知道针对哪条
+- [ ] 15.3.6 周历日头念 `9月26日 周六，今天，当天共同空闲 3小时20分，有可过夜窗口`；空闲色块念 `周六 10:00 到 18:00，8小时共同空闲，点击去计划`（`freeBlockRead`）
+- [ ] 15.3.7 配对码：大字 6 位码念成**逐位**（`配对码 3 8 4 1 0 6，逐位输入给对方`），不是一句"三十八万四千一百零六"；二维码屏念 `配对二维码。无法扫描时，改用配对码或分享链接`（`codeRead()` 只吃本机生成的短码，不含任何凭据片段）
+
+### 15.4 装饰层退出朗读树（`accessibilityLevel('no')`）
+
+- [ ] 15.4.1 共同时间列表的时长轨道、日详情的忙碌比例条、窗口详情的时间轴条、计划卡的状态竖条与圆点、底栏/入口行图标、首页「我」字徽标与心形符号、周历的网格线与小时刻度、非当日的淡化层——**都不该被朗读**，出现重复播报即为本条失败
+- [ ] 15.4.2 骨架屏（首页与共同时间各一处）合成一句 `正在读取本机日程` / `正在读取共同时间`，不念成一串空白
+
+### 15.5 Senior Mode 低密度布局
+
+- [ ] 15.5.1 **正文提高一级**：本轮**没有**做应用侧字号跳档。事实是全部字号令牌声明为 `fp`（`float.json`：`font_caption=13fp / font_body=16fp / font_title=21fp`），代码里没有任何 `px` 字号（唯一一处数字字号入口 `LengthMetrics.fp(14)` 也是 fp），因此这一条完全交给系统字体缩放。真机在长辈模式下开系统大字号，逐屏确认不破版（等价于 §8.3 的 2.0× 但按长辈模式默认档复测）
+- [ ] 15.5.2 **周视图默认切换为日列表**：共同时间页的默认视图本来就是 `VIEW_LIST`（对所有用户，不只长辈模式），所以这条在长辈模式下天然满足；确认进页面首屏看到的是列表而不是时间网格
+- [ ] 15.5.3 **隐藏装饰性副文案**：`EditorialSection` 的眉标（首页 `三个问题`、日程页 `MAIN` / `EXTRA`）在长辈模式下不渲染，只留衬线小标题。确认关闭长辈模式后眉标回来
+- [ ] 15.5.4 长辈模式下逐屏走一遍：首页 / 共同时间（列表 + 周历）/ 计划 / 我的 / 日程页 / 三个 Sheet，无横向滚动、无文字截断、无按钮互相遮挡
+
+### 15.6 键盘焦点与操作替代
+
+- [ ] 15.6.1 外接键盘 Tab 顺序与视觉顺序一致（首页 → 底栏 → Sheet 内），`EditorialCard(tappable=true)` 与 `EditorialSection` 的可点 trailing 有焦点环（`focusRing`，Task 5.2 已铺）
+- [ ] 15.6.2 回车/确认键能触发卡片主操作（`onKeyEvent` 走 `KEYCODE_ENTER / KEYCODE_DPAD_CENTER`）
+- [ ] 15.6.3 **滑动必须有按钮替代**：计划列表左滑取消 → 卡内 `取消计划` 文字链 / `点击可取消计划` 同一弹窗；周历点日格改班 → 主入口「临时调整」；月历涂抹只是批量录入的辅助入口，单日改班有 Sheet 替代
+- [ ] 15.6.4 焦点回归：Sheet 打开时读屏进入 Sheet、关闭后回到触发元素（§8.6 同一动作，本轮未改这条链路，仍待设备）
+
+### 15.7 本轮明确没做（不勾通过，也不判失败）
+
+- `ChipV2` 与 `Chip` 的**尺寸**都没钉，44/48vp 是否成立只有代码声明、没有实测（§14.4 同源）
+- 屏幕朗读状态 `crd_screen_reader` 只有读取与登记，**没有任何页面据此改变形态**
+- 月历涂抹、循环模板、课程表、OCR 四个录入页不在本轮清单（`pages/` 下的旧 router 页），热区与朗读标签沿用改造前实现；阶段 6.3 决定去留后再补
+- 长辈模式下的"正文提高一级"依赖系统字体缩放，应用侧不做双档字号（若验收要求应用侧也升一档，需要新增字号档位而不是散改 fp）
+
+## 16. 尚未纳入验收（按阶段补进本文件）
 
 - 阶段 3.5：双真机配对/短码过期/二维码 token 复用/越权/解除级联删除（另立 `docs/validation/cloud-pairing-e2e.md`）。**门禁解除后要一并复验的现有条目**：§9.5（已配对文案）、§10.8–10.11（短码屏/扫码结果码/分享面板/二维码内容）、§12.14（需重新配对那条通知）
-- 阶段 5.3：无障碍与 Senior Mode（含 §14.4 的 ChipV2 热区、§14.7 的减少动效开关**没有写入方**、§14.8 的组件内动画不受应用开关控制）；5.4：重算与渲染性能预算
+- 阶段 5.4：重算与渲染性能预算（冷启动首屏可交互、120 天重算、快照编解码、1000 窗口列表滚动的 P50/P95）
 - 阶段 6.1：升级迁移与备份恢复；6.2：灰度与回滚（含 §11.14 的 `newCard` 空转开关）；6.4：发布矩阵（`docs/release/2026-api26-release-checklist.md`）
 
 ---

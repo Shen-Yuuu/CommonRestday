@@ -5,6 +5,7 @@ import { Logger } from 'commons';
 import { common } from '@kit.AbilityKit';
 import { Breakpoint } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 展开档下整壳的最大宽度：再宽只加留白，不把三 Tab 底栏拉到屏幕两头。 */
 const SHELL_MAX: number = 800;
@@ -25,6 +26,13 @@ struct Index {
 
   aboutToAppear(): void {
     this.checkPrivacy();
+    // 系统无障碍状态（长辈模式/屏幕朗读/减少动态效果）只在壳层订阅一次，页面读 AppStorage
+    AccessibilityPolicy.attach();
+  }
+
+  aboutToDisappear(): void {
+    // SDK 要求 on* 监听在生命周期结束前 off，否则泄漏甚至崩溃
+    AccessibilityPolicy.detach();
   }
 
   /**

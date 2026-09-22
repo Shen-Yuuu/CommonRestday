@@ -102,6 +102,8 @@ export struct WindowCard {
       }
       .width('100%')
       .margin({ top: DesignTokens.space3 })
+      // 纯视觉的时长对比条：朗读里时长已经由上面的文字给出，这条不再读一遍
+      .accessibilityLevel('no')
 
       if (this.tagList().length > 0) {
         Row({ space: DesignTokens.space2 }) {

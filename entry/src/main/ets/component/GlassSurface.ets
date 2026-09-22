@@ -74,6 +74,7 @@ export struct GlassSurface {
           .width('76%')
           .height(DesignTokens.glassBorderWidth)
           .backgroundColor(DesignTokens.glassHighlight)
+          .accessibilityLevel('no')
         this.content()
       }
       .borderRadius(this.corners())

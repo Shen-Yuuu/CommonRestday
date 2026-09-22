@@ -8,7 +8,8 @@ import { EditorialSection } from '../component/EditorialSection';
 import { DayShiftSheet } from '../component/DayShiftSheet';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
-import { navToMe } from '../util/NavUtil';
+import { pushPendingRoute } from '../util/NavUtil';
+import { NavRoutes } from '../navigation/NavRoutes';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
@@ -306,7 +307,7 @@ export struct ScheduleHub {
               description: '在「我的 · 伴侣与同步」添加伴侣后，就能在这台手机上为 TA 录班表，一起算共同时间。',
               actionLabel: '去添加伴侣',
               onAction: () => {
-                navToMe();
+                pushPendingRoute(NavRoutes.ME);
               }
             })
           } else {

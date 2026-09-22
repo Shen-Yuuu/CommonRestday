@@ -6,16 +6,18 @@ import { ownerFromParams } from '../model/RouteParams';
  *
  * 广播：页面/视图内无法直接操作壳层的 Tabs，用 AppStorage 计数广播，
  * AppNavigator 通过 @StorageProp + @Watch 监听并切换。
+ * 切到哪个 Tab 一律只按路由名走 pending route（唯一白名单入口）；
+ * 分段这类"附带落地参数"的请求才另开计数广播，避免和深链互相误触发。
  * 深链：服务卡片 postCardAction 与 Want 的参数来自进程外，必须过白名单才能用于导航。
  */
-export const NAV_TO_ME_KEY = 'navToMeCount';
+/** 「共同」Tab 计数广播键（含落地分段，见 navToCoTime）。 */
 export const NAV_TO_COTIME_KEY = 'navToCoTimeCount';
 /** 共同时间页落地分段请求键：与计数广播配套，消费后清空。 */
 export const COTIME_SEGMENT_KEY = 'navToCoTimeSegment';
 /** 共同时间页的两个一级分段（取值与 CoTimeView 的分段常量一致）。 */
 export const COTIME_SEG_WINDOW = 'window';
 export const COTIME_SEG_PLANS = 'plans';
-/** 待消费的深链路由名（卡片/Want 拉起）：EntryAbility 写入，壳层取走后清空。 */
+/** 待消费的导航请求（卡片/Want 拉起、页内引导）：写入方登记，壳层取走后清空。 */
 export const PENDING_ROUTE_KEY = 'crdPendingRoute';
 /** 变更广播键：同一条路由连续拉起两次也要跳第二回，所以触发靠计数而不是名字。 */
 export const PENDING_ROUTE_COUNT_KEY = 'crdPendingRouteCount';
@@ -28,12 +30,6 @@ const WANT_PACKED_PARAMS = 'key_params';
  */
 interface DeepLinkParams {
   route?: string;
-}
-
-/** 请求切换到「我的」Tab（添加伴侣引导等入口使用）。 */
-export function navToMe(): void {
-  const cur: number = AppStorage.get<number>(NAV_TO_ME_KEY) ?? 0;
-  AppStorage.setOrCreate<number>(NAV_TO_ME_KEY, cur + 1);
 }
 
 /**
@@ -104,7 +100,7 @@ export function routeFromWantParams(params: Record<string, Object> | undefined):
   return '';
 }
 
-/** 登记一次待消费深链：先写名字再 bump 计数，壳层按计数变化取走。 */
+/** 登记一次待消费导航请求：先写名字再 bump 计数，壳层按计数变化取走并过白名单落地。 */
 export function pushPendingRoute(name: string): void {
   if (name === '') {
     return;

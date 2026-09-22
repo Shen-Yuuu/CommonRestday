@@ -48,11 +48,10 @@ export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
-  // 跨 Tab 导航广播（「去添加伴侣」等入口）：NavUtil.navToMe() 触发
-  @StorageProp('navToMeCount') @Watch('onNavToMe') navToMeCount: number = 0;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
-  // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页
+  // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页。
+  // 写入方在 feature 模块（依赖方向反过来，够不到 entry 的 NavUtil），故不走 pending route
   @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
   // 服务卡片点击深链广播：EntryAbility 过白名单后登记，壳层取走并落地
   @StorageProp('crdPendingRouteCount') @Watch('onPendingRoute') pendingRouteCount: number = 0;
@@ -72,15 +71,11 @@ export struct AppNavigator {
     }
   }
 
-  onNavToMe(): void {
-    this.goTab(NavRoutes.TAB_ME);
-  }
-
   onPairOffer(): void {
     this.goTab(NavRoutes.TAB_ME);
   }
 
-  /** 应用已在运行时点卡片：登记的深链取走即落地，名字已在 EntryAbility 过白名单。 */
+  /** 应用已在运行时点卡片/页内引导：登记的请求取走即落地，名字一律按白名单解析。 */
   onPendingRoute(): void {
     const name = takePendingRoute();
     if (name !== '') {

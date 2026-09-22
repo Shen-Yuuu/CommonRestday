@@ -1,20 +1,15 @@
 import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { reminderAgentManager } from '@kit.BackgroundTasksKit';
-import { EngineParams, OWNER_ME, OWNER_PARTNER, hhmmToMin, minToHHmm } from 'domain';
+import { OWNER_ME, OWNER_PARTNER } from 'domain';
+import { PAIRED, PAIR_NONE, PAIR_WAITING } from 'data';
 import {
-  PAIRED, PAIR_NONE, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
-} from 'data';
-import { AgcPairingClient, PairingSession, SnapshotCrypto } from 'cloud';
-import { Logger } from 'commons';
-import { ScheduleUseCase } from 'feature';
+  InviteResult, isCrossMidnight, MyRhythm, PartnerInput, ProfileSettingsService, SettingsResult
+} from 'feature';
 import { openPrivacyPolicy } from '../util/PrivacyUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
-
-const TAG = 'MeView';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
@@ -65,29 +60,20 @@ export struct MeView {
   }
 
   reload(): void {
-    try {
-      this.shareLevel = SettingsStore.getShareLevel();
-      this.pairState = SettingsStore.getPairState();
-    } catch (e) {
-      // Settings 未初始化时保持默认
-    }
+    this.shareLevel = ProfileSettingsService.getShareLevel();
+    this.pairState = ProfileSettingsService.getPairState();
     this.reloadPartner();
     this.reloadMyParams();
   }
 
   reloadPartner(): void {
-    let profile: PartnerProfile | null = null;
-    try {
-      profile = SettingsStore.getPartnerProfile();
-    } catch (e) {
-      profile = null;
-    }
+    const profile: PartnerInput | null = ProfileSettingsService.loadPartner();
     this.partnerExists = profile != null;
     if (profile != null && !this.partnerEditing) {
       this.pNick = profile.nick;
-      this.pWake = minToHHmm(profile.wakeMin);
-      this.pBed = minToHHmm(profile.bedMin);
-      this.pWind = '' + profile.windDownMin;
+      this.pWake = profile.wakeText;
+      this.pBed = profile.bedText;
+      this.pWind = profile.windText;
     }
   }
 
@@ -112,35 +98,15 @@ export struct MeView {
   }
 
   savePartner(): void {
-    const nick = this.pNick.trim();
-    const wake = hhmmToMin(this.pWake);
-    const bed = hhmmToMin(this.pBed);
-    const wind = this.toInt(this.pWind, -1);
-    if (nick === '') {
-      promptAction.showToast({ message: '请填写伴侣昵称' });
-      return;
-    }
-    if (wake < 0 || bed < 0) {
-      promptAction.showToast({ message: '时间格式应为 HH:MM（如 07:00）' });
-      return;
-    }
-    if (bed <= wake) {
-      promptAction.showToast({ message: '就寝时间需晚于起床时间' });
-      return;
-    }
-    if (wind < 0) {
-      promptAction.showToast({ message: '收整缓冲不能为负' });
-      return;
-    }
-    const profile: PartnerProfile = { nick: nick, wakeMin: wake, bedMin: bed, windDownMin: wind };
-    SettingsStore.savePartnerProfile(profile).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
-      this.partnerEditing = false;
-      this.reloadPartner();
-      promptAction.showToast({ message: '伴侣档案已保存，共同时间已重算' });
-    }).catch((e: Error) => {
-      promptAction.showToast({ message: '保存失败：' + e.message });
+    const input: PartnerInput = {
+      nick: this.pNick, wakeText: this.pWake, bedText: this.pBed, windText: this.pWind
+    };
+    ProfileSettingsService.savePartner(input).then((res: SettingsResult) => {
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.partnerEditing = false;
+        this.reloadPartner();
+      }
     });
   }
 
@@ -161,22 +127,18 @@ export struct MeView {
   }
 
   doDeletePartner(): void {
-    SettingsStore.clearPartnerProfile().then(() => {
-      return ScheduleRepo.deletePartnerData();
-    }).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
-      this.partnerEditing = false;
-      this.reloadPartner();
-      promptAction.showToast({ message: '已删除伴侣数据，回退单人模式' });
-    }).catch((e: Error) => {
-      promptAction.showToast({ message: '删除失败：' + e.message });
+    ProfileSettingsService.deletePartner().then((res: SettingsResult) => {
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.partnerEditing = false;
+        this.reloadPartner();
+      }
     });
   }
 
-  toInt(text: string, dft: number): number {
-    const v = Number.parseInt(text, 10);
-    return Number.isNaN(v) ? dft : v;
+  /** 跨零点作息要说成人话，否则"就寝 01:00"看着像漏填。 */
+  private bedNote(wakeStr: string, bedStr: string): string {
+    return isCrossMidnight(wakeStr, bedStr) ? '就寝已过零点，按次日凌晨计入' : '';
   }
 
   // ---------- 云端配对（US9 / FR-015：AGC 未就绪时全程降级提示，不影响本机代录） ----------
@@ -191,87 +153,60 @@ export struct MeView {
     return '未配对';
   }
 
-  /**
-   * 生成邀请码（创建方）：
-   * 稳定 uid（SettingsStore 持久化）→ pairing-create 云函数 →
-   * 保存 pairId + 由邀请码派生的快照加密密钥（deriveKeyHex，双方同码同钥）→ 状态 WAITING。
-   * 失败（AGC 未开通/网络异常）统一降级提示，引导本机代录。
-   */
+  /** 生成邀请码（创建方）：云函数调用与配对标记读写都在 feature，这里只管按钮态与展示。 */
   createInvite(): void {
     if (this.pairingBusy) {
       return;
     }
     this.pairingBusy = true;
-    SettingsStore.getOrCreateUid().then((uid: string) => {
-      return new AgcPairingClient().createPairing(uid);
-    }).then(async (session: PairingSession) => {
-      await SettingsStore.savePairId(session.sessionId);
-      await SettingsStore.savePairKey(SnapshotCrypto.deriveKeyHex(session.code));
-      await SettingsStore.setPairState(PAIR_WAITING, '');
-      this.myCode = session.code;
-      this.joinCode = '';
-      this.showJoinInput = false;
-      this.pairState = PAIR_WAITING;
+    ProfileSettingsService.createInvite().then((res: InviteResult) => {
       this.pairingBusy = false;
-      promptAction.showToast({ message: '配对码已生成，发给 TA 吧' });
-    }).catch((e: Error) => {
-      this.pairingBusy = false;
-      Logger.warn(TAG, 'createPairing degraded: ' + e.message);
-      promptAction.showToast({ message: '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录' });
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.myCode = res.code;
+        this.joinCode = '';
+        this.showJoinInput = false;
+        this.pairState = PAIR_WAITING;
+      }
     });
   }
 
-  /** 输码加入（加入方）：pairing-join 云函数按邀请码找回会话 → 保存 pairId/密钥 → 状态 PAIRED 并推送首份快照。 */
+  /** 输码加入（加入方）：配对码合法性与云端结果统一由服务层判定，页面只 toast。 */
   joinByCode(): void {
-    const code = this.joinCode.trim();
-    if (code.length !== 6 || Number.isNaN(Number(code))) {
-      promptAction.showToast({ message: '请输入对方分享的 6 位配对码' });
-      return;
-    }
     if (this.pairingBusy) {
       return;
     }
     this.pairingBusy = true;
-    SettingsStore.getOrCreateUid().then((uid: string) => {
-      const client = new AgcPairingClient();
-      return client.joinPairing(code, uid);
-    }).then(async (session: PairingSession) => {
-      await SettingsStore.savePairId(session.sessionId);
-      await SettingsStore.savePairKey(SnapshotCrypto.deriveKeyHex(code));
-      await SettingsStore.setPairState(PAIRED, '');
-      this.pairState = PAIRED;
+    ProfileSettingsService.joinByCode(this.joinCode).then((res: SettingsResult) => {
       this.pairingBusy = false;
-      this.showJoinInput = false;
-      this.joinCode = '';
-      promptAction.showToast({ message: '配对成功，班表将按隐私等级加密同步' });
-      ScheduleUseCase.onScheduleChanged().catch(() => {
-      });
-    }).catch((e: Error) => {
-      this.pairingBusy = false;
-      Logger.warn(TAG, 'joinPairing degraded: ' + e.message);
-      promptAction.showToast({ message: '加入失败：云端配对暂未开放或配对码无效' });
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.pairState = PAIRED;
+        this.showJoinInput = false;
+        this.joinCode = '';
+      }
     });
   }
 
-  /** 创建方确认完成配对（体验版：无服务端推送，对方输码后手动确认；pairId/密钥沿用创建时保存值）。 */
-  async markPaired(): Promise<void> {
-    await SettingsStore.setPairState(PAIRED, '');
-    this.pairState = PAIRED;
-    promptAction.showToast({ message: '已进入配对模式，班表变更将加密同步' });
-    ScheduleUseCase.onScheduleChanged().catch(() => {
+  /** 创建方确认完成配对（体验版：无服务端推送，对方输码后手动确认）。 */
+  markPaired(): void {
+    ProfileSettingsService.markPaired().then((res: SettingsResult) => {
+      if (res.ok) {
+        this.pairState = PAIRED;
+      }
+      promptAction.showToast({ message: res.message });
     });
   }
 
-  /** 取消等待中的配对（清除 pairId/密钥/状态，不动本机代录数据）。 */
-  async cancelWaiting(): Promise<void> {
-    await SettingsStore.savePairId('');
-    await SettingsStore.clearPairKey();
-    await SettingsStore.setPairState(PAIR_NONE, '');
-    this.pairState = PAIR_NONE;
-    this.myCode = '';
+  /** 取消等待中的配对（只清配对标记，不动本机代录数据）。 */
+  cancelWaiting(): void {
+    ProfileSettingsService.cancelWaiting().then(() => {
+      this.pairState = PAIR_NONE;
+      this.myCode = '';
+    });
   }
 
-  /** 解除配对（二次确认）：云端尽力解绑 → 清除本地配对标记/密钥/对方快照游标 → 重算。 */
+  /** 解除配对（二次确认）：云端尽力解绑，本地配对标记一律清干净。 */
   askUnpair(): void {
     this.getUIContext().showAlertDialog({
       message: '解除配对后不再同步 TA 的加密快照（本机代录数据不受影响）。确定解除？',
@@ -288,23 +223,13 @@ export struct MeView {
     });
   }
 
-  async doUnpair(): Promise<void> {
-    const pairId = SettingsStore.getPairId();
-    const uid = await SettingsStore.getOrCreateUid();
-    // 云端解绑尽力而为（AGC 未就绪/已失效均忽略），本地状态照常清理
-    try {
-      await new AgcPairingClient().unpair(pairId, uid);
-    } catch (e) {
-      Logger.warn(TAG, 'unpair cloud degraded: ' + (e as Error).message);
-    }
-    await SettingsStore.savePairId('');
-    await SettingsStore.clearPairKey();
-    await SettingsStore.setPartnerSnapVer(0);
-    await SettingsStore.setPairState(PAIR_NONE, '');
-    this.pairState = PAIR_NONE;
-    this.myCode = '';
-    promptAction.showToast({ message: '已解除配对' });
-    ScheduleUseCase.onScheduleChanged().catch(() => {
+  doUnpair(): void {
+    ProfileSettingsService.unpair().then((res: SettingsResult) => {
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.pairState = PAIR_NONE;
+        this.myCode = '';
+      }
     });
   }
 
@@ -331,50 +256,31 @@ export struct MeView {
     });
   }
 
-  async doClearAll(): Promise<void> {
+  doClearAll(): void {
     this.clearing = true;
-    try {
-      // 周摘要提醒先在系统侧取消（设置即将被清，id 先取出）
-      const weeklyId = await SettingsStore.getWeeklyReminderId();
-      if (weeklyId >= 0) {
-        try {
-          await reminderAgentManager.cancelReminder(weeklyId);
-        } catch (e) {
-          // 提醒已被系统清理：忽略
-        }
+    ProfileSettingsService.clearAllData().then((res: SettingsResult) => {
+      this.clearing = false;
+      promptAction.showToast({ message: res.message });
+      if (res.ok) {
+        this.pairState = PAIR_NONE;
+        this.myCode = '';
+        this.reload();
       }
-      const privacyWas = SettingsStore.isPrivacyAccepted();
-      await ScheduleRepo.clearAllData();
-      await SettingsStore.clearAllSettings();
-      if (privacyWas) {
-        await SettingsStore.acceptPrivacy();
-      }
-      await ScheduleUseCase.onScheduleChanged();
-      this.pairState = PAIR_NONE;
-      this.myCode = '';
-      this.reload();
-      promptAction.showToast({ message: '已清空全部数据' });
-    } catch (e) {
-      promptAction.showToast({ message: '清空失败：' + (e as Error).message });
-    }
-    this.clearing = false;
+    });
   }
 
   // ---------- 我的作息参数（起床/就寝/收整；视界与最短时段在高级设置） ----------
 
   reloadMyParams(): void {
-    try {
-      const p = SettingsStore.getParams();
-      if (!this.myEditing) {
-        this.myWake = minToHHmm(p.wakeMin);
-        this.myBed = minToHHmm(p.bedMin);
-        this.myWind = '' + p.windDownMin;
-        this.myHorizon = '' + p.horizonDays;
-        this.myMinSlot = p.minSlotMin;
-      }
-    } catch (e) {
-      // Settings 未初始化时保持默认
+    if (this.myEditing) {
+      return;
     }
+    const r: MyRhythm = ProfileSettingsService.loadMyRhythm();
+    this.myWake = r.wakeText;
+    this.myBed = r.bedText;
+    this.myWind = r.windText;
+    this.myHorizon = r.horizonText;
+    this.myMinSlot = r.minSlotMin;
   }
 
   startEditMyParams(): void {
@@ -388,42 +294,20 @@ export struct MeView {
     this.reloadMyParams();
   }
 
+  /** 解析、校验与重算都在 ProfileSettingsService：就寝早于起床按次日凌晨计入。 */
   saveMyParams(): void {
-    const wake = hhmmToMin(this.myWake);
-    const bed = hhmmToMin(this.myBed);
-    const wind = this.toInt(this.myWind, -1);
-    const horizon = this.toInt(this.myHorizon, -1);
-    if (wake < 0 || bed < 0) {
-      promptAction.showToast({ message: '时间格式应为 HH:MM（如 07:00）' });
-      return;
-    }
-    if (bed <= wake) {
-      promptAction.showToast({ message: '就寝时间需晚于起床时间' });
-      return;
-    }
-    if (wind < 0) {
-      promptAction.showToast({ message: '收整缓冲不能为负' });
-      return;
-    }
-    if (horizon < 7 || horizon > 366) {
-      promptAction.showToast({ message: '视界天数需在 7–366 天之间' });
-      return;
-    }
-    const p: EngineParams = SettingsStore.getParams();
-    p.wakeMin = wake;
-    p.bedMin = bed;
-    p.windDownMin = wind;
-    p.horizonDays = horizon;
-    p.minSlotMin = this.myMinSlot;
-    SettingsStore.setParams(p).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
+    const input: MyRhythm = {
+      wakeText: this.myWake, bedText: this.myBed, windText: this.myWind,
+      horizonText: this.myHorizon, minSlotMin: this.myMinSlot
+    };
+    ProfileSettingsService.saveMyRhythm(input).then((res: SettingsResult) => {
+      promptAction.showToast({ message: res.message });
+      if (!res.ok) {
+        return;
+      }
       this.myEditing = false;
       this.advanced = false;
       this.reloadMyParams();
-      promptAction.showToast({ message: '参数已保存，已重新计算' });
-    }).catch((e: Error) => {
-      promptAction.showToast({ message: '保存失败：' + e.message });
     });
   }
 
@@ -492,12 +376,13 @@ export struct MeView {
       return;
     }
     this.shareLevel = level;
-    SettingsStore.setShareLevel(level).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
-      promptAction.showToast({ message: '已切换到' + this.levelTitle(level) + '，重启后仍保持' });
-    }).catch((e: Error) => {
-      promptAction.showToast({ message: '保存失败：' + e.message });
+    ProfileSettingsService.setShareLevel(level).then((res: SettingsResult) => {
+      promptAction.showToast({
+        message: res.ok ? '已切换到' + this.levelTitle(level) + '，重启后仍保持' : res.message
+      });
+      if (!res.ok) {
+        this.shareLevel = ProfileSettingsService.getShareLevel();
+      }
     });
   }
 
@@ -697,7 +582,7 @@ export struct MeView {
               .onChange((v: string) => this.pWind = v)
           }.width('100%')
 
-          Text('作息格式 HH:MM。TA 的起床/就寝/收整独立参与共同时间计算。')
+          Text('作息格式 HH:MM。TA 的起床/就寝/收整独立参与计算；就寝早于起床即次日凌晨睡。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
           Row({ space: DesignTokens.space3 }) {
@@ -727,6 +612,11 @@ export struct MeView {
             Text('起床 ' + this.pWake + ' · 就寝 ' + this.pBed + ' · 收整 ' + this.pWind + ' 分钟')
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textTertiary)
+            if (this.bedNote(this.pWake, this.pBed) !== '') {
+              Text(this.bedNote(this.pWake, this.pBed))
+                .fontSize(DesignTokens.fontCaption)
+                .fontColor(DesignTokens.textSecondary)
+            }
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
@@ -968,6 +858,12 @@ export struct MeView {
             this.paramStat(this.myBed, '就寝')
             this.paramStat(this.myWind + '分', '收整')
           }.width('100%')
+
+          if (this.bedNote(this.myWake, this.myBed) !== '') {
+            Text(this.bedNote(this.myWake, this.myBed))
+              .fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.textSecondary)
+          }
 
           Text('决定你的睡眠与收整如何参与计算，改完立刻重算共同时间。')
             .fontSize(DesignTokens.fontCaption)

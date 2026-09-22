@@ -1,8 +1,6 @@
 import { router } from '@kit.ArkUI';
-import { OWNER_ME, OWNER_PARTNER, todayEpochDay } from 'domain';
-import { ScheduleRepo, SettingsStore } from 'data';
-import { AppConst } from 'commons';
-import { ScheduleUseCase } from 'feature';
+import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
+import { ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { ownerFromParams, ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
@@ -35,7 +33,7 @@ const MAIN_ENTRIES: EntryItem[] = [
   },
   {
     key: 'cycle', glyph: $r('sys.symbol.arrow_clockwise'), title: '循环模板',
-    desc: '白白夜夜休休等序列 + 锚点，自动铺开未来 ' + AppConst.HORIZON_DAYS + ' 天', page: PAGE_CYCLE
+    desc: '白白夜夜休休等序列 + 锚点，自动铺开未来视界内的每一天', page: PAGE_CYCLE
   },
   {
     key: 'course', glyph: $r('sys.symbol.square_and_pencil'), title: '课程表',
@@ -76,6 +74,8 @@ export struct ScheduleHub {
   @State private tplSet: boolean = false;
   @State private ovs: number = 0;
   @State private courses: number = 0;
+  /** 读模型给的视界天数：文案与统计区间都用它；首帧先用引擎默认，读模型回来即替换。 */
+  @State private horizon: number = defaultParams().horizonDays;
   // 单日改班 sheet（临时调整 / 点日格）
   @State private sheetOpen: boolean = false;
   @State private sheetDay: number = 0;
@@ -84,49 +84,23 @@ export struct ScheduleHub {
 
   aboutToAppear(): void {
     this.side = this.initialOwner === OWNER_PARTNER ? OWNER_PARTNER : OWNER_ME;
-    this.refresh();
-  }
-
-  onRecomputeChanged(): void {
-    this.refresh();
-  }
-
-  refresh(): void {
-    this.checkPartnerLocal();
     this.loadStatus();
   }
 
-  /** 代录判定只看本机：伴侣档案或 TA 的任何班表数据（快照不落这两张表，故配对态不会误显）。 */
-  checkPartnerLocal(): void {
-    let hasProfile = false;
-    try {
-      hasProfile = SettingsStore.getPartnerProfile() != null;
-    } catch (e) {
-      hasProfile = false;
-    }
-    if (hasProfile) {
-      this.partnerLocal = true;
-      return;
-    }
-    ScheduleUseCase.hasPartnerScheduleData(todayEpochDay()).then((ok: boolean) => {
-      this.partnerLocal = ok;
-    }).catch(() => {
-      this.partnerLocal = false;
-    });
+  onRecomputeChanged(): void {
+    this.loadStatus();
   }
 
-  /** 当前侧录入概况：班次/循环/涂抹/课程四项，够判断"还缺哪条链路"。 */
+  /** 当前侧录入概况：班次/循环/临时调整/课程四项 + 真实视界 + 是否代录过 TA。 */
   async loadStatus(): Promise<void> {
     try {
-      const types = await ScheduleRepo.listShiftTypes(this.side);
-      const tpl = await ScheduleRepo.getTemplate(this.side);
-      const today = todayEpochDay();
-      const ovs = await ScheduleRepo.listOverrides(today, today + AppConst.HORIZON_DAYS, this.side);
-      const courses = await ScheduleRepo.listCourses(this.side);
-      this.types = types.length;
-      this.tplSet = tpl != null && tpl.seq.length > 0;
-      this.ovs = ovs.length;
-      this.courses = courses.length;
+      const ov: ScheduleOverview = await ScheduleOverviewQueryService.getOverview(this.side);
+      this.types = ov.shiftTypes;
+      this.tplSet = ov.hasTemplate;
+      this.ovs = ov.overrides;
+      this.courses = ov.courses;
+      this.horizon = ov.horizonDays;
+      this.partnerLocal = ov.partnerLocal;
     } catch (e) {
       this.types = 0;
       this.tplSet = false;
@@ -177,6 +151,12 @@ export struct ScheduleHub {
       .onClick(() => this.pickSide(partner))
   }
 
+  /** 循环入口的视界天数用户可改：文案跟着读模型给的实际值走，不写死默认常量。 */
+  private descOf(item: EntryItem): string {
+    return item.key === 'cycle'
+      ? '白白夜夜休休等序列 + 锚点，自动铺开未来 ' + this.horizon + ' 天' : item.desc;
+  }
+
   /** 条目行：图标 + 主副文本 + 箭头，整行 44vp 以上热区。 */
   @Builder
   entryRow(item: EntryItem, aux: boolean) {
@@ -189,7 +169,7 @@ export struct ScheduleHub {
           .fontSize(DesignTokens.fontBody)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
-        Text(item.desc)
+        Text(this.descOf(item))
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
       }

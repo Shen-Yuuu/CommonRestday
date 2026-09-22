@@ -1,12 +1,8 @@
-import {
-  BlockTag, Interval, MIN_PER_DAY, ShiftInstance, ShiftType, WindowChannel, WindowTag,
-  expandCycle, shiftToBlocks, termWeekOf, todayEpochDay, weekdayOf
-} from 'domain';
-import { PlanRow, ScheduleRepo } from 'data';
+import { MIN_PER_DAY, WindowChannel, WindowTag, todayEpochDay, weekdayOf } from 'domain';
 import { DateLabel } from 'commons';
 import {
-  CommonTimeQueryService, ScheduleUseCase, SettingsStoreParams, WindowFilter, WindowFilterKey,
-  WindowSummary
+  CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
+  WeekSchedule, WindowFilter, WindowFilterKey, WindowSummary
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { tagColor } from '../util/WindowTagUtil';
@@ -20,12 +16,6 @@ const HOUR_H = 34;
 const GRID_H = 24 * HOUR_H;
 const LABEL_W = 26;
 const DAY_HEADERS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
-/** 课程/计划/恢复块的固定配色（班次块使用班次自带颜色）。 */
-const COURSE_COLOR = '#3AA6E8';
-const PLAN_COLOR = '#4E9A63';
-const PLAN_CONFLICT_COLOR = '#D9534F';
-const RECOVERY_COLOR = '#A08CD8';
-
 /** 共同空闲分级门槛（分钟）：≥6h / ≥3h / 其余。 */
 const FREE_HIGH_MIN = 360;
 const FREE_MID_MIN = 180;
@@ -44,14 +34,6 @@ const HOURS: number[] = (() => {
   }
   return out;
 })();
-
-/** 周视图单个日程块（绝对 epochMin 区间；渲染时按日裁剪，跨天块拆到两列）。 */
-interface WeekItem {
-  start: number;
-  end: number;
-  name: string;
-  color: string;
-}
 
 /** 共同空闲块：裁剪到当日后的区间 + 所属窗口的原始起止。 */
 interface FreeBlock {
@@ -94,7 +76,7 @@ export struct WeekScheduleView {
   @Prop @Watch('reload') refreshTick: number = 0;
   @State weekStart: number = currentWeekStart();
   @State loading: boolean = true;
-  @State weekItems: WeekItem[] = [];
+  @State weekItems: WeekBlock[] = [];
   @State commonWindows: WindowSummary[] = [];
   @State axisStart: number = AXIS_DEFAULT_START;
   @State hourH: number = 24;
@@ -149,101 +131,13 @@ export struct WeekScheduleView {
     this.loadScheduleWeek();
   }
 
-  /** 装配当前周的日程块：班次 + 课程 + 共同计划（绝对区间，跨天渲染时裁剪）。 */
+  /** 周日程块由 feature 读模型装配（班次+课程+共同计划），这里只负责画。 */
   async loadScheduleWeek(): Promise<void> {
     this.loading = true;
     try {
-      const params = SettingsStoreParams();
-      const types = await ScheduleRepo.listShiftTypes(this.owner);
-      const tpl = await ScheduleRepo.getTemplate(this.owner);
-      const ovs = await ScheduleRepo.listOverrides(this.weekStart, this.weekStart + 6, this.owner);
-      const courses = await ScheduleRepo.listCourses(this.owner);
-      const termStart = await ScheduleRepo.getTermStart();
-      const sectionTimes = ScheduleUseCase.sectionTimesFromJson(await ScheduleRepo.getSectionTimes());
-      const plans: PlanRow[] = await ScheduleRepo.listActivePlans();
-
-      const typeMap = new Map<string, ShiftType>();
-      for (let i = 0; i < types.length; i++) {
-        typeMap.set(types[i].id, types[i]);
-      }
-
-      const items: WeekItem[] = [];
-
-      // ① 班次：循环模板（+单日覆盖）；无模板时仅显示覆盖班次日
-      const insts: ShiftInstance[] = [];
-      if (tpl != null) {
-        const ex = expandCycle(tpl, ovs, this.weekStart, 7);
-        for (let i = 0; i < ex.length; i++) {
-          insts.push(ex[i]);
-        }
-      } else {
-        for (let i = 0; i < ovs.length; i++) {
-          const ov = ovs[i];
-          if (ov.shiftTypeId != null && ov.epochDay >= this.weekStart && ov.epochDay < this.weekStart + 7) {
-            const inst: ShiftInstance = { epochDay: ov.epochDay, typeId: ov.shiftTypeId as string };
-            insts.push(inst);
-          }
-        }
-      }
-      for (let i = 0; i < insts.length; i++) {
-        const cfg = typeMap.get(insts[i].typeId);
-        if (cfg == null) {
-          continue;
-        }
-        const blocks = shiftToBlocks(insts[i], cfg, params);
-        for (let j = 0; j < blocks.length; j++) {
-          const b: Interval = blocks[j];
-          const isRecovery = b.tag === BlockTag.RECOVERY;
-          items.push({
-            start: b.start, end: b.end,
-            name: isRecovery ? cfg.name + '·恢复' : cfg.name,
-            color: isRecovery ? RECOVERY_COLOR : cfg.color
-          });
-        }
-      }
-
-      // ② 课程：学期周次 + 单双周 + 节次模板
-      if (termStart > 0) {
-        for (let d = 0; d < 7; d++) {
-          const ed = this.weekStart + d;
-          const week = termWeekOf(termStart, ed);
-          if (week < 1) {
-            continue;
-          }
-          const wd = weekdayOf(ed);
-          for (let i = 0; i < courses.length; i++) {
-            const c = courses[i];
-            if (c.weekday !== wd || week < c.weekFrom || week > c.weekTo) {
-              continue;
-            }
-            if (c.parity === 1 && week % 2 === 0) {
-              continue;
-            }
-            if (c.parity === 2 && week % 2 === 1) {
-              continue;
-            }
-            const first = sectionTimes[c.sectionStart - 1];
-            const last = sectionTimes[c.sectionEnd - 1];
-            if (first == null || last == null) {
-              continue;
-            }
-            const base = ed * MIN_PER_DAY;
-            items.push({ start: base + first.startMin, end: base + last.endMin, name: c.name, color: COURSE_COLOR });
-          }
-        }
-      }
-
-      // ③ 共同计划（双方共享，双侧周视图都显示；冲突计划红色）
-      for (let i = 0; i < plans.length; i++) {
-        const p = plans[i];
-        items.push({
-          start: p.start, end: p.end, name: p.title,
-          color: p.status === 'CONFLICT' ? PLAN_CONFLICT_COLOR : PLAN_COLOR
-        });
-      }
-
-      items.sort((a: WeekItem, b: WeekItem) => a.start - b.start);
-      this.weekItems = items;
+      const data: WeekSchedule = await ScheduleOverviewQueryService.getWeekSchedule(this.owner,
+        this.weekStart);
+      this.weekItems = data.blocks;
     } catch (e) {
       this.weekItems = [];
     }
@@ -326,10 +220,10 @@ export struct WeekScheduleView {
   }
 
   /** 某日的日程块（把绝对区间裁剪到该自然日内，跨天班次自然断到两列）。 */
-  dayItems(epochDay: number): WeekItem[] {
+  dayItems(epochDay: number): WeekBlock[] {
     const s = epochDay * MIN_PER_DAY;
     const e = s + MIN_PER_DAY;
-    const out: WeekItem[] = [];
+    const out: WeekBlock[] = [];
     for (let i = 0; i < this.weekItems.length; i++) {
       const it = this.weekItems[i];
       const cs = Math.max(it.start, s);
@@ -565,7 +459,7 @@ export struct WeekScheduleView {
             }
 
             // 日程块
-            ForEach(this.dayItems(ed), (item: WeekItem) => {
+            ForEach(this.dayItems(ed), (item: WeekBlock) => {
               Column() {
                 Text(item.name)
                   .fontSize(9).fontColor('#FFFFFF')
@@ -578,7 +472,7 @@ export struct WeekScheduleView {
               .backgroundColor(item.color)
               .borderRadius(4)
               .clip(true)
-            }, (item: WeekItem) => '' + item.start + '-' + item.end + item.name)
+            }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
           }
           .width('14.28%')
           .height(GRID_H)

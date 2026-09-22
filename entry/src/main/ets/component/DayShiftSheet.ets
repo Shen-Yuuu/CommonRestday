@@ -1,8 +1,9 @@
 import { promptAction } from '@kit.ArkUI';
-import { CycleTemplate, OWNER_ME, ScheduleOverride, ShiftType, expandCycle } from 'domain';
+import { OWNER_ME, ShiftType } from 'domain';
 import { DateLabel } from 'commons';
-import { ScheduleRepo } from 'data';
-import { ScheduleUseCase } from 'feature';
+import {
+  DayShiftState, ScheduleCommandResult, ScheduleCommandService, ScheduleOverviewQueryService
+} from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 
 /** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
@@ -41,20 +42,13 @@ export struct DayShiftSheet {
   async load(): Promise<void> {
     this.loading = true;
     try {
-      const types = await ScheduleRepo.listShiftTypes(this.owner);
-      const tpl: CycleTemplate | null = await ScheduleRepo.getTemplate(this.owner);
-      const ovs = await ScheduleRepo.listOverrides(this.epochDay, this.epochDay, this.owner);
-      let base = REST_ID;
-      if (tpl != null) {
-        // 传空覆盖列表取"模板原始值"，才能把手动覆盖和它区分开
-        const ex = expandCycle(tpl, [], this.epochDay, 1);
-        base = ex.length > 0 ? ex[0].typeId : REST_ID;
-      }
-      this.types = types;
-      this.hasTpl = tpl != null;
-      this.baseId = base;
-      this.hasOv = ovs.length > 0;
-      this.ovId = ovs.length > 0 && ovs[0].shiftTypeId != null ? ovs[0].shiftTypeId : REST_ID;
+      const st: DayShiftState = await ScheduleOverviewQueryService.getDayShiftState(this.owner,
+        this.epochDay);
+      this.types = st.types;
+      this.hasTpl = st.hasTemplate;
+      this.baseId = st.baseTypeId;
+      this.hasOv = st.hasOverride;
+      this.ovId = st.overrideTypeId;
     } catch (e) {
       this.types = [];
       this.hasOv = false;
@@ -102,24 +96,29 @@ export struct DayShiftSheet {
     return (this.hasTpl ? '循环模板推算 · ' : '未配置模板 · ') + this.nameOf(this.baseId);
   }
 
-  // ---------- 写入（一次一条覆盖，保存后走全局重算广播） ----------
+  // ---------- 写入（一次一条覆盖，重算与广播由命令层收口） ----------
+
+  /** 保存失败要说清是"没写进去"还是"写进去了但共同时间没刷新"，否则用户不知道要不要重试。 */
+  private failNote(res: ScheduleCommandResult): string {
+    return res.errorCode === 'RECOMPUTE_FAILED'
+      ? '已保存，但共同时间这轮没刷新，稍后会自动重算' : '保存失败，未做任何改动';
+  }
 
   private write(shiftId: string): void {
     if (this.saving || (this.hasOv && this.ovId === shiftId)) {
       return;
     }
     this.saving = true;
-    const ov: ScheduleOverride = { epochDay: this.epochDay, shiftTypeId: shiftId === REST_ID ? null : shiftId };
-    ScheduleRepo.upsertOverride(ov, '', this.owner).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
+    ScheduleCommandService.setDayShift(this.epochDay, shiftId === REST_ID ? null : shiftId,
+      this.owner).then((res: ScheduleCommandResult) => {
+      this.saving = false;
+      if (!res.ok) {
+        promptAction.showToast({ message: this.failNote(res) });
+        return;
+      }
       this.hasOv = true;
       this.ovId = shiftId;
-      this.saving = false;
       promptAction.showToast({ message: DateLabel.md(this.epochDay) + ' 已改为' + this.nameOf(shiftId) });
-    }).catch((e: Error) => {
-      this.saving = false;
-      promptAction.showToast({ message: '保存失败：' + e.message });
     });
   }
 
@@ -128,17 +127,17 @@ export struct DayShiftSheet {
       return;
     }
     this.saving = true;
-    ScheduleRepo.deleteOverride(this.epochDay, this.owner).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).then(() => {
-      this.hasOv = false;
-      this.ovId = REST_ID;
-      this.saving = false;
-      promptAction.showToast({ message: '已恢复模板排班' });
-    }).catch((e: Error) => {
-      this.saving = false;
-      promptAction.showToast({ message: '清除失败：' + e.message });
-    });
+    ScheduleCommandService.clearDayShift(this.epochDay, this.owner)
+      .then((res: ScheduleCommandResult) => {
+        this.saving = false;
+        if (!res.ok) {
+          promptAction.showToast({ message: this.failNote(res) });
+          return;
+        }
+        this.hasOv = false;
+        this.ovId = REST_ID;
+        promptAction.showToast({ message: '已恢复模板排班' });
+      });
   }
 
   private chipBg(id: string): ResourceColor {

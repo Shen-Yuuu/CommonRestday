@@ -2034,7 +2034,7 @@ var ACT = {
     var w = hhmmToMin(fv('wake', hm(p.wakeMin)), p.wakeMin), b = hhmmToMin(fv('bed', hm(p.bedMin)), p.bedMin);
     var wind = toInt(fv('wind', String(p.windDownMin)), p.windDownMin);
     var hz = toInt(fv('horizon', String(p.horizonDays)), p.horizonDays);
-    if (b <= w) { toast('就寝时间需晚于起床时间'); return; }
+    if (b === w) { toast('起床与就寝是同一时刻，算不出一天的清醒区间'); return; }
     if (wind < 0) { toast('收整时长不能为负'); return; }
     if (hz < 7 || hz > 366) { toast('计算视界需在 7–366 天之间'); return; }
     S.params.wakeMin = w; S.params.bedMin = b; S.params.windDownMin = wind; S.params.horizonDays = hz;
@@ -2046,7 +2046,7 @@ var ACT = {
   savePartner:function(){
     var nick = fv('pnick', S.partner.nick).trim() || 'TA';
     var w = hhmmToMin(fv('pwake', ''), 420), b = hhmmToMin(fv('pbed', ''), 1320), wind = toInt(fv('pwind', '20'), 20);
-    if (b <= w) { toast('就寝时间需晚于起床时间'); return; }
+    if (b === w) { toast('起床与就寝是同一时刻，算不出一天的清醒区间'); return; }
     if (wind < 0) { toast('收整时长不能为负'); return; }
     S.partner = { nick:nick, wakeMin:w, bedMin:b, windDownMin:wind, exists:true };
     S.sheet = null;

@@ -171,6 +171,33 @@ export default function commonTimeQueryServiceTest() {
       expect(h.stale).assertFalse();
     });
 
+    it('tonight_support_counts_window_not_waiting', 0, () => {
+      // 尚未开始：19:00 看 19:30–22:30，空闲只有 3 小时，等待的 30 分钟不能混进去
+      const before = CommonTimeQueryService.tonightAnswer(TONIGHT_W, NOW, ExperienceMode.PAIRED, false);
+      expect(before.state).assertEqual(AnswerState.AVAILABLE);
+      expect(before.headline.indexOf('19:30–22:30') >= 0).assertTrue();
+      expect(before.supportingText.indexOf('30分钟后开始') >= 0).assertTrue();
+      expect(before.supportingText.indexOf('共 3小时') >= 0).assertTrue();
+      expect(before.supportingText.indexOf('4小时30') >= 0).assertFalse();
+
+      // 进行中：20:00 看同一窗口，剩 2 小时 30 分，全程仍是 3 小时
+      const during = CommonTimeQueryService.tonightAnswer(TONIGHT_W, DAY_START + 1200,
+        ExperienceMode.PAIRED, false);
+      expect(during.supportingText.indexOf('还剩 2小时30分') >= 0).assertTrue();
+      expect(during.supportingText.indexOf('共 3小时') >= 0).assertTrue();
+      expect(during.supportingText.indexOf('后开始') >= 0).assertFalse();
+
+      // 恰好结束：不再宣称有空，答案转成"看看明天"
+      const ended = CommonTimeQueryService.tonightAnswer(TONIGHT_W, TONIGHT_W.end,
+        ExperienceMode.PAIRED, false);
+      expect(ended.state).assertEqual(AnswerState.UNAVAILABLE);
+      expect(ended.windowStart).assertEqual(0);
+      expect(ended.headline.indexOf('已结束') >= 0).assertTrue();
+
+      // 边界只影响文案，选取环节本来就不会交出已结束的窗口
+      expect(CommonTimeQueryService.pickTonight([TONIGHT_W], TONIGHT_W.end) == null).assertTrue();
+    });
+
     it('tonight_is_not_hijacked_by_trip_channel', 0, () => {
       // 旅行通道窗口从今天 18:00 起横跨三天，起点比常规窗口更早
       const tripSpan = win(DAY, 1080, DAY + 2, 1200, WindowChannel.TRIP, [WindowTag.TRIP]);

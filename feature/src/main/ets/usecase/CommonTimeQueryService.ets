@@ -667,6 +667,18 @@ export class CommonTimeQueryService {
 
   // ---------- 答案文案 ----------
 
+  /**
+   * 今晚答案的补充行：时长只报窗口本身有多长，等待另说一句。
+   * 未开始的窗口若用「现在到结束」，会把两小时空档说成四小时半——那是等待时长，不是共同空闲。
+   */
+  static tonightSupport(w: Window, nowEpochMin: number): string {
+    const total = w.end - w.start;
+    if (nowEpochMin < w.start) {
+      return DateLabel.duration(w.start - nowEpochMin) + '后开始 · 共 ' + DateLabel.duration(total);
+    }
+    return '还剩 ' + DateLabel.duration(w.end - nowEpochMin) + ' · 共 ' + DateLabel.duration(total);
+  }
+
   static tonightAnswer(w: Window | null, nowEpochMin: number,
     mode: ExperienceMode, stale: boolean): QuickAnswer {
     const subject = mode === ExperienceMode.SOLO ? '我' : '我们';
@@ -674,12 +686,16 @@ export class CommonTimeQueryService {
       return CommonTimeQueryService.absentAnswer(AnswerKind.TONIGHT, '今晚的空档', stale,
         '今晚没有' + subject + '共同的空档', '看看明天，或调整就寝时间');
     }
-    const from = w.start > nowEpochMin ? w.start : nowEpochMin;
+    if (nowEpochMin >= w.end) {
+      // 选取环节已排除已结束窗口，走到这里只可能是缓存里的旧结果：给事实，不谎报有空
+      return CommonTimeQueryService.absentAnswer(AnswerKind.TONIGHT, '今晚的空档', stale,
+        '今晚的共同空档已结束', '看看明天，或调整就寝时间');
+    }
     const answer: QuickAnswer = {
       kind: AnswerKind.TONIGHT,
       state: AnswerState.AVAILABLE,
-      headline: '今晚 ' + DateLabel.endLabel(from, w.end) + ' ' + subject + '都有空',
-      supportingText: '还有 ' + DateLabel.duration(w.end - nowEpochMin),
+      headline: '今晚 ' + DateLabel.endLabel(w.start, w.end) + ' ' + subject + '都有空',
+      supportingText: CommonTimeQueryService.tonightSupport(w, nowEpochMin),
       windowStart: w.start,
       windowEnd: w.end,
       action: AnswerAction.OPEN_WINDOW

@@ -12,3 +12,5 @@
 /.clang-tidy
 **/.test
 /.appanalyzer
+/tools/test/src
+/tools/test/out

@@ -2,183 +2,203 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#171412"
+      "value": "#191411"
     },
     {
       "name": "brand_pink",
-      "value": "#DE5F8E"
+      "value": "#D58AA1"
     },
     {
       "name": "brand_pink_bg",
-      "value": "#3A2230"
+      "value": "#38272A"
     },
     {
       "name": "brand_pink_border",
-      "value": "#5A3A4C"
+      "value": "#60424A"
     },
     {
       "name": "brand_pink_muted",
-      "value": "#C79BB3"
+      "value": "#C3909D"
     },
     {
       "name": "text_primary",
-      "value": "#E6E6E6"
+      "value": "#F0E6DB"
     },
     {
       "name": "text_secondary",
-      "value": "#B8B8B8"
+      "value": "#C8B9AF"
     },
     {
       "name": "text_tertiary",
-      "value": "#8F8F8F"
+      "value": "#A89990"
     },
     {
       "name": "text_hint",
-      "value": "#7A7A7A"
+      "value": "#897B74"
     },
     {
       "name": "text_disabled",
-      "value": "#5A5A5A"
+      "value": "#655B56"
     },
     {
       "name": "card_bg",
-      "value": "#1E1E1E"
+      "value": "#201B19"
     },
     {
       "name": "page_bg",
-      "value": "#141414"
+      "value": "#171311"
     },
     {
       "name": "page_bg_soft",
-      "value": "#171717"
-    },
-    {
-      "name": "border_weak",
-      "value": "#2E2E2E"
-    },
-    {
-      "name": "fill_weak",
-      "value": "#2A2A2A"
-    },
-    {
-      "name": "fill_soft",
-      "value": "#2A2A2A"
-    },
-    {
-      "name": "fill_weakest",
-      "value": "#232323"
-    },
-    {
-      "name": "btn_neutral",
-      "value": "#8F8F8F"
-    },
-    {
-      "name": "sheet_handle",
-      "value": "#444444"
-    },
-    {
-      "name": "divider",
-      "value": "#3D3D3D"
-    },
-    {
-      "name": "success_green",
-      "value": "#74BB8E"
-    },
-    {
-      "name": "success_bg",
-      "value": "#1B2E22"
-    },
-    {
-      "name": "danger_red",
-      "value": "#EF7B64"
-    },
-    {
-      "name": "danger_bg",
-      "value": "#331E1A"
-    },
-    {
-      "name": "danger_border",
-      "value": "#6E3A2E"
-    },
-    {
-      "name": "info_blue",
-      "value": "#5FB4F0"
-    },
-    {
-      "name": "info_bg",
-      "value": "#1A2635"
-    },
-    {
-      "name": "accent_purple",
-      "value": "#AB8CEB"
-    },
-    {
-      "name": "warn_orange",
-      "value": "#F09A5F"
-    },
-    {
-      "name": "warn_bg",
-      "value": "#332619"
-    },
-    {
-      "name": "tag_weekend",
-      "value": "#AB8CEB"
-    },
-    {
-      "name": "tag_trip",
-      "value": "#7D9BE0"
-    },
-    {
-      "name": "tag_fallback",
-      "value": "#9C9C9C"
-    },
-    {
-      "name": "month_free_none_bg",
-      "value": "#2E2E2E"
-    },
-    {
-      "name": "month_free_low_bg",
-      "value": "#4A2837"
-    },
-    {
-      "name": "month_free_mid_bg",
-      "value": "#B8617F"
-    },
-    {
-      "name": "month_free_none_fg",
-      "value": "#6A6A6A"
-    },
-    {
-      "name": "month_free_low_fg",
-      "value": "#F0C9D8"
-    },
-    {
-      "name": "bar_gap",
-      "value": "#2E2E2E"
-    },
-    {
-      "name": "my_busy",
-      "value": "#A6BAC7"
-    },
-    {
-      "name": "partner_busy",
-      "value": "#E0B25E"
+      "value": "#1D1816"
     },
     {
       "name": "page_bg_warm",
-      "value": "#171412"
+      "value": "#191411"
+    },
+    {
+      "name": "border_weak",
+      "value": "#332925"
+    },
+    {
+      "name": "fill_weak",
+      "value": "#302621"
+    },
+    {
+      "name": "fill_soft",
+      "value": "#372C27"
+    },
+    {
+      "name": "fill_weakest",
+      "value": "#261F1C"
+    },
+    {
+      "name": "btn_neutral",
+      "value": "#A3948B"
+    },
+    {
+      "name": "sheet_handle",
+      "value": "#5A4840"
+    },
+    {
+      "name": "divider",
+      "value": "#45362F"
+    },
+    {
+      "name": "success_green",
+      "value": "#82AA90"
+    },
+    {
+      "name": "success_bg",
+      "value": "#1F3025"
+    },
+    {
+      "name": "danger_red",
+      "value": "#E09093"
+    },
+    {
+      "name": "danger_bg",
+      "value": "#3A2424"
+    },
+    {
+      "name": "danger_border",
+      "value": "#68403E"
+    },
+    {
+      "name": "info_blue",
+      "value": "#82A6AD"
+    },
+    {
+      "name": "info_bg",
+      "value": "#213033"
+    },
+    {
+      "name": "accent_purple",
+      "value": "#B997AE"
+    },
+    {
+      "name": "warn_orange",
+      "value": "#C98E71"
+    },
+    {
+      "name": "warn_bg",
+      "value": "#39291F"
+    },
+    {
+      "name": "tag_weekend",
+      "value": "#B997AE"
+    },
+    {
+      "name": "tag_trip",
+      "value": "#86A2A2"
+    },
+    {
+      "name": "tag_fallback",
+      "value": "#A6978F"
+    },
+    {
+      "name": "month_free_none_bg",
+      "value": "#2C2521"
+    },
+    {
+      "name": "month_free_low_bg",
+      "value": "#4B3036"
+    },
+    {
+      "name": "month_free_mid_bg",
+      "value": "#A15B6E"
+    },
+    {
+      "name": "month_free_none_fg",
+      "value": "#71645E"
+    },
+    {
+      "name": "month_free_low_fg",
+      "value": "#E7C2C7"
+    },
+    {
+      "name": "bar_gap",
+      "value": "#302722"
+    },
+    {
+      "name": "my_busy",
+      "value": "#91A7A8"
+    },
+    {
+      "name": "partner_busy",
+      "value": "#C7A777"
     },
     {
       "name": "sunset_from",
-      "value": "#C4537F"
+      "value": "#8F2F4C"
     },
     {
       "name": "sunset_to",
-      "value": "#C96A33"
+      "value": "#8F2F4C"
     },
     {
       "name": "shadow_soft",
       "value": "#00000000"
+    },
+    {
+      "name": "hero_bg",
+      "value": "#8F2F4C"
+    },
+    {
+      "name": "hero_fg",
+      "value": "#FFF8EF"
+    },
+    {
+      "name": "hero_glow",
+      "value": "#85E09D89"
+    },
+    {
+      "name": "page_glow",
+      "value": "#14D58AA1"
+    },
+    {
+      "name": "focus_ring",
+      "value": "#E1ABBB"
     }
   ]
 }

@@ -21,6 +21,10 @@ const TAG = 'CrdRestore';
  *
  * 全程 best-effort：恢复回调抛错会被框架记成"恢复失败"，用户看到的是数据没回来，
  * 比"数据回来了但状态是旧的"更糟，所以两段各自兜底、失败只进日志。
+ *
+ * 框架的两条约束决定了这里的分工（华为《应用数据迁移适配》V14）：onRestore 内的异步操作
+ * 必须等完（所以两段都 await），而单应用的数据迁移窗口只有 15 分钟。扫全表的活不放在这里做，
+ * 这里只留一个标记，第一次正常启动去兑现。
  */
 export default class EntryBackupAbility extends BackupExtensionAbility {
   async onBackup(): Promise<void> {

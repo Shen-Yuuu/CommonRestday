@@ -394,6 +394,8 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 一句话口径：**备份能带走"用户做过什么"，带不走"这台机器上真实存在什么"。** 恢复后系统日历里的日程、提醒句柄、云端"已同步"这三样必须一起作废，配对回到未配对。
 
+> 外部依据：华为《应用数据迁移适配》<https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V14/app-data-migration-adaptation-V14>（2026-09-23 渲染取到正文：`backup_config.json` 示例字段、`onRestore` 需同步等待异步、单应用迁移上限 15 分钟、`bundleVersion.name` 前缀 `0.0.0.0` 才是 APK→NEXT 那一次搬迁）。
+
 ### 17.1 已经测过的（离线，不必在设备重复）
 
 `entry/src/test/DbMigrationTest.ets`（`node tools/test/run.mjs`，12 条）钉住的是**决策**：该发哪些语句、失败停在哪一格。
@@ -432,8 +434,9 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ### 17.4 本轮明确没做（不勾通过，也不判失败）
 
-- **`backup_config.json` 只保留 `allowToBackupRestore` 一个字段**。本机 SDK 与 DevEco 模板里只有这一个字段有落点（全量 grep 只命中模板），`includes` / `excludes` / `fullBackupOnly` 只出现在第三方博客里、且两篇互相不一致 → **缺证据**，不写没验证过的字段：字段名写错会让整个备份配置解析失败，用户看到的是"数据没备份上"。
+- **`backup_config.json` 只保留 `allowToBackupRestore` 一个字段**。华为《应用数据迁移适配》V14 页给出的官方示例字段是 `allowToBackupRestore` 与 `extraInfo.supportScene`（后者专供 "HarmonyOS 4.x → HarmonyOS NEXT" 那次一次性搬迁，本应用没有 APK 时代版本，用不上）；本机 SDK、DevEco 模板与 `harmony-next` 离线文档镜像里也没有别的字段。至于博客流传的 `includes` / `excludes` / `fullBackupOnly` / `restoreDeps`：官方页没有、两篇博客互相还不一致 → **缺证据**，不写没验证过的字段，字段名写错会让整个备份配置解析失败，用户看到的是"数据没备份上"。
   本应用也不靠排除字段守秘密：长期密钥按改造文档 §0.3 必须留在 HUKS，而 HUKS 不在沙箱里、本来就不参与备份；沙箱里那份 `pair_key` 是阶段 3 门禁要拆掉的原型实现，恢复回调顺手清掉它，而不是靠排除字段把它藏起来。
+- **恢复回调的两条框架约束（官方页写明，本实现按此办）**：`onRestore` 内部所有异步操作必须同步等待 → 本实现 `await` 两段收尾（置标记、清配对）而不是发出去就不管；单个应用的数据迁移上限 **15 分钟**，超时即整体失败 → 这里只做"打开库 + 一次 meta 写 + 四次 Preferences 写"，真正的三条 UPDATE 留给首次启动去跑，正是为了不把这个上限花在扫描全表上。
 - **"PAIRED 但没有密钥"的运行时自愈没做**：现在只在 `onRestore` 里抹配对状态。若恢复框架没调到 `onRestore`（换机旁路、或回调里库打不开），界面会短暂留着一个假的"已配对"，直到快照解密失败走 §12.14 那条"需要重新配对"。补它要改 `ScheduleUseCase` / `ProfileSettingsService`，不在本任务的文件清单内。
 - **恢复回调里不重复实现清理语句**：`onRestore` 只置标记，真正的 UPDATE 由下一次 `Db.init` 消费。因此"恢复完成"与"状态作废完成"之间隔着一次启动——日志里能看到，UI 上没有进度。
 - **没测跨进程并发**：卡片进程可能先于 EntryAbility 打开库。谁先跑谁消费标记，两种顺序最终效果相同，但中途失败重试没有测过（同进程内不并发，跨进程由 RDB 串行）。

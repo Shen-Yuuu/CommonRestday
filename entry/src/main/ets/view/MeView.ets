@@ -1,9 +1,10 @@
 import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { OWNER_ME, OWNER_PARTNER } from 'domain';
+import { OWNER_ME, OWNER_PARTNER, PairLink, PairOffer } from 'domain';
 import { PAIRED, PAIR_NONE, PAIR_WAITING } from 'data';
 import {
-  InviteResult, isCrossMidnight, MyRhythm, PartnerInput, ProfileSettingsService, SettingsResult
+  FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
+  PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult
 } from 'feature';
 import { openPrivacyPolicy } from '../util/PrivacyUtil';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -39,6 +40,13 @@ export struct MeView {
   @State private showJoinInput: boolean = false;
   @State private myCode: string = '';
   @State private joinCode: string = '';
+  /**
+   * 服务端签发的一次性配对凭据。门禁（Task 0.4 = CLOUD_BLOCKED）解除前恒为空——
+   * 6 位配对码不进二维码，所以没有 token 就没有二维码可画，页面退回"突出短码"。
+   */
+  @State private pairToken: string = '';
+  /** 扫码/分享入口由能力探测决定，不在页面里硬编机型。 */
+  @State private channels: PairChannels = { scan: false, share: false, emphasizeCode: true };
   // 我的作息参数
   @State private myEditing: boolean = false;
   @State private advanced: boolean = false;
@@ -50,18 +58,104 @@ export struct MeView {
   @State private clearing: boolean = false;
   // 保存动作 → 重算广播：伴侣侧数据或参数变了，摘要文案要跟着走
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  // 一次性配对请求到达（扫到的或从配对链接拉起本机的）：确认页在这页弹
+  @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
 
   aboutToAppear(): void {
     this.reload();
+    // 深链可能比本页早到：请求由网关暂存，挂载后补取一次，不丢冷启动的那一条
+    this.takePendingOffer();
   }
 
   onRecomputeChanged(): void {
     this.reload();
   }
 
+  onPairOffer(): void {
+    this.takePendingOffer();
+  }
+
+  takePendingOffer(): void {
+    const offer: PairOffer | null = PairingShareGateway.peekOffer();
+    if (offer !== null) {
+      this.confirmPair(offer);
+    }
+  }
+
+  /** 二维码/分享链接的唯一内容源：没有一次性凭据就没有链接。 */
+  pairLink(): string {
+    return PairLink.build(this.pairToken, 0);
+  }
+
+  // ---------- 扫码 / 分享 / 确认（Task 4.1：能力探测 + 不自动绑定） ----------
+
+  startPairScan(): void {
+    if (this.pairingBusy) {
+      return;
+    }
+    this.pairingBusy = true;
+    PairingShareGateway.offerFromScan().then((res: ScanResult) => {
+      this.pairingBusy = false;
+      if (res.outcome === ScanOutcome.OFFER && res.offer !== null) {
+        this.confirmPair(res.offer);
+        return;
+      }
+      if (res.message !== '') {
+        promptAction.showToast({ message: res.message });
+      }
+    });
+  }
+
+  sharePairLink(): void {
+    PairingShareGateway.shareLink(this.pairLink()).then((res: PairOpResult) => {
+      promptAction.showToast({ message: res.message });
+    });
+  }
+
+  copyPairCode(): void {
+    if (this.myCode === '') {
+      promptAction.showToast({ message: '还没有配对码，先点「生成邀请码」' });
+      return;
+    }
+    PairingShareGateway.copyText(this.myCode).then((res: PairOpResult) => {
+      promptAction.showToast({ message: res.message });
+    });
+  }
+
+  /**
+   * 确认页：扫到/点开链接都不直接绑，先让用户看清"这是谁的哪一次请求"。
+   * token 只露首尾，整条凭据不进屏幕文本、不进日志。
+   */
+  confirmPair(offer: PairOffer): void {
+    this.getUIContext().showAlertDialog({
+      title: '确认配对请求',
+      message: '收到一次性配对凭据 ' + PairLink.mask(offer.token)
+        + '。接受后由云端确认，本应用不会自动绑定。',
+      primaryButton: {
+        value: '忽略',
+        fontColor: DesignTokens.textSecondary,
+        action: () => {
+          PairingShareGateway.ignoreOffer();
+        }
+      },
+      secondaryButton: {
+        value: '接受',
+        fontColor: DesignTokens.primary,
+        action: () => this.acceptPairOffer()
+      }
+    });
+  }
+
+  acceptPairOffer(): void {
+    PairingShareGateway.acceptOffer().then((res: PairOpResult) => {
+      promptAction.showToast({ message: res.message });
+    });
+  }
+
   reload(): void {
     this.shareLevel = ProfileSettingsService.getShareLevel();
     this.pairState = ProfileSettingsService.getPairState();
+    this.channels = PairingShareGateway.channels();
     this.reloadPartner();
     this.reloadMyParams();
   }
@@ -145,12 +239,21 @@ export struct MeView {
 
   pairStateText(): string {
     if (this.pairState === PAIRED) {
-      return '已配对';
+      return FeatureFlags.cloudPairing ? '已配对' : '已标记配对';
     }
     if (this.pairState === PAIR_WAITING) {
       return '等待对方输码';
     }
     return '未配对';
+  }
+
+  /** 「已配对」不许说成"正在同步"：云端开关关着时它只是本机状态（验收清单 §9.5 的偏离口径）。 */
+  pairedNote(): string {
+    if (FeatureFlags.cloudPairing) {
+      return '已与另一台设备配对：班表变更会按你的隐私等级加密后同步给 TA。';
+    }
+    return '本机已标记为已配对，但云端未开通：TA 的班表不会自动同步。'
+      + '现在就要共同时间，请用上方「伴侣（本机代录）」。';
   }
 
   /** 生成邀请码（创建方）：云函数调用与配对标记读写都在 feature，这里只管按钮态与展示。 */
@@ -339,7 +442,9 @@ export struct MeView {
       return '等待对方输入配对码';
     }
     if (this.pairState === PAIRED) {
-      return '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步';
+      return FeatureFlags.cloudPairing
+        ? '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步'
+        : '本机标记已配对 · 云端未开通，未同步';
     }
     if (this.partnerExists) {
       return '本机代录 · 数据只存在这台手机';
@@ -646,7 +751,7 @@ export struct MeView {
         .fontColor(DesignTokens.textTertiary)
 
       if (this.pairState === PAIRED) {
-        Text('已与另一台设备配对：班表变更会按你的隐私等级加密后同步给 TA。')
+        Text(this.pairedNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
         Button('解除配对')
@@ -655,10 +760,10 @@ export struct MeView {
           .fontColor(DesignTokens.danger)
           .onClick(() => this.askUnpair())
       } else if (this.pairState === PAIR_WAITING) {
-        if (this.myCode !== '') {
-          // 配对码二维码：黑白固定对比色，不随深浅色反转，保证扫码可读
+        if (this.pairLink() !== '') {
+          // 二维码只画一次性链接：黑白固定对比色，不随深浅色反转，保证扫码可读
           Row() {
-            QRCode(this.myCode)
+            QRCode(this.pairLink())
               .width(128)
               .height(128)
               .color('#1A1A1A')
@@ -669,6 +774,17 @@ export struct MeView {
           .width('100%')
           .justifyContent(FlexAlign.Center)
 
+          Text('让对方点「扫码配对」对准这个二维码，或直接把链接分享过去。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+            .textAlign(TextAlign.Center)
+            .width('100%')
+          Button('分享配对链接')
+            .width('100%')
+            .backgroundColor(DesignTokens.primary)
+            .onClick(() => this.sharePairLink())
+        } else if (this.myCode !== '') {
+          // 没有一次性凭据就没有二维码可画：6 位短码抬成主路径（Task 4.1「不支持时突出短码」）
           Text(this.myCode)
             .fontSize(34)
             .fontWeight(FontWeight.Bold)
@@ -676,18 +792,24 @@ export struct MeView {
             .letterSpacing(6)
             .width('100%')
             .textAlign(TextAlign.Center)
-          Text('对方在 TA 的「我的 · 伴侣与同步」输入此码即可配对。')
+          Text('对方在 TA 的「我的 · 伴侣与同步」输入此码即可。'
+            + '二维码与分享链接只承载服务端签发的一次性凭据，云端配对开通后自动出现。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
             .width('100%')
+          Button('复制配对码')
+            .width('100%')
+            .backgroundColor(DesignTokens.fillWeak)
+            .fontColor(DesignTokens.textSecondary)
+            .onClick(() => this.copyPairCode())
         } else {
           Text('配对码已生成（本次进入页面未显示）。如对方未收到，可重新生成。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
         }
         Row({ space: DesignTokens.space3 }) {
-          Button('完成配对').layoutWeight(1)
+          Button('本机标记已配对').layoutWeight(1)
             .backgroundColor(DesignTokens.primary)
             .onClick(() => this.markPaired())
           Button('取消配对').layoutWeight(1)
@@ -696,7 +818,7 @@ export struct MeView {
             .onClick(() => this.cancelWaiting())
         }.width('100%')
 
-        Text('体验版无服务端推送：对方输码加入后，在这里点「完成配对」即开始加密同步。')
+        Text('这个按钮只改本机显示：云端未开通时不会有任何数据同步过去。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       } else {
@@ -716,6 +838,21 @@ export struct MeView {
               this.showJoinInput = !this.showJoinInput;
             })
         }.width('100%')
+
+        if (this.channels.scan) {
+          Button(this.pairingBusy ? '扫码中…' : '扫码配对')
+            .width('100%')
+            .backgroundColor(DesignTokens.fillWeak)
+            .fontColor(DesignTokens.primary)
+            .enabled(!this.pairingBusy)
+            .onClick(() => this.startPairScan())
+        }
+
+        if (this.channels.emphasizeCode) {
+          Text('这台设备不支持扫码：配对以 6 位短码为准，让对方手动输入。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+        }
 
         if (this.showJoinInput) {
           Row({ space: DesignTokens.space2 }) {

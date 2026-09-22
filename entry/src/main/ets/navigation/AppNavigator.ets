@@ -1,5 +1,6 @@
 import { router } from '@kit.ArkUI';
 import { Logger } from 'commons';
+import { PairingShareGateway } from 'feature';
 import { HomeView } from '../view/HomeView';
 import { CoTimeView } from '../view/CoTimeView';
 import { MeView } from '../view/MeView';
@@ -51,6 +52,8 @@ export struct AppNavigator {
   @StorageProp('navToMeCount') @Watch('onNavToMe') navToMeCount: number = 0;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
+  // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页
+  @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
   private pathStack: NavPathStack = new NavPathStack();
   /** 冷启动深链：aboutToAppear 时 Navigation 尚未挂载，先记下，挂载后再消费。 */
   private pendingRoute: string = '';
@@ -61,9 +64,17 @@ export struct AppNavigator {
     const raw: Object | undefined = router.getParams();
     this.pendingRaw = raw;
     this.pendingRoute = routeNameFromParams(raw);
+    // 冷启动深链的配对请求比本页早到（EntryAbility 就收下了）：没有别的导航意图时落到「我的」
+    if (this.pendingRoute === '' && PairingShareGateway.peekOffer() !== null) {
+      this.activeTab = NavRoutes.TAB_ME;
+    }
   }
 
   onNavToMe(): void {
+    this.goTab(NavRoutes.TAB_ME);
+  }
+
+  onPairOffer(): void {
     this.goTab(NavRoutes.TAB_ME);
   }
 

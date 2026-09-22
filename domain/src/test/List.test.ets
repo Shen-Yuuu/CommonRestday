@@ -9,6 +9,7 @@ import conflictTest from './ConflictTest.ets';
 import engineTest from './EngineTest.ets';
 import snapshotTest from './SnapshotTest.ets';
 import homeAnswerFixtureTest from './HomeAnswerFixtureTest.ets';
+import pairLinkTest from './PairLinkTest.ets';
 
 export default function testsuite() {
   timeUtilTest();
@@ -22,4 +23,5 @@ export default function testsuite() {
   engineTest();
   snapshotTest();
   homeAnswerFixtureTest();
+  pairLinkTest();
 }

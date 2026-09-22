@@ -8,6 +8,10 @@ export {
 export { CalendarGateway } from './src/main/ets/integration/CalendarGateway';
 export { ReminderGateway } from './src/main/ets/integration/ReminderGateway';
 export {
+  PairingShareGateway, PairChannels, PairOpResult, ScanResult, ScanOutcome, PAIR_OFFER_KEY,
+  PAIR_CLOUD_CLOSED
+} from './src/main/ets/integration/PairingShareGateway';
+export {
   CalendarOutcome, CalendarState, CalendarWriteResult, CalendarCapability, ReminderCapability,
   PlanDraft, PlanOpResult, SubmitLatch, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN,
   calendarBadgeOf, calendarStateOf, canRetryCalendarSync, defaultDraft, epochMinToUtcMs,

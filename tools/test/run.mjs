@@ -40,7 +40,10 @@ const TREES = [
       'ScheduleOverviewQueryService.ets', 'ProfileSettingsService.ets',
       // 两个门面包 @kit.CalendarKit / reminderAgentManager；PlanUseCase 通过能力端口调用它们，
       // 单测注入确定性端口实现，这里只需要类型壳让默认适配器过编译。
-      'CalendarGateway.ets', 'ReminderGateway.ets']
+      'CalendarGateway.ets', 'ReminderGateway.ets',
+      // 扫码/分享门面包 @kit.ScanKit / @kit.ShareKit / 剪贴板；一次性凭据口径由 domain 的
+      // PairLinkTest 离线覆盖，这里不参与转译（真机侧行为见 docs/testing-checklist.md）。
+      'PairingShareGateway.ets']
   },
   // 只有 @kit-free 的迁移层参与；Db.ets 需要 relationalStore，属于真机侧。
   { root: 'data/main/ets/db', from: 'data/src/main/ets/db', skip: ['Db.ets'] },

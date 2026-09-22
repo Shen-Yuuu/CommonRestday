@@ -9,6 +9,8 @@ import { DayShiftSheet } from '../component/DayShiftSheet';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
 import { navToMe } from '../util/NavUtil';
+import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
+import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 
 /** 录入链路页（仍是 @Entry router 页）：路由名即 pages 下的 url 后缀。 */
 const PAGE_SHIFT = 'pages/ScheduleEditor';
@@ -79,6 +81,8 @@ export struct ScheduleHub {
   // 单日改班 sheet（临时调整 / 点日格）
   @State private sheetOpen: boolean = false;
   @State private sheetDay: number = 0;
+  /** 本页容器宽度档位：expanded 把两组录入入口并排，正文按可读宽度收拢。 */
+  @State private bp: Breakpoint = Breakpoint.COMPACT;
   // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
 
@@ -248,103 +252,131 @@ export struct ScheduleHub {
   }
 
   build() {
-    // 周历网格本身超过一屏，整页必须可滚
-    Scroll() {
-      Column({ space: DesignTokens.space3 }) {
-        Column({ space: 2 }) {
-          Text('日程录入')
-            .fontSize(DesignTokens.fontTitle)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(DesignTokens.textPrimary)
-            .letterSpacing(-0.9)
-          Text('班次、循环、课程与临时调整都在这里；改完自动重算共同时间')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textTertiary)
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding({ top: DesignTokens.space5 })
-
-        // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
-        if (this.partnerLocal) {
-          Row({ space: DesignTokens.space1 }) {
-            this.sidePill('我的班表', false)
-            this.sidePill('TA 的班表', true)
+    ResponsiveContainer({ breakpoint: this.bp }) {
+      // 周历网格本身超过一屏，整页必须可滚
+      Scroll() {
+        Column({ space: DesignTokens.space3 }) {
+          Column({ space: 2 }) {
+            Text('日程录入')
+              .fontSize(DesignTokens.fontTitle)
+              .fontFamily(DesignTokens.fontSerif)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(DesignTokens.textPrimary)
+              .letterSpacing(-0.9)
+            Text('班次、循环、课程与临时调整都在这里；改完自动重算共同时间')
+              .fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.textTertiary)
           }
           .width('100%')
-          .padding(4)
-          .borderRadius(DesignTokens.radiusPill)
-          .backgroundColor(DesignTokens.fillSoft)
-        }
+          .alignItems(HorizontalAlign.Start)
+          .padding({ top: DesignTokens.space5 })
 
-        if (this.isPartnerSide() && !this.partnerLocal) {
-          // 深链指定了 TA 侧但本机没代录过（纯配对不算代录）：给引导，不显示空的 TA 表单
-          StatePanel({
-            kind: StatePanelKind.EMPTY,
-            title: '还没有代录 TA 的日程',
-            description: '在「我的 · 伴侣与同步」添加伴侣后，就能在这台手机上为 TA 录班表，一起算共同时间。',
-            actionLabel: '去添加伴侣',
-            onAction: () => {
-              navToMe();
+          // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
+          if (this.partnerLocal) {
+            Row({ space: DesignTokens.space1 }) {
+              this.sidePill('我的班表', false)
+              this.sidePill('TA 的班表', true)
             }
-          })
-        } else {
-          this.summaryCard()
+            .width('100%')
+            .padding(4)
+            .borderRadius(DesignTokens.radiusPill)
+            .backgroundColor(DesignTokens.fillSoft)
+          }
 
-          EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-            Column({ space: DesignTokens.space2 }) {
-              WeekScheduleView({
-                owner: this.side,
-                onPickDay: (epochDay: number) => {
-                  this.openDay(epochDay);
+          if (this.isPartnerSide() && !this.partnerLocal) {
+            // 深链指定了 TA 侧但本机没代录过（纯配对不算代录）：给引导，不显示空的 TA 表单
+            StatePanel({
+              kind: StatePanelKind.EMPTY,
+              title: '还没有代录 TA 的日程',
+              description: '在「我的 · 伴侣与同步」添加伴侣后，就能在这台手机上为 TA 录班表，一起算共同时间。',
+              actionLabel: '去添加伴侣',
+              onAction: () => {
+                navToMe();
+              }
+            })
+          } else {
+            this.summaryCard()
+
+            EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+              Column({ space: DesignTokens.space2 }) {
+                WeekScheduleView({
+                  owner: this.side,
+                  onPickDay: (epochDay: number) => {
+                    this.openDay(epochDay);
+                  }
+                })
+                Text('点周历里的某一天，可直接改这天的班')
+                  .fontSize(DesignTokens.fontCaption)
+                  .fontColor(DesignTokens.textHint)
+                  .width('100%').textAlign(TextAlign.Center)
+              }
+              .width('100%')
+            }
+
+            if (Breakpoints.isExpanded(this.bp)) {
+              Row({ space: DesignTokens.space4 }) {
+                Column() {
+                  this.mainEntriesCard()
                 }
-              })
-              Text('点周历里的某一天，可直接改这天的班')
-                .fontSize(DesignTokens.fontCaption)
-                .fontColor(DesignTokens.textHint)
-                .width('100%').textAlign(TextAlign.Center)
-            }
-            .width('100%')
-          }
+                .layoutWeight(1)
 
-          EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-            EditorialSection({ eyebrow: 'MAIN', title: '四个主入口' }) {
-              ForEach(MAIN_ENTRIES, (item: EntryItem) => {
-                this.entryRow(item, false)
-              }, (item: EntryItem) => this.side + '-' + item.key)
+                Column() {
+                  this.auxEntriesCard()
+                }
+                .layoutWeight(1)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
+            } else {
+              this.mainEntriesCard()
+              this.auxEntriesCard()
             }
-          }
 
-          EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-            EditorialSection({ eyebrow: 'EXTRA', title: '辅助录入' }) {
-              ForEach(AUX_ENTRIES, (item: EntryItem) => {
-                this.entryRow(item, true)
-              }, (item: EntryItem) => this.side + '-' + item.key)
-            }
+            Text('TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。')
+              .fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.textHint)
+              .width('100%')
+              .padding({ bottom: DesignTokens.space6 })
           }
-
-          Text('TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-            .width('100%')
-            .padding({ bottom: DesignTokens.space6 })
         }
+        .width('100%')
+        .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
       }
       .width('100%')
+      .height('100%')
+      .align(Alignment.Top)
+      .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
+      .scrollBar(BarState.Off)
+      .backgroundColor(DesignTokens.page)
+      .bindSheet($$this.sheetOpen, this.daySheet(), {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        dragBar: false,
+        showClose: false,
+        blurStyle: BlurStyle.Thick
+      })
     }
-    .width('100%')
-    .height('100%')
-    .align(Alignment.Top)
-    .padding({ left: 18, right: 18 })
-    .scrollBar(BarState.Off)
-    .backgroundColor(DesignTokens.page)
-    .bindSheet($$this.sheetOpen, this.daySheet(), {
-      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-      dragBar: false,
-      showClose: false,
-      blurStyle: BlurStyle.Thick
-    })
+  }
+
+  @Builder
+  mainEntriesCard() {
+    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+      EditorialSection({ eyebrow: 'MAIN', title: '四个主入口' }) {
+        ForEach(MAIN_ENTRIES, (item: EntryItem) => {
+          this.entryRow(item, false)
+        }, (item: EntryItem) => this.side + '-' + item.key)
+      }
+    }
+  }
+
+  @Builder
+  auxEntriesCard() {
+    EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+      EditorialSection({ eyebrow: 'EXTRA', title: '辅助录入' }) {
+        ForEach(AUX_ENTRIES, (item: EntryItem) => {
+          this.entryRow(item, true)
+        }, (item: EntryItem) => this.side + '-' + item.key)
+      }
+    }
   }
 
   @Builder

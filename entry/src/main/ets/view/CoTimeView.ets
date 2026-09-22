@@ -17,6 +17,8 @@ import { WindowCard } from '../component/WindowCard';
 import { WEEK_MODE_COMMON, WeekScheduleView } from '../component/WeekScheduleView';
 import { WindowDetailSheet } from '../component/WindowDetailSheet';
 import { DayDetailSheet } from '../component/DayDetailSheet';
+import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
+import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { PlansView } from './PlansView';
 
 const TAG = 'CoTimeView';
@@ -50,7 +52,9 @@ const FILTERS: FilterChip[] = [
  * - 列表：读模型给出的按日归并行（一天只留最长的一段），点卡片直接建计划；
  * - 周历：课程表式的当日空闲块（WeekScheduleView 共同模式），点色块建计划、点空白看当日明细；
  * - 月历不再是本页视图，降级为「日程」里的高级入口（月历涂抹）；
- * - 筛选与标签压缩口径都在 feature 读模型里，页面只渲染，不自行过滤或映射标签。
+ * - 筛选与标签压缩口径都在 feature 读模型里，页面只渲染，不自行过滤或映射标签；
+ * - 宽度档位：expanded（≥840vp）的列表视图改走「列表—详情」双栏，点卡片在右侧栏内
+ *   直接开建计划表单；compact / medium 与改造前一致，仍用半模态。
  */
 @Component
 export struct CoTimeView {
@@ -74,6 +78,10 @@ export struct CoTimeView {
   // 日详情半模态（周历点某一天 → 当日窗口 + 双方忙碌时间轴）
   @State private dayVisible: boolean = false;
   @State private dayEpoch: number = -1;
+  /** 容器宽度档位：expanded 时窗口详情常驻右侧详情栏，不再弹半模态。 */
+  @State @Watch('onBreakpointChanged') private bp: Breakpoint = Breakpoint.COMPACT;
+  /** 详情栏是否已选中一个窗口（离开 expanded 时清掉，回到窄屏不残留半开状态）。 */
+  @State private detailOpen: boolean = false;
   segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '时间窗口' }, { text: '共同计划' }]);
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
@@ -243,12 +251,35 @@ export struct CoTimeView {
 
   // ---------- 交互 ----------
 
-  /** 列表点卡片：读模型已带标签，直接开创建计划 sheet，不再查一次详情。 */
+  /** 详情栏只在 expanded + 列表视图占位；其余组合一律回到半模态。 */
+  private paneShown(): boolean {
+    return Breakpoints.isExpanded(this.bp) && this.viewMode === VIEW_LIST && this.detailOpen;
+  }
+
+  /**
+   * 选中窗口的落地方式：宽屏留在列表右侧的详情栏（列表上下文不丢），
+   * 窄屏与周历走原来的半模态。
+   */
+  private presentWindow(): void {
+    if (Breakpoints.isExpanded(this.bp) && this.viewMode === VIEW_LIST) {
+      this.detailOpen = true;
+      return;
+    }
+    this.sheetVisible = true;
+  }
+
+  onBreakpointChanged(): void {
+    if (!Breakpoints.isExpanded(this.bp)) {
+      this.detailOpen = false;
+    }
+  }
+
+  /** 列表点卡片：读模型已带标签，直接开创建计划详情，不再查一次详情。 */
   private openSummary(w: WindowSummary): void {
     this.sheetStart = w.start;
     this.sheetEnd = w.end;
     this.sheetTags = w.tags.join('|');
-    this.sheetVisible = true;
+    this.presentWindow();
   }
 
   /** 周历点色块：只有起止（该窗口可能不在当前筛选结果里），标签向详情读模型要。 */
@@ -267,7 +298,7 @@ export struct CoTimeView {
     this.sheetStart = start;
     this.sheetEnd = end;
     this.sheetTags = tags;
-    this.sheetVisible = true;
+    this.presentWindow();
   }
 
   private onSheetClose(): void {
@@ -276,96 +307,105 @@ export struct CoTimeView {
     this.load(false);
   }
 
+  /** 详情栏「收起」：关掉面板并重读一次，刚创建的计划要落到列表里。 */
+  private onDetailClose(): void {
+    this.detailOpen = false;
+    this.load(false);
+  }
+
   private openDay(epochDay: number): void {
     this.dayEpoch = epochDay;
     this.dayVisible = true;
   }
 
-  /** 日详情里点某个共同窗口 → 收回日详情，转开创建计划 sheet。 */
+  /** 日详情里点某个共同窗口 → 收回日详情，转开创建计划详情。 */
   private pickWindow(start: number, end: number, tags: string[]): void {
     this.dayVisible = false;
     this.sheetStart = start;
     this.sheetEnd = end;
     this.sheetTags = tags.join('|');
     setTimeout(() => {
-      this.sheetVisible = true;
+      this.presentWindow();
     }, SHEET_HANDOFF_MS);
   }
 
   // ---------- 构建 ----------
 
   build() {
-    // 两个 sheet 分别绑在两个节点上：同一组件只能生效一个 bindSheet，
-    // 绑在同一节点时后者覆盖前者，会导致点日期无响应。
-    Column() {
-      Column({ space: DesignTokens.space3 }) {
-        this.header()
-        this.segmentControl()
+    ResponsiveContainer({ breakpoint: this.bp }) {
+      // 两个 sheet 分别绑在两个节点上：同一组件只能生效一个 bindSheet，
+      // 绑在同一节点时后者覆盖前者，会导致点日期无响应。
+      // expanded 档下窗口详情改走列表右侧的常驻栏（windowBody 内分支），不再弹第一个 sheet。
+      Column() {
+        Column({ space: DesignTokens.space3 }) {
+          this.header()
+          this.segmentControl()
 
-        if (this.page != null) {
-          if (this.failed) {
-            NoticeBar({
-              tone: NoticeTone.ERROR,
-              title: '刷新失败，展示的是上次结果',
-              body: '本机数据没有变化，可以稍后再试',
-              actionLabel: '重试',
-              onAction: () => {
-                this.load(true);
-              }
-            })
-          } else if (this.isStale()) {
-            NoticeBar({
-              tone: NoticeTone.WARN,
-              title: this.staleTitle(),
-              body: '班表可能已变化，重算后再确认',
-              actionLabel: '重新计算',
-              onAction: () => {
-                this.load(true);
-              }
-            })
+          if (this.page != null) {
+            if (this.failed) {
+              NoticeBar({
+                tone: NoticeTone.ERROR,
+                title: '刷新失败，展示的是上次结果',
+                body: '本机数据没有变化，可以稍后再试',
+                actionLabel: '重试',
+                onAction: () => {
+                  this.load(true);
+                }
+              })
+            } else if (this.isStale()) {
+              NoticeBar({
+                tone: NoticeTone.WARN,
+                title: this.staleTitle(),
+                body: '班表可能已变化，重算后再确认',
+                actionLabel: '重新计算',
+                onAction: () => {
+                  this.load(true);
+                }
+              })
+            }
+            if (!this.partnerKnown() && this.segment === COTIME_SEG_WINDOW) {
+              NoticeBar({
+                tone: NoticeTone.WARN,
+                glyph: '?',
+                title: '还不知道 TA 今天的日程',
+                body: '下面的窗口只算到了我的空闲，拿到 TA 的数据后会自动纠正',
+                actionLabel: '去看看',
+                onAction: () => {
+                  this.onOpenRoute(NavRoutes.PAIRING);
+                }
+              })
+            }
           }
-          if (!this.partnerKnown() && this.segment === COTIME_SEG_WINDOW) {
-            NoticeBar({
-              tone: NoticeTone.WARN,
-              glyph: '?',
-              title: '还不知道 TA 今天的日程',
-              body: '下面的窗口只算到了我的空闲，拿到 TA 的数据后会自动纠正',
-              actionLabel: '去看看',
-              onAction: () => {
-                this.onOpenRoute(NavRoutes.PAIRING);
-              }
-            })
+
+          if (this.segment === COTIME_SEG_WINDOW) {
+            this.windowBody()
+          } else {
+            this.plansBody()
           }
         }
-
-        if (this.segment === COTIME_SEG_WINDOW) {
-          this.windowBody()
-        } else {
-          this.plansBody()
-        }
+        .width('100%')
+        .layoutWeight(1)
+        .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
+        .bindSheet($$this.dayVisible, this.daySheet(), {
+          detents: [SheetSize.LARGE],
+          dragBar: false,
+          showClose: false,
+          blurStyle: BlurStyle.Thick
+        })
       }
       .width('100%')
-      .layoutWeight(1)
-      .padding({ left: 18, right: 18 })
-      .bindSheet($$this.dayVisible, this.daySheet(), {
-        detents: [SheetSize.LARGE],
+      .height('100%')
+      .backgroundColor(DesignTokens.page)
+      .bindSheet($$this.sheetVisible, this.detailSheet(), {
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
         dragBar: false,
         showClose: false,
-        blurStyle: BlurStyle.Thick
+        // 表面（材质或近实色回退）由 WindowDetailSheet 里的 GlassSurface 负责，
+        // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
+        backgroundColor: Color.Transparent,
+        blurStyle: BlurStyle.NONE
       })
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(DesignTokens.page)
-    .bindSheet($$this.sheetVisible, this.detailSheet(), {
-      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-      dragBar: false,
-      showClose: false,
-      // 表面（材质或近实色回退）由 WindowDetailSheet 里的 GlassSurface 负责，
-      // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
-      backgroundColor: Color.Transparent,
-      blurStyle: BlurStyle.NONE
-    })
   }
 
   @Builder
@@ -407,7 +447,7 @@ export struct CoTimeView {
       .width('100%')
   }
 
-  /** 窗口分段：视图切换 + （列表专属）筛选档 + 内容。 */
+  /** 窗口分段：视图切换 + （列表专属）筛选档 + 内容。expanded 的列表走「列表—详情」双栏。 */
   @Builder
   windowBody() {
     Column({ space: DesignTokens.space3 }) {
@@ -430,13 +470,47 @@ export struct CoTimeView {
 
       if (this.viewMode === VIEW_LIST) {
         this.filterRow()
-        this.listContent()
+        if (this.paneShown()) {
+          // 两列各自撑满行高：列表内的 Refresh 靠 layoutWeight 拿到确定高度，详情栏固定宽
+          Row({ space: DesignTokens.space4 }) {
+            Column() {
+              this.listContent()
+            }
+            .layoutWeight(1)
+            .height('100%')
+
+            Column() {
+              this.detailPane()
+            }
+            .width(Breakpoints.DETAIL_PANE)
+            .height('100%')
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .alignItems(VerticalAlign.Top)
+        } else {
+          this.listContent()
+        }
       } else {
         this.weekContent()
       }
     }
     .width('100%')
     .layoutWeight(1)
+  }
+
+  /** 宽屏详情栏：复用同一份 WindowDetailSheet（inline），点列表卡片不再弹半模态。 */
+  @Builder
+  detailPane() {
+    WindowDetailSheet({
+      inline: true,
+      winStart: this.sheetStart,
+      winEnd: this.sheetEnd,
+      winTags: this.sheetTags,
+      onClose: () => {
+        this.onDetailClose();
+      }
+    })
   }
 
   @Builder

@@ -12,6 +12,8 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
+import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
+import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
@@ -64,6 +66,8 @@ export struct MeView {
   @State private weeklyOn: boolean = false;
   /** 系统通知授权态：开关可以照记，但没授权就什么都到不了用户眼前，页面上要说明白。 */
   @State private notifyOn: boolean = false;
+  /** 本页容器宽度档位：expanded 把六张卡并成两列，其余档位与改造前一致。 */
+  @State private bp: Breakpoint = Breakpoint.COMPACT;
   // 保存动作 → 重算广播：伴侣侧数据或参数变了，摘要文案要跟着走
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   // 一次性配对请求到达（扫到的或从配对链接拉起本机的）：确认页在这页弹
@@ -578,23 +582,57 @@ export struct MeView {
   // ---------- 构建 ----------
 
   build() {
-    Scroll() {
-      Column({ space: DesignTokens.space3 }) {
-        this.identityCard()
-        this.partnerSyncCard()
-        this.scheduleCard()
-        this.rhythmCard()
-        this.notifyCard()
-        this.dataCard()
+    ResponsiveContainer({ breakpoint: this.bp }) {
+      Scroll() {
+        if (Breakpoints.isExpanded(this.bp)) {
+          // 宽屏两列：伴侣/日程一列，作息/通知/数据一列，读屏顺序仍是先左后右自上而下
+          Row({ space: DesignTokens.space4 }) {
+            Column({ space: DesignTokens.space3 }) {
+              this.identityCard()
+              this.partnerSyncCard()
+              this.scheduleCard()
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Column({ space: DesignTokens.space3 }) {
+              this.rhythmCard()
+              this.notifyCard()
+              this.dataCard()
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+          }
+          .width('100%')
+          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+          .alignItems(VerticalAlign.Top)
+          .padding(this.contentPadding())
+        } else {
+          Column({ space: DesignTokens.space3 }) {
+            this.identityCard()
+            this.partnerSyncCard()
+            this.scheduleCard()
+            this.rhythmCard()
+            this.notifyCard()
+            this.dataCard()
+          }
+          .width('100%')
+          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+          .padding(this.contentPadding())
+        }
       }
       .width('100%')
-      .padding({ left: 18, right: 18, top: DesignTokens.space5, bottom: DesignTokens.space6 })
+      .height('100%')
+      .align(Alignment.Top)
+      .scrollBar(BarState.Off)
+      .backgroundColor(DesignTokens.page)
     }
-    .width('100%')
-    .height('100%')
-    .align(Alignment.Top)
-    .scrollBar(BarState.Off)
-    .backgroundColor(DesignTokens.page)
+  }
+
+  /** 留白在滚动内容上而不是 Scroll 上：底部留白要跟着内容一起滚，不占死视口。 */
+  private contentPadding(): Padding {
+    const h: number = Breakpoints.hPadding(this.bp);
+    return { left: h, right: h, top: DesignTokens.space5, bottom: DesignTokens.space6 };
   }
 
   /** 卡内小标题：衬线标题 + 可选的右侧操作文字（编辑/收起等）。 */

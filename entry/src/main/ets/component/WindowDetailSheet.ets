@@ -20,7 +20,8 @@ const STEP_MIN = 15;
  * - 「创建计划」→ PlanUseCase.createPlan：系统日历由用户当面确认，
  *   没写成时计划照样保留，toast 明说"仅保存在应用内"。
  *
- * 视觉：Sheet 整体是玻璃顶层（规范 §3.3），表单区另铺近实色子表面保证输入可读性。
+ * 视觉：Sheet 整体是玻璃顶层（规范 §3.3），表单区另铺近实色子表面保证输入可读性；
+ * inline 嵌入宽屏详情栏时改铺卡片底，句柄与贴底留白一并去掉。
  */
 @Component
 export struct WindowDetailSheet {
@@ -29,6 +30,11 @@ export struct WindowDetailSheet {
   @Prop @Watch('resetDraft') winEnd: number = 0;
   /** 窗口标签（'|' 分隔，仅展示）。 */
   @Prop winTags: string = '';
+  /**
+   * 嵌入模式（Task 5.1 宽屏「列表—详情」双栏）：同一套表单不弹半模态，而是常驻详情栏。
+   * 差别只在容器——不画顶部句柄、四角都圆、不铺系统玻璃（规范里材质只给 Sheet/浮层）。
+   */
+  inline: boolean = false;
   /** 关闭（取消/创建成功后由父页收回 sheet）。 */
   onClose: () => void = () => {};
 
@@ -156,54 +162,74 @@ export struct WindowDetailSheet {
 
   build() {
     // 自定义组件不吃链式属性，宽高由外层承担
+    if (this.inline) {
+      Column() {
+        this.formBody(false)
+      }
+      .width('100%')
+      .height('100%')
+      .borderRadius(DesignTokens.radiusCard)
+      .clip(true)
+      // 卡片底而不是玻璃：详情栏是常驻面板，不是浮层
+      .backgroundColor(DesignTokens.card)
+    } else {
+      Column() {
+        GlassSurface({
+          strength: GlassStrength.STRONG,
+          radius: DesignTokens.radiusSheet,
+          fallback: $r('app.color.card_bg'),
+          topCornersOnly: true
+        }) {
+          this.formBody(true)
+        }
+      }
+      .width('100%')
+      .height('100%')
+    }
+  }
+
+  /** 表单体：withHandle 决定要不要半模态的顶部句柄与贴底留白。 */
+  @Builder
+  formBody(withHandle: boolean) {
     Column() {
-      GlassSurface({
-        strength: GlassStrength.STRONG,
-        radius: DesignTokens.radiusSheet,
-        fallback: $r('app.color.card_bg'),
-        topCornersOnly: true
-      }) {
-        Column() {
-          // 顶部句柄
-          Column()
-            .width(36).height(4).borderRadius(2).backgroundColor($r('app.color.sheet_handle'))
-            .margin({ top: 10, bottom: 12 })
+      if (withHandle) {
+        // 顶部句柄
+        Column()
+          .width(36).height(4).borderRadius(2).backgroundColor($r('app.color.sheet_handle'))
+          .margin({ top: 10, bottom: 12 })
+      }
 
-          Scroll() {
-            Column({ space: 14 }) {
-              this.windowSummary()
-              this.timeline()
-              this.planForm()
-            }
-            .width('100%')
-            .padding({ left: 20, right: 20 })
-          }
-          .layoutWeight(1)
-          .align(Alignment.Top)
-
-          // ⑥ 底部操作（胶囊双按钮）
-          Row({ space: 10 }) {
-            Button('取消')
-              .layoutWeight(1).height(44).borderRadius(22)
-              .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
-              .onClick(() => this.onClose())
-            Button(this.saving ? '创建中…' : '创建计划')
-              .layoutWeight(1).height(44).borderRadius(22)
-              .backgroundColor($r('app.color.brand_pink'))
-              .enabled(!this.saving)
-              .onClick(() => this.submitPlan())
-          }
-          .width('100%')
-          .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+      Scroll() {
+        Column({ space: 14 }) {
+          this.windowSummary()
+          this.timeline()
+          this.planForm()
         }
         .width('100%')
-        .height('100%')
-        // 底色只由玻璃层给（材质或近实色回退），内容层不再叠一层不透明背景
-        .backgroundColor(Color.Transparent)
+        .padding({ left: 20, right: 20 })
       }
+      .layoutWeight(1)
+      .align(Alignment.Top)
+
+      // ⑥ 底部操作（胶囊双按钮）
+      Row({ space: 10 }) {
+        Button(withHandle ? '取消' : '收起')
+          .layoutWeight(1).height(44).borderRadius(22)
+          .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
+          .onClick(() => this.onClose())
+        Button(this.saving ? '创建中…' : '创建计划')
+          .layoutWeight(1).height(44).borderRadius(22)
+          .backgroundColor($r('app.color.brand_pink'))
+          .enabled(!this.saving)
+          .onClick(() => this.submitPlan())
+      }
+      .width('100%')
+      .padding({ left: 20, right: 20, top: 8, bottom: withHandle ? 24 : 14 })
     }
     .width('100%')
     .height('100%')
+    // 底色只由外层容器给（玻璃或卡片底），内容层不再叠一层不透明背景
+    .backgroundColor(Color.Transparent)
   }
 
   /** ① 窗口摘要（渐变头，白字固定对比）。 */

@@ -3,16 +3,25 @@ import { PrivacyDialog } from '../component/PrivacyDialog';
 import { SettingsStore } from 'data';
 import { Logger } from 'commons';
 import { common } from '@kit.AbilityKit';
+import { Breakpoint } from '../responsive/Breakpoints';
+import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
+
+/** 展开档下整壳的最大宽度：再宽只加留白，不把三 Tab 底栏拉到屏幕两头。 */
+const SHELL_MAX: number = 800;
 
 /**
  * 应用入口页：只负责首启隐私拦截，导航与三 Tab 壳层交给 AppNavigator。
  * 遮罩盖在 Navigation 之上，未同意前整棵导航树（含栈目的地）都点不到。
+ *
+ * 响应式（Task 5.1）：外壳由 ResponsiveContainer 量宽，expanded 档把整壳收成居中列，
+ * 底色仍铺满窗口；窄屏与中屏不封顶，布局与改造前一致。
  */
 @Entry
 @Component
 struct Index {
   // 首启隐私拦截（US4 / FR-007）：未同意前全屏覆盖，拦截交互
   @State showPrivacy: boolean = false;
+  @State private bp: Breakpoint = Breakpoint.COMPACT;
 
   aboutToAppear(): void {
     this.checkPrivacy();
@@ -45,15 +54,34 @@ struct Index {
     this.showPrivacy = false;
   }
 
-  build() {
-    Stack() {
-      AppNavigator()
+  /** 内容列上限：expanded 收成居中列，其余档位与改造前一模一样（不封顶）。 */
+  private shellMax(): Length {
+    return this.bp === Breakpoint.EXPANDED ? SHELL_MAX : '100%';
+  }
 
-      // 首启隐私弹窗：全屏覆盖拦截（同意后不再出现）
-      if (this.showPrivacy) {
-        PrivacyDialog({
-          onAccepted: () => this.onPrivacyAccepted()
-        })
+  build() {
+    // @Entry 的根节点必须是容器组件，量宽的 ResponsiveContainer 放在它里面
+    Stack() {
+      ResponsiveContainer({ breakpoint: this.bp }) {
+        Stack() {
+          // 内容列：宽屏下居中封顶，底色由最外层铺满，两侧不会露出系统默认底
+          Stack() {
+            AppNavigator()
+          }
+          .width('100%')
+          .height('100%')
+          .constraintSize({ maxWidth: this.shellMax() })
+
+          // 首启隐私弹窗：全屏覆盖拦截（同意后不再出现）。放在封顶之外，
+          // 宽屏下两侧留白也在遮罩里，未同意时整棵导航树都点不到。
+          if (this.showPrivacy) {
+            PrivacyDialog({
+              onAccepted: () => this.onPrivacyAccepted()
+            })
+          }
+        }
+        .width('100%')
+        .height('100%')
       }
     }
     .width('100%')

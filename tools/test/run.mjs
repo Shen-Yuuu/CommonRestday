@@ -5,8 +5,11 @@
  *   node tools/test/run.mjs          # 仓库根目录执行
  *   CRD_ONLY=commonTimeQueryService node tools/test/run.mjs   # 只跑一个 describe
  *
- * 退出码：0 全部通过 / 1 有用例失败 / 2 环境不满足（缺 tsc）。
+ * 退出码：0 类型编译与用例**都**干净 / 1 有用例失败 / 2 环境不满足（缺 tsc）/ 3 类型编译失败。
  * 完整输出同时写在 tools/test/out/last-run.log。
+ *
+ * 只有 `typecheck: 0 errors` + `tests: passed` + 退出码 0 才可以写成"全绿"：转译有类型错误时
+ * 不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），所以不存在"用例通过但工程编不过"的假绿。
  *
  * 注意：这里证明的是"纯装配与计算逻辑"，不覆盖 @kit/RDB/Preferences/云调用与渲染；
  * 那些仍由 DevEco 的 ohosTest（真机 Instrument Test）负责。
@@ -89,6 +92,17 @@ function copyTree(from, to, skip) {
 }
 
 /**
+ * ArkUI 全局的离线声明：设备侧由 @kit.ArkUI 提供，这里只补转译树真正用到的两个成员，
+ * 签名与 `AppStorage.get<T>() / setOrCreate<T>()` 一致，保证同一份断言搬到真机仍然成立。
+ */
+const STUB_GLOBALS = `
+declare const AppStorage: {
+  get<T>(propName: string): T | undefined;
+  setOrCreate<T>(propName: string, newValue: T): boolean;
+};
+`;
+
+/**
  * ScheduleUseCase 的类型壳：设备侧这里跑引擎与广播，桩只保留"重算发生了一次"的可观测语义
  * ——按设备侧同名键累加 recomputeCount，用例据此断言一次保存只重算一次。
  */
@@ -96,11 +110,6 @@ const STUB_SCHEDULE_USECASE = `
 import { Interval, SectionTime, Window } from '../../../../main/ets/model/Types';
 
 export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
-
-declare const AppStorage: {
-  get(k: string): number | undefined;
-  setOrCreate(k: string, v: number): boolean;
-};
 
 export interface DayViewData {
   epochDay: number;
@@ -113,8 +122,8 @@ export interface DayViewData {
 
 export class ScheduleUseCase {
   static async onScheduleChanged(): Promise<void> {
-    const cur: number = AppStorage.get(RECOMPUTE_COUNT_KEY) ?? 0;
-    AppStorage.setOrCreate(RECOMPUTE_COUNT_KEY, cur + 1);
+    const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
+    AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
   }
   static defaultSectionTimes(): SectionTime[] {
     return [{ startMin: 480, endMin: 525 }];
@@ -302,6 +311,7 @@ function prepare() {
     fs.writeFileSync(path.join(dir, name), body);
   }
   fs.writeFileSync(path.join(OUT, 'commonsLogStub.ts'), STUB_LOGGER);
+  fs.writeFileSync(path.join(OUT, 'globals.d.ts'), STUB_GLOBALS);
   fs.writeFileSync(path.join(OUT, 'commonsIndex.ts'),
     "export * from './commons/main/ets/util/DateLabel';\n"
     + "export * from './commons/main/ets/constant/AppConst';\n"
@@ -326,28 +336,46 @@ function findTsc() {
   return fs.existsSync(bundled) ? bundled : null;
 }
 
+/** tsc 的每条诊断占一行（`path(line,col): error TSxxxx: …`），续行缩进、不计入条数。 */
+function countTypeErrors(stdout) {
+  if (!stdout) {
+    return 0;
+  }
+  return stdout.split(/\r?\n/).filter((l) => /error TS\d+:/.test(l)).length;
+}
+
 function main() {
   const log = [];
   const say = (line) => {
     console.log(line);
     log.push(line);
   };
+  const finish = (code) => {
+    fs.mkdirSync(JS, { recursive: true });
+    fs.writeFileSync(LOG, log.join('\n') + '\n');
+    console.log('\n日志：' + LOG.replace(/\\/g, '/'));
+    process.exitCode = code;
+  };
   prepare();
   const tsc = findTsc();
   if (tsc === null) {
     say('未找到 TypeScript 编译器。装好 DevEco Studio 后设 CRD_TSC=<.../typescript/bin/tsc> 重试。');
-    fs.mkdirSync(JS, { recursive: true });
-    fs.writeFileSync(LOG, log.join('\n') + '\n');
-    process.exitCode = 2;
+    say('typecheck: skipped');
+    finish(2);
     return;
   }
-  // noEmitOnError:false：类型报错照样产出 JS，先让用例跑起来，报错本身也打进日志。
+  // noEmitOnError:true：类型报错就不产出 JS，因此下面的用例只可能跑在编译干净的工程上。
   const compile = spawnSync('node', [tsc, '-p', path.join(HERE, 'tsconfig.json')], { encoding: 'utf8' });
   if (compile.stdout) {
     say(compile.stdout.trimEnd());
   }
-  if (compile.status !== 0) {
-    say('--- tsc 报了类型错误，仍继续执行已产出的用例 ---');
+  const errors = countTypeErrors(compile.stdout);
+  say('typecheck: ' + (errors === 0 ? '0 errors' : errors + ' errors'));
+  if (errors > 0 || compile.status !== 0) {
+    say('--- 类型编译未通过：不启动用例（退出码 3）---');
+    say('tests: not run');
+    finish(3);
+    return;
   }
   const run = spawnSync('node', [path.join(HERE, 'boot.cjs')], { encoding: 'utf8' });
   if (run.stdout) {
@@ -356,10 +384,9 @@ function main() {
   if (run.stderr) {
     say(run.stderr.trimEnd());
   }
-  fs.mkdirSync(JS, { recursive: true });
-  fs.writeFileSync(LOG, log.join('\n') + '\n');
-  console.log('\n日志：' + LOG.replace(/\\/g, '/'));
-  process.exitCode = run.status === 0 ? 0 : (run.status ?? 1);
+  const testsPassed = run.status === 0;
+  say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
+  finish(testsPassed ? 0 : (run.status ?? 1));
 }
 
 main();

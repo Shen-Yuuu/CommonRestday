@@ -10,11 +10,17 @@ node tools/test/run.mjs
 
 | 码 | 含义 |
 |---|---|
-| 0 | 全部用例通过 |
+| 0 | 类型编译 0 error **且**全部用例通过 |
 | 1 | 有失败用例（明细见输出与日志） |
 | 2 | 环境不满足（找不到 TypeScript 编译器） |
+| 3 | 类型编译未通过：不产出 JS、**不启动用例** |
 
-输出末尾给出日志路径：`tools/test/out/last-run.log`（转译告警 + 每个用例 PASS/FAIL + 汇总计数）。
+输出末尾给出日志路径：`tools/test/out/last-run.log`（`typecheck: N errors` + 每个用例 PASS/FAIL +
+汇总计数 + `tests: passed/FAILED`）。
+
+**"全绿"的唯一口径是 `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
+`tsconfig.json` 用 `noEmitOnError: true`，转译有类型错误时既没有产物也没有绿灯——曾经
+`noEmitOnError: false` 让 5 个类型错误照样跑出 "177 passed, exit 0"，那种数字不能写进任何验收文档。
 
 ## 环境要求
 
@@ -43,7 +49,8 @@ CRD_ONLY=commonTimeQueryService node tools/test/run.mjs
 Test 与 `docs/testing-checklist.md` 的人工检查负责**，不能用这里的绿灯代替。
 
 写命令的编排可以测：`ScheduleCommandService` 的仓储与 `ScheduleUseCase` 依赖都是类型壳，
-`boot.cjs` 另给了一个 `AppStorage` 替身，因此用例用与设备同名的 `recomputeCount` 键断言
+`boot.cjs` 另给了一个 `AppStorage` 运行时替身，`run.mjs` 生成的 `src/globals.d.ts` 补上它的编译期签名
+（只有真用到的 `get<T>/setOrCreate<T>`），因此用例用与设备同名的 `recomputeCount` 键断言
 "一次保存恰好一次重算、空批次不重算"，不引入任何测试专用字段。
 
 ## 加一个用例

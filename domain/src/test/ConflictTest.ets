@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
-  ConflictHint, ConflictOutcome, ConflictSources, CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE,
+  ConflictOutcome, ConflictSources, CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE,
   CONFLICT_REASON_MY_RHYTHM, CONFLICT_REASON_MY_SHIFT, CONFLICT_REASON_PARTNER_CHANGED,
   CONFLICT_REASON_PARTNER_TIME, CONFLICT_REASON_UNKNOWN, CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE,
   CONFLICT_SOURCE_PARTNER, Interval, MIN_PER_DAY, PlanLite, Window, WindowChannel
@@ -8,7 +8,7 @@ import {
 import { epochDayOf } from '../main/ets/utils/TimeUtil';
 import { mkIv, unionIntervals } from '../main/ets/merge/IntervalOps';
 import {
-  decodeConflictHint, detectConflicts, encodeConflictHint, findAlternativeWindow, hintFromOutcome,
+  ConflictHint, decodeConflictHint, detectConflicts, encodeConflictHint, findAlternativeWindow, hintFromOutcome,
   withKeepCarried
 } from '../main/ets/conflict/PlanConflict';
 

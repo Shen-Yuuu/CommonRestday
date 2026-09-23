@@ -97,8 +97,8 @@ function pageOf(all: Window[], key: WindowFilterKey): CommonTimePageData {
   return CommonTimeQueryService.assemblePage(input);
 }
 
-/** 列表/周历共用的稳定 key：起点+终点+通道（与 UI 的 ForEach key 一致）。 */
-function keyOf(w: WindowSummary): string {
+/** 列表/周历共用的稳定 key：起点+终点+通道（与 UI 的 ForEach key 一致）；归并断言要同时读原始窗口与摘要行。 */
+function keyOf(w: WindowSummary | Window): string {
   return w.start + '-' + w.end + '-' + w.channel;
 }
 
@@ -374,11 +374,12 @@ export default function commonTimeQueryServiceTest() {
       const page = pageOf(all, WindowFilterKey.ALL);
 
       // 卡片标签最多三档，且只取这三个 key
+      const cardTagKeys: string[] = [WindowTag.FULL_DAY, WindowTag.WEEKEND, WindowTag.TRIP];
       for (let i = 0; i < page.windows.length; i++) {
-        const tags = page.windows[i].displayTags;
+        const tags: string[] = page.windows[i].displayTags;
         expect(tags.length <= 3).assertTrue();
         for (let j = 0; j < tags.length; j++) {
-          expect([WindowTag.FULL_DAY, WindowTag.WEEKEND, WindowTag.TRIP].indexOf(tags[j]) >= 0).assertTrue();
+          expect(cardTagKeys.indexOf(tags[j]) >= 0).assertTrue();
         }
       }
       // 餐叙/自习/半天不进卡片：带 MEAL 的今晚窗口没有展示标签

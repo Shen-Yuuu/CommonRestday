@@ -59,6 +59,7 @@ node tools/verify.mjs --steps=offline,debug,release,ohostest,perf
 - `build-profile.json5`：`signingConfigs: []`；
 - release 日志：`Will skip sign 'hos_hap'. No signingConfigs profile is configured`；
 - `AppScope/app.json5`：`vendor: "example"`，`bundleName: "com.huawei.commonrestday"` 尚未确认主体归属；
+  **（本报告出具后已处理：2026-09-23 定稿为 `com.rest.common`，`vendor` 仍待填——见 `docs/release/submission-materials.md` §1）**
 - 隐私政策在线 URL、备案、开发者信息、商店截图与年龄分级仍待人工回填。
 
 ## 3. 阶段与阻断项复验
@@ -142,7 +143,7 @@ node tools/verify.mjs --steps=offline,debug,release,ohostest,perf
 
 ### 5.1 账号侧
 
-1. 定稿开发者主体、`bundleName` 与 `vendor`；
+1. 定稿开发者主体与 `vendor`（`bundleName` 已定稿为 `com.rest.common`，签名 Profile 与备案材料按该值走）；
 2. 配置正式签名，release 产物不再带 `-unsigned`；
 3. 完成 App 备案并登记编号与日期；
 4. 托管 `docs/legal/privacy-policy.html`，回填在线 URL、开发者名称与联系方式；

@@ -44,8 +44,8 @@
 ```bash
 HDC="/d/local/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe"
 "$HDC" list targets                                                  # 确认设备/模拟器在线
-"$HDC" shell aa start -a EntryAbility -b com.huawei.commonrestday     # 启动 App
-"$HDC" shell bm clean -n com.huawei.commonrestday -d                  # 清应用数据（重置首启状态）
+"$HDC" shell aa start -a EntryAbility -b com.rest.common              # 启动 App
+"$HDC" shell bm clean -n com.rest.common -d                           # 清应用数据（重置首启状态）
 "$HDC" shell hilog | grep -E "ScheduleUseCase|ScheduleRepo|EntryAbility"   # 看链路日志（TAG 取自 Logger 首参）
 ```
 

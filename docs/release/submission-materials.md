@@ -10,16 +10,19 @@
 
 | 字段 | 当前值 | 状态 | 需要什么 |
 |---|---|---|---|
-| `bundleName` | `com.huawei.commonrestday` | **未确认** | 独立验收 B5 原话：是否属于开发者主体尚未确认。应用一旦上架，包名不可随意更换——卡片标识、深链 scheme `crdpair`、已授权权限全部重来 |
+| `bundleName` | `com.rest.common` | **已定稿（2026-09-23）**，由 `com.huawei.commonrestday` 改来 | AGC 侧要用**这个**包名创建应用；备案材料的包名与之一致；`docs/testing-checklist.md` §1 的按包名命令已同步 |
 | `vendor` | `example` | **模板占位值，未改** | 换成与 AGC 账号主体一致的标识（个人开发者填自己的名字/域名前缀即可，但必须是**有意填的**而不是留着的） |
 | `versionCode` / `versionName` | `1000000` / `1.0.0` | 一致 | 首个正式包定档后不再回退 versionCode |
 
-**关于 `com.huawei.*` 前缀（判断，缺官方条款证据）**：`com.huawei` 通常留给华为自身的包，
+**关于旧的 `com.huawei.*` 前缀（判断，缺官方条款证据）**：`com.huawei` 通常留给华为自身的包，
 第三方应用使用这一前缀在提审或备案环节可能被要求说明主体归属。
 **本仓库没有华为官方"禁用该前缀"的条款可引**，所以这只是一条需要复核的风险提示，不是已确认的阻断项。
-若复核后确认要换，现在换的成本最低：**本应用从未上架，没有任何线上包、已授权用户或卡片实例会被牵动**；
-需要同步改的地方只有 bundleName 本身（`AppScope/app.json5`）与按包名寻址的设备侧命令
-（`bm dump -n <bundleName>`，见 `docs/testing-checklist.md` §20.5）。深链 scheme `crdpair` 与卡片标识都不含包名。
+2026-09-23 由开发者直接决定换包名，因此这条判断不再需要复核——改动的成本项在换之前已经核过：
+**本应用从未上架，也没有已安装过旧包名的设备**（全程 `hdc list targets` 为 `[Empty]`），
+所以没有线上包、已授权用户或卡片实例被牵动。实际被改的只有两处：bundleName 本身
+（`AppScope/app.json5`）与按包名寻址的设备侧命令（`bm clean`/`aa start`，见 `docs/testing-checklist.md` §1）。
+深链 scheme `crdpair`、卡片标识、数据库文件名 `commonrestday.db` 都不含包名，未动。
+**换包名之后 §2/§3 全部要按新值走**：签名 Profile（p7b 里绑 bundleName）、AGC 应用、备案、隐私政策托管页里的应用名。
 
 ## 2. 签名（`build-profile.json5`）
 

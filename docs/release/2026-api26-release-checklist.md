@@ -32,7 +32,7 @@
 > 首启摘要四条与「共享等级」那句空头承诺按阶段 6R.1 的实际行为重写，创建计划类型精简为「一起吃饭 / 其他」
 > 且旧 8 类保留兼容标签映射（离线新增 5 条用例钉住两半），EntryAbility 锁 `orientation: 'portrait'`。
 > B5 的仓库侧做成一张待回填表（`submission-materials.md`：包身份/签名/备案/隐私政策/商店材料）。
-> **B4/B5 的账号侧与设备侧一项没关**：URL 托管、`bundleName`/`vendor` 定稿、备案状态、签名出包、商店截图都要开发者账号或真机，
+> **B4/B5 的账号侧与设备侧一项没关**：URL 托管、`vendor` 定稿（`bundleName` 已于 2026-09-23 定稿为 `com.rest.common`）、备案状态、签名出包、商店截图都要开发者账号或真机，
 > 本文件结论仍是**不具备提审条件**（B6 零设备证据未动）。
 >
 > **最终验收 R1 + R2 追加整改（2026-09-23，见 [全阶段改造最终验收](../validation/2026-09-23-final-redesign-acceptance.md) §4）**：
@@ -52,7 +52,7 @@
 
 - **本轮没有接入任何真机或模拟器**。因此本清单里"通过"只有三种可能来源：离线套件、命令行构建、代码/配置的静态事实。渲染、权限弹窗、系统日历、通知栏、卡片、扫码、备份恢复一律标 **待设备**，不因离线通过而勾掉。
 - 发布门禁共五条（改造文档 Task 6.4）：**G1 P0 流程无阻断缺陷 / G2 功能开关关闭时纯本地版可发布 / G3 云数据库无敏感明文 / G4 隐私文案与实际权限一致 / G5 所有数据删除动作可验证**。逐条判定见 §2。
-- **本轮结论：不具备提审条件**。原验收登记的 4 类阻断继续成立；独立复核又增加了受管日历生命周期、测试假绿和计划级提醒残留，统一按上方独立验收 B0–B6 整改；最终验收再补 R1（备份恢复与"只在本机"自相矛盾）与 R2（清库后仍承诺可稍后重试）。阶段 6R.1–6R.4 与 R1/R2 之后 **B0/B1/B2/B3 与 B4/B5 的仓库侧已封口**，剩下的卡点收敛为两类：**账号侧材料**（隐私政策 URL 托管、`bundleName`/`vendor` 定稿、备案状态、签名出包、商店截图）与 **B6 零设备证据**（TC §1–§20 全量走查，含 R1 的备份/克隆往返与 R2 的清空谎报检查）。设备接入前，G1/G2/G4/G5 的判定都停在待设备。
+- **本轮结论：不具备提审条件**。原验收登记的 4 类阻断继续成立；独立复核又增加了受管日历生命周期、测试假绿和计划级提醒残留，统一按上方独立验收 B0–B6 整改；最终验收再补 R1（备份恢复与"只在本机"自相矛盾）与 R2（清库后仍承诺可稍后重试）。阶段 6R.1–6R.4 与 R1/R2 之后 **B0/B1/B2/B3 与 B4/B5 的仓库侧已封口**，剩下的卡点收敛为两类：**账号侧材料**（隐私政策 URL 托管、`vendor` 定稿（`bundleName` 已定稿为 `com.rest.common`）、备案状态、签名出包、商店截图）与 **B6 零设备证据**（TC §1–§20 全量走查，含 R1 的备份/克隆往返与 R2 的清空谎报检查）。设备接入前，G1/G2/G4/G5 的判定都停在待设备。
 
 ## 1. 构建与产物证据（本轮实测）
 
@@ -125,7 +125,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 | 4 | 弹窗第二句「日历事件：仅在你确认创建共同计划时写入系统日历」 | **已按三态重写（阶段 6R.4）**：该句现为 `privacy_point_calendar` =「共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理」，与阶段 6R.1 的实际路径一致——默认勾选走受管 `addEvent`（不弹系统确认页，TC §6.3），`editEvent` 只剩「导出到系统日历」一个出口且那条永不试删（TC §6.6），`calendarFlow=false` 关档时一次都不写（TC §18.2）。全文第 4 节「系统日历与提醒的边界」是同口径。逐字对照动作仍在设备侧（TC §20.3） |
 | 5 | 弹窗末尾「你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）」 | **已替换（阶段 6R.4）**：这句空头承诺删掉了，改为 `privacy_level_hint` =「上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准。」——等级控件在 `cloudPairing=false` 时不渲染（6R.2 收走），首发版没有可调的等级，因此界面上不再出现做不到的承诺。全文第 7 节明写"云端配对当前未开放、等级项在界面上不出现、值仍存本机"。设备侧确认新那句对应的全文真能打开（TC §20.3） |
 | 6 | OCR 页文案「照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图」 | **一致**：`pages/OcrCourse.ets` 走 `cameraPicker.pick` + `PhotoViewPicker.select`（系统 Picker，无需应用侧相机/相册权限），识别用端侧 `textRecognition`；全仓无图片上传代码 |
-| 7 | `AppScope/app.json5`：`bundleName: com.huawei.commonrestday`、`vendor: example`、`versionName 1.0.0 / versionCode 1000000` | **材料已登记（阶段 6R.4），值仍待账号侧定稿**：`docs/release/submission-materials.md` §1 把三项待确认值列成回填表，并标注两条事实与一条判断——事实是 `vendor` 仍为模板值 `example`、包名一经发布不可随意更换（卡片、深链 scheme `crdpair`、已授权权限全部重来）；判断是 `com.huawei.*` 前缀可能被市场审核质疑为官方应用，**本仓库没有华为官方"禁用该前缀"的条款可引**，所以只登记为待确认而不写死结论。趁首个正式包之前改最便宜 |
+| 7 | `AppScope/app.json5`：原 `bundleName: com.huawei.commonrestday`、`vendor: example`、`versionName 1.0.0 / versionCode 1000000` | **`bundleName` 已定稿（2026-09-23）：改为 `com.rest.common`**，`vendor` 仍是模板值 `example` 待账号侧填。改名的理由与影响面登记在 `submission-materials.md` §1：`com.huawei.*` 前缀可能被市场审核质疑为官方应用——这一条**始终是标注为"判断"的风险提示，本仓库没有华为官方条款可引**，因此不写成"改名是强制要求"；改名由开发者直接决定，风险判断是否成立不再影响首个包。改前核过的成本项：本应用从未上架、也没有装过旧包名的设备（全程无 `hdc` target），所以没有线上包/已授权用户/卡片实例被牵动；实际只需要动 `app.json5` 与 TC §1 的按包名命令，深链 scheme `crdpair`、卡片标识、数据库文件名都不含包名 |
 | 8 | `backup_config.json` 的 `allowToBackupRestore: true` + `EntryBackupAbility` 已接入：系统会在**应用克隆与应用数据迁移**时带走整个沙箱（RDB + Preferences），但政策原文只说"数据只存在这台手机上" | **已按最终验收 R1 修订披露（不关能力）**：全文新增「系统备份与换机迁移」一节、首启摘要加第二条，`pp_data_b`/`pp_delete_b`/`privacy_point_local`/`privacy_point_cloud` 四处绝对化表述改掉，**连界面上那句口号一起**——`MeView.identitySub()` 在「我的」页顶部原本显示「数据只存在这台手机」，现改「数据只写在本机的应用沙箱里」（它不属于《隐私政策》，所以由 `copy-audit.mjs` 对全部随包源码生效的同一条禁令钉住），改成"写在本机应用沙箱 + 系统备份或换机迁移时可能随系统流程恢复到你的其他设备"；同时写明恢复后**日历与提醒句柄作废、配对回到未配对**（与 `EntryBackupAbility` + `MigrationRunner.finishRestore` 的实际行为对应）。**未采用**的另一方案（`allowToBackupRestore: false` 并停用备份扩展）理由：阶段 6.1 的恢复降级对换机用户有实际价值，而披露足以消除误导。禁止绝对化表述已由 `copy-audit.mjs` 机器把关，且这一条禁令**不只管《隐私政策》**：`entry/feature/data/cloud/commons/domain` 的 `src/main` 里任何 `.ets`/`.json` 出现同类措辞都会失败；**这一节当场是否成立仍待真机做一轮备份/克隆往返**（TC §17.3.6，B6） |
 | 9 | 「清空我的全部数据」失败分支仍提示「可稍后重试」，但清库已把计划行与投影句柄一起删掉，重试无凭据（最终验收 R2） | **已处理**：`clearAllMessageOf` 不再复用 `cleanupMessageOf`，清空后的那句改成"本应用已无法再替你清理，请到系统日历/系统设置检查"；`cleanupMessageOf`（取消/改期）保留"可稍后重试"，因为那条路径留着 `CLEANUP_PENDING` 句柄与「重新清理」入口，承诺可兑现。两侧各有一条离线断言把这句话钉住（`PlanUseCaseTest` 的正反对照 + `ProfileSettingsGuardTest` 跑真实 `clearAllData()`）。设备侧仍要确认残留条目真的只能人工删（TC §20.1.4） |
 
@@ -175,7 +175,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 - [ ] 应用截图（首页/共同时间/我的/班表/卡片）+ 一句话介绍 + 分类（生活或效率）+ Age rating + 版权/开发者信息 → **0 张截图，全部待设备**（B6），登记表见 `submission-materials.md` §5/§6
 - [ ] App 备案：**仓库内至今没有任何状态记录**（docs/04 M0 第 5 项只登记为"本周发起"，从未回填）→ 待设备之外的独立卡点，登记表见 `submission-materials.md` §3
 - [ ] 签名配置（自动签名或正式证书）后重跑一次 release 出包，确认产物不再是 `-unsigned`：当前 `signingConfigs: []` 且 `products[0].signingConfig: "default"`，产物 `entry/build/default/outputs/default/entry-default-unsigned.hap`。规则：密钥库口令与私钥**不进仓库**（`submission-materials.md` §2）
-- [ ] 包身份定稿：`bundleName` 归属与 `vendor`（现在仍是模板值 `example`）确认 → `submission-materials.md` §1
+- [ ] 包身份定稿：`bundleName` **已定稿**（2026-09-23 由 `com.huawei.commonrestday` 改为 `com.rest.common`，理由与影响面见 `submission-materials.md` §1）；`vendor` 现在仍是模板值 `example`，待确认 → `submission-materials.md` §1。**新增值带来的连带项**：签名 Profile 里的 bundleName、AGC 应用与备案材料都按 `com.rest.common` 走
 - [ ] AGC：创建云资源与否的决定与 `docs/cloud/operations-runbook.md` §1 前置清单一并记录（保持关闭就明确写"首版不开通"）
 
 ## 6. 完成定义对照（改造文档末尾 8 条）
@@ -193,5 +193,5 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 **净结论**：8 条里 3 条达成（三主入口 / 本机数据自足 / 文档与实现不再冲突）、1 条按门禁承诺未达成（HUKS 托管长期密钥）、4 条卡在"证据只到代码与离线这一层"（真机端到端、云侧实测、五种显示形态、手工验收记录）。
 提审前还欠的账（阶段 6R.4 之后）：D1 计划类型精简、D2 锁竖屏、G4 三处文案（隐私政策成文 + 日历那句 + 共享等级那句）**已全部在代码与文档里落地**；`INTERNET` 随 6R.2 移除。剩下的是**这个仓库替你做不完的两类**——
-① 账号侧：隐私政策 URL 托管并回填 `AppConst.PRIVACY_POLICY_URL`、`bundleName`/`vendor` 定稿、备案状态、配置签名后重出 release 包、商店截图与分类/Age rating（逐项见 `submission-materials.md`）；
+① 账号侧：隐私政策 URL 托管并回填 `AppConst.PRIVACY_POLICY_URL`、`vendor` 定稿（`bundleName` 已定稿为 `com.rest.common`）、备案状态、配置签名后重出 release 包、商店截图与分类/Age rating（逐项见 `submission-materials.md`）；
 ② 设备侧 B6：接 API 26 真机按 TC §1–§20 全量勾一遍。G1 与 G5 的判定都卡在②上：代码与离线口径已经改完（含 G2 的云守卫），缺的是"系统日历里真的少了那条、提醒列表里真的没有残留"这类只有设备能给的证据。

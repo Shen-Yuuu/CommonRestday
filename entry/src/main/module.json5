@@ -20,6 +20,9 @@
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        // 首发锁竖屏（验收报告 §5 D2）：断点按容器宽度分档，手机横屏会落进
+        // medium/expanded 从而端出为平板设计的双栏。横屏真机矩阵（TC §20.6）通过后再解除。
+        "orientation": "portrait",
         "skills": [
           {
             "entities": [

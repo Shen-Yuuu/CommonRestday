@@ -127,7 +127,7 @@ export interface PlanConflictView {
 export interface PlanSummary {
   id: string;
   title: string;
-  /** plan.kind 原值（entry 用 PlanKindUtil 翻成文案）。 */
+  /** plan.kind 原值（文案见 model/PlanKinds 的 planKindLabel）。 */
   kind: string;
   start: number;
   end: number;

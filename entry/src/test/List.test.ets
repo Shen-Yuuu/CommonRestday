@@ -6,6 +6,7 @@ import dbMigrationTest from './DbMigrationTest';
 import scheduleCommandServiceTest from './ScheduleCommandServiceTest';
 import planUseCaseTest from './PlanUseCaseTest';
 import cardSummaryServiceTest from './CardSummaryServiceTest';
+import planKindsTest from './PlanKindsTest';
 import profileSettingsGuardTest from './ProfileSettingsGuardTest';
 
 export default function testsuite() {
@@ -17,5 +18,6 @@ export default function testsuite() {
   scheduleCommandServiceTest();
   planUseCaseTest();
   cardSummaryServiceTest();
+  planKindsTest();
   profileSettingsGuardTest();
 }

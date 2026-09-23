@@ -457,8 +457,9 @@ var PLAN_KINDS = [
   { k:'meal', n:'一起吃饭' }, { k:'movie', n:'看电影' }, { k:'pickup', n:'接送孩子' }, { k:'parents', n:'回父母家' },
   { k:'errand', n:'办证体检' }, { k:'trip', n:'短途旅行' }, { k:'study', n:'共同自习' }, { k:'custom', n:'自定义' }
 ];
-/* 精简版：类型不参与任何计算，只影响一次默认标题，8 种收成 2 种 */
-var PLAN_KINDS_LEAN = [{ k:'meal', n:'一起吃饭' }, { k:'other', n:'其他' }];
+/* 精简版：类型不参与任何计算，只影响一次默认标题，8 种收成 2 种。
+   key 用 'custom' 而不是新造 'other'：阶段 6R.4 的定稿是"其他"复用已有 key，从而不产生数据迁移。 */
+var PLAN_KINDS_LEAN = [{ k:'meal', n:'一起吃饭' }, { k:'custom', n:'其他' }];
 function kinds(){ return S.lean ? PLAN_KINDS_LEAN : PLAN_KINDS; }
 var TAG_LABEL = { MEAL:'可聚餐', HALF_DAY:'半天', FULL_DAY:'完整同休日', TWO_DAYS:'连休两天', WEEKEND:'周末', OVERNIGHT_TRIP:'过夜旅行', TRIP:'短途旅行', STUDY:'共同自习' };
 var TAG_COLOR = { STUDY:'var(--info_blue)', MEAL:'var(--warn_orange)', WEEKEND:'var(--tag_weekend)', FULL_DAY:'var(--brand_pink)', TWO_DAYS:'var(--brand_pink)', HALF_DAY:'var(--success_green)', TRIP:'var(--tag_trip)', OVERNIGHT_TRIP:'var(--tag_trip)' };
@@ -1156,10 +1157,12 @@ function planStatus(pl){
   return { n:'待开始', c:'var(--info_blue)' };
 }
 function kindName(k){
-  if (S.lean && k !== 'meal') { return '其他安排'; }
+  /* 阶段 6R.4 口径：可创建的类型与"存过的 key 怎么念"是两张表。
+     精简档只收窄可选项，不收窄展示——旧 8 类的历史计划仍要念出中文名，未知 key 原样显示。 */
   if (k === 'other') { return '其他安排'; }
+  if (k === 'custom') { return S.lean ? '其他' : '自定义'; }
   for (var i = 0; i < PLAN_KINDS.length; i++) { if (PLAN_KINDS[i].k === k) { return PLAN_KINDS[i].n; } }
-  return '自定义';
+  return k;
 }
 function plansList(){
   if (!S.plans.length) {
@@ -1804,22 +1807,24 @@ function sheetBody(){
   return '';
 }
 function privacyHtml(){
+  /* 与 entry/src/main/ets/component/PrivacyDialog.ets 的 privacyPoints() 同步（阶段 6R.4 重写）：
+     下面四条 d 就是 app.string.privacy_point_* 的原文，改动要两边一起改。 */
   var pts = [
-    { i:'📋', t:'只在本机计算', d:'班表、课表、作息参数全部存本地 Preferences' },
-    { i:'📅', t:'日历只读/可写一条', d:'创建计划时才申请日历权限，用于写入系统日程' },
-    { i:'📷', t:'拍照识别不上传', d:'课程表识别走 Core Vision Kit，图片不出设备' },
-    { i:'🔐', t:'配对可选、随时可撤', d:'未开通云服务时本机代录同样可用' }
+    { i:'📋', t:'只在本机', d:'班表/课表数据仅存储在本机数据库，不上传任何服务器' },
+    { i:'📅', t:'日历', d:'共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理' },
+    { i:'📷', t:'照片', d:'照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图' },
+    { i:'🔐', t:'云端', d:'云端配对当前未开放，这个安装包也没有联网权限；你的班表不会离开这台手机' }
   ];
   return '<div class="col gap12" style="min-height:100%">'
     + '<div style="font-size:40px;text-align:center">🤝</div>'
     + '<div class="t17 b7" style="text-align:center">把时间对齐，而不是把生活上传</div>'
-    + '<div class="t12 c3" style="text-align:center">首次使用前，请确认这三件事</div>'
+    + '<div class="t12 c3" style="text-align:center">在你开始之前，请先了解我们如何对待你的数据</div>'
     + pts.map(function(x){
       return '<div class="row gap10" style="align-items:flex-start"><div style="font-size:18px">' + x.i + '</div>'
         + '<div class="col lw gap2"><div class="t14 b5">' + x.t + '</div><div class="t11 c3" style="line-height:1.6">' + x.d + '</div></div></div>';
     }).join('')
-    + '<div class="t12 blue" data-act="openPolicy">《隐私政策》全文</div>'
-    + '<div class="t11 ch">共享等级默认为 L2（窗口 + 班表），可随时在「我的」里调整。</div>'
+    + '<div class="t12 blue" data-act="openPolicy">查看《隐私政策》全文 ›</div>'
+    + '<div class="t11 ch">上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准。</div>'
     + '<div class="lw"></div>'
     + '<div class="row gap10"><button class="btn big lw" data-act="agreePrivacy">同意并继续</button>'
     + '<button class="btn big lw ghost" data-act="declinePrivacy">不同意并退出</button></div></div>';
@@ -1945,7 +1950,10 @@ var ACT = {
   pickKind:function(el){
     syncDraft();
     S.draft.kind = el.dataset.k;
-    if (!S.draft.touched) { S.draft.title = kindName(el.dataset.k); }
+    /* 「其他」没有默认名，留空要求自填（阶段 6R.4）；不钉住 touched，切回「一起吃饭」时默认名要回得来 */
+    if (!S.draft.touched) {
+      S.draft.title = (S.lean && el.dataset.k === 'custom') ? '' : kindName(el.dataset.k);
+    }
     render();
   },
   createPlan:function(){
@@ -2138,7 +2146,7 @@ var ACT = {
   privacy:function(){ S.privacy = true; render(); },
   agreePrivacy:function(){ S.privacy = false; render(); },
   declinePrivacy:function(){ S.privacy = false; render(); toast('体验原型中「不同意」仅关闭弹窗'); },
-  openPolicy:function(){ toast('真机走 WebAbility(PRIVACY_POLICY_URL)，当前为空'); },
+  openPolicy:function(){ toast('应用内《隐私政策》全文半模态（PrivacyPolicySheet，随包出厂；本包无 INTERNET，不走浏览器）'); },
   cardK:function(el){ S.cardK = +el.dataset.k; render(); }
 };
 function planById(id){

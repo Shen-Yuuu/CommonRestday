@@ -346,3 +346,16 @@ B1 列的四条整改逐条落地，并额外把"关不掉"的结构依赖删了
 **未做**：解除配对与删除伴侣的"云端成功路径"断言（`CLOUD_BLOCKED` 下不可达，见发布清单 §2 G5 表最后两行）；ohosTest 的 `pairing_reset_lands_on_real_preferences` 已改成用 `@kit.ArkData` 的 `preferences` 直接种 `pair_key` 残留（生产写入口已删，残留由测试自己造），**仍属未执行**。
 
 
+
+### 9.5 B4 + B5 + D1 + D2 —— 代码与材料已落地，两项均不判关闭（2026-09-23，阶段 6R.4）
+
+§5 的三个待决策项与 §4 的 B4/B5 里"仓库能做的部分"一次做完。**判定不变**：B4、B5 各自还剩账号侧与设备侧的硬缺口，本报告 §1 的"不具备提审条件"结论继续成立。
+
+| 条目 | 现在的实现 | 证据 / 缺口 |
+|---|---|---|
+| D1 计划类型精简（§5 定稿：只显示"一起吃饭/其他"，旧 8 类保留兼容表，`其他` 用 `custom` key 并强制填标题，不要改成"约会/其他"） | `feature/src/main/ets/model/PlanKinds.ets`：`PLAN_KINDS`（2 项，可创建）与 `LEGACY_PLAN_KINDS`（旧 6 类标签）+ `planKindLabel` 兜底返回原值——**两张表分开是这条定稿的全部难点**，合成一张会让每次精简选项都把老数据读成空白或英文码；`其他` 复用 `custom` 因此零迁移；`WindowDetailSheet.pickKind` 切到"其他"清空标题且不钉住 `titleTouched`（两项之间"点过去再点回来"很常见） | 离线 `entry/src/test/PlanKindsTest.ets` 5 条（两项、`custom`、旧 key 仍出中文、未知 key 读出自己、"其他"必填标题）。**先红后绿**：红因是 runner 的 barrel 由 `run.mjs` 硬编码名单生成、不读 `feature/Index.ets` → 3 个 `error TS2305` / exit 3 / tests not run |
+| D2 首发锁竖屏（§5 定稿：横屏真机矩阵通过后再开放） | `entry/src/main/module.json5` EntryAbility `"orientation": "portrait"`；解除条件写在 TC §20.6b——**要的是横屏矩阵通过，不是"竖屏锁这条通过"**，两件事极易被混成一件 | 静态事实。设备侧现象（横握不转）待验证（B6） |
+| B4 隐私政策（§4 三条：无全文、无商店材料、摘要与实际行为不一致） | 全文**随包内置** `entry/src/main/ets/component/PrivacyPolicySheet.ets`（十条半模态，首启弹窗 + 「我的 · 数据与隐私」共用），`PrivacyUtil` 与 `privacy_fulltext_soon` 删除。**结构性原因**：这个包按定稿不带 `INTERNET`，"点入口跳浏览器看托管页"在当前形态下做不到，所以填 URL 修不好旧入口；canonical 稿 `docs/legal/privacy-policy.md` + 可直接上传的自包含页 `docs/legal/privacy-policy.html`，三份文字同源、漂移规则写在文件头。摘要四条按 6R.1 真实行为重写；旧那句"可随时在「我的」页调整隐私共享等级"（控件已被 6R.2 收走）换成"以上为全文摘要，措辞不一致以全文为准" | **B4 不判关闭**，欠两条：① 应用市场仍要求可访问 URL，上传与回填 `AppConst.PRIVACY_POLICY_URL` 属账号侧（URL 为空时页底如实显示"尚未填写"，不阻断阅读）；② 全文与当场行为逐字对照、360vp/2.0× 字号/深色/读屏下的可读性属设备侧（TC §20.3/§20.3b，B6） |
+| B5 签名与包身份材料 | 新建 `docs/release/submission-materials.md`：包身份（`bundleName` 归属、`vendor` 仍是模板值 `example`、版本号）、签名（`signingConfigs: []` + `products[0].signingConfig: "default"` → 产物 `entry-default-unsigned.hap`；规则：密钥库口令与私钥不进仓库）、备案状态（**仓库内至今零记录**）、隐私政策两步、商店材料（0 张截图）、开发者信息 | **B5 不判关闭**：登记表里每一项的"值"都要 AGC 账号确认，本机无法代做。`com.huawei.*` 前缀可能被审核质疑这一点在文档里**明确标为判断**而非事实——本仓库没有华为官方"禁用该前缀"的条款可引；趁首个正式包之前改最便宜 |
+
+**本轮实测口径**（2026-09-23，`node tools/verify.mjs --steps=offline,debug,release,ohostest`，出包日志 `.crdtest/verify-{debug,release,ohostest}.log`、离线日志 `tools/test/out/last-run.log`）：offline 0 type error / **195 passed** / 0 failed / exit 0；debug 与 release 均 BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` **349**；ohosTest BUILD SUCCESSFUL、**260**、**未执行**。基线 352/352/260 → 349/349/260（D4 的只降不升口径延续；**−3 的逐位归因未核对**，上一档日志已被本轮复跑覆盖，只知道本任务删了 `PrivacyUtil`/`PlanKindUtil` 两个文件并把计划类型词表上移进 `feature`）。

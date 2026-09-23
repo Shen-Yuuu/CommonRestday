@@ -2,7 +2,7 @@ import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { SettingsStore } from 'data';
 import { Logger } from 'commons';
-import { openPrivacyPolicy } from '../util/PrivacyUtil';
+import { PrivacyPolicySheet } from './PrivacyPolicySheet';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const TAG = 'PrivacyDialog';
@@ -23,6 +23,8 @@ interface PrivacyPoint {
 export struct PrivacyDialog {
   onAccepted: () => void = () => {};
   @State working: boolean = false;
+  /** 《隐私政策》全文半模态（随包出厂，不跳浏览器）。 */
+  @State policyOpen: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
 
@@ -64,6 +66,14 @@ export struct PrivacyDialog {
     }
   }
 
+  /** 《隐私政策》全文（与「我的」页同一个组件、同一份文本）。 */
+  @Builder
+  policySheet() {
+    PrivacyPolicySheet({ onClose: () => {
+      this.policyOpen = false;
+    } })
+  }
+
   build() {
     Column() {
       // 顶部标题区
@@ -86,15 +96,23 @@ export struct PrivacyDialog {
             }.width('100%').alignItems(VerticalAlign.Top)
           }, (p: PrivacyPoint) => p.icon)
 
-          // 《隐私政策》全文入口：AGC 托管 URL 就绪后 openLink 跳转；未就绪 toast 提示
+          // 《隐私政策》全文：随包出厂的半模态，不依赖浏览器与联网权限
           Text($r('app.string.privacy_link_fulltext'))
             .fontSize(13).fontColor($r('app.color.brand_pink'))
             .margin({ top: 6 })
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
+            .accessibilityText('查看《隐私政策》全文')
+            .bindSheet($$this.policyOpen, this.policySheet(), {
+              detents: [SheetSize.LARGE],
+              dragBar: false,
+              showClose: false,
+              // 底色/圆角由 PrivacyPolicySheet 自己画，系统层再铺一次就是两层不透明背景
+              backgroundColor: Color.Transparent,
+              blurStyle: BlurStyle.NONE
+            })
             .onClick(() => {
-              const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-              openPrivacyPolicy(ctx, $r('app.string.privacy_fulltext_soon'));
+              this.policyOpen = true;
             })
 
           Text($r('app.string.privacy_level_hint'))

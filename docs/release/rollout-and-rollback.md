@@ -157,13 +157,14 @@ node tools/test/run.mjs
 |---|---|---|
 | 每个开关都有口径 | 全仓 `grep FeatureFlags` 结果记在 §2 表里；`newShell` 已删除；`cloudPairing` 自阶段 6R.2 起是 5 个落点（service / gateway / 快照推拉 / 两页文案与入口），不是一处 | 已核 |
 | 当前档位不出现装饰性开关 | 同上 | 已核（清单 §11.14 关闭） |
-| 当前档位的离线口径 | 阶段 6R.3 之后只有这一条算数：**0 type error / 190 passed / 0 failed / exit 0**（旧的"177 passed 但带 5 个类型错误却返回 0"已作废）；其中 6 条专证 `cloudPairing=false` 的关闭态（云客户端 0 次调用、`pairId/pairKey/pairState` 不变、解除与取消等待仍清本机标记） | 已测（`node tools/test/run.mjs`；变异验证：临时删掉 `createInvite` 首句守卫 → 只有那条守卫用例失败） |
-| 当前档位编译 | clean 出包 `node tools/verify.mjs --steps=offline,debug,release,ohostest` → 三条全 BUILD SUCCESSFUL、0 ERROR；`ArkTS:WARN` debug **352** / release **352** / ohosTest **260**（基线沿革 361/361/266 → 357/357/262 → 352/352/260，见 `tools/verify-baseline.json`）；ohosTest **只编译、未执行** | 已测（日志 `../.crdtest/verify-{debug,release,ohostest}.log`） |
+| 当前档位的离线口径 | 阶段 6R.4 之后只有这一条算数：**0 type error / 195 passed / 0 failed / exit 0**（旧的"177 passed 但带 5 个类型错误却返回 0"已作废）；其中 6 条专证 `cloudPairing=false` 的关闭态（云客户端 0 次调用、`pairId/pairKey/pairState` 不变、解除与取消等待仍清本机标记），另 5 条专证计划类型精简（可选项只剩两项、"其他"复用 `custom`、旧 8 类标签仍渲染、未知 key 读出自己、"其他"必填标题） | 已测（`node tools/test/run.mjs`；变异验证：临时删掉 `createInvite` 首句守卫 → 只有那条守卫用例失败） |
+| 当前档位编译 | clean 出包 `node tools/verify.mjs --steps=offline,debug,release,ohostest` → 三条全 BUILD SUCCESSFUL、0 ERROR；`ArkTS:WARN` debug **349** / release **349** / ohosTest **260**（基线沿革 361/361/266 → 357/357/262 → 352/352/260 → 349/349/260，见 `tools/verify-baseline.json`）；ohosTest **只编译、未执行** | 已测（日志 `../.crdtest/verify-{debug,release,ohostest}.log`） |
 | 首发包不带 `INTERNET` | 静态事实：`entry/src/main/module.json5` 的 `requestPermissions` 只有 3 条（两条日历 + `PUBLISH_AGENT_REMINDER`）。**没有设备去核实"这个包确实发不出请求"** | 配置已核，现象待设备（清单 §9.3、TC §20.5） |
 | `calendarFlow = false` 分支 | 单独翻档后**离线套件按预期变红：169 passed / 13 failed**，失败项全是日历口径（`expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …`、`double_submit… expected 1 but got 0` = 一次日历调用都没发、清理后句柄没留下）+ 那条档位断言本身。阶段 6R.1 重写后又复测了一次，口径与阶段 6.2 一致 | 已测（日志 `../.crdtest/6r1-off-calendarflow.log`；6.2 的出包日志 `build-6-2-off-calendarFlow.log`） |
 | `newCard = false` 分支 | 阶段 6R.1 之后重跑：`entry@default` debug BUILD SUCCESSFUL / 0 ERROR / `ArkTS:WARN` 357；卡面表现**未看** | 编译已测（日志 `../.crdtest/6r1-off-newCard.log`），真机待验 |
 | `responsiveV2 = false` 分支 | 同上重跑：BUILD SUCCESSFUL / 0 ERROR / WARN 357；断点行为**未看** | 编译已测（日志 `../.crdtest/6r1-off-responsiveV2.log`），真机待验 |
-| 三档恢复后的合并状态 | 五档回到 §2 的发布档位（`calendarFlow=on cloudPairing=off scanPairing=off newCard=on responsiveV2=on`）后，上表的 offline/debug/release/ohostest 四步再全绿一次 | 已测（阶段 6R.2 复跑，`../.crdtest/verify-*.log`：190 passed / 352 / 352 / 260） |
+| 三档恢复后的合并状态 | 五档回到 §2 的发布档位（`calendarFlow=on cloudPairing=off scanPairing=off newCard=on responsiveV2=on`）后，上表的 offline/debug/release/ohostest 四步再全绿一次 | 已测（阶段 6R.4 复跑，`../.crdtest/verify-*.log`：195 passed / 349 / 349 / 260） |
+| 首发包的屏幕方向 | 静态事实：`EntryAbility` 声明 `orientation: 'portrait'`（阶段 6R.4 定稿）。这不是开关而是形态收口——**没有设备就证不了"横握真的不转"**，也证不了"删掉这行后横屏矩阵可接受" | 配置已核，现象待设备（TC §20.6/§20.6b） |
 | `cloudPairing = true` / `scanPairing = true` 分支 | 不验证 | **故意不做**：门禁未过，验证会诱导"顺手开一下"。要开先改 `clouddev-api26-spike.md` 结论 |
 | 关档后的真机表现（停用卡面、单列回退、无补写入口） | 无设备 | **待设备**（清单 §18.2） |
 | 按用户分流的灰度、分阶段放量 | 未核对官方控制台 | 缺证据，见 §1 |

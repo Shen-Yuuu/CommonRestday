@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!--
+  同休日《隐私政策》自包含静态托管页（阶段 6R.4 / 发布清单 G4-1）。
+  上传到任意静态托管（AGC 云开发静态托管、自有域名均可）即得到提审用的可访问 URL。
+  文本与 docs/legal/privacy-policy.md、以及应用内 string.json 的 pp_* 条目同一口径，三处同批改。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同休日 隐私政策</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1c1a19; --muted: #5f5a56; --bg: #fbf8f5; --card: #fff; --line: #e7ded6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #f1ece7; --muted: #b3aaa1; --bg: #171514; --card: #201d1b; --line: #35302c; }
+  }
+  body { margin: 0; padding: 24px 16px 64px; background: var(--bg); color: var(--fg);
+    font: 16px/1.75 "HarmonyOS Sans SC", "PingFang SC", system-ui, sans-serif; }
+  main { max-width: 42rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .meta { color: var(--muted); font-size: .875rem; margin-bottom: 2rem; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 12px; }
+  h2 { font-size: 1rem; margin: 0 0 .4rem; }
+  p { margin: 0; color: var(--fg); }
+  ul { margin: .4rem 0 0; padding-left: 1.25rem; color: var(--muted); }
+  footer { color: var(--muted); font-size: .8125rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>同休日 隐私政策</h1>
+  <div class="meta">版本 v1.0 · 自 2026-09-23 起适用</div>
+
+  <section><h2>这份政策管什么</h2><p>「同休日」是一款离线的班表/课表与共同休息日工具。这里说明它在你手机上读写什么、存在哪里、能删掉什么。当前安装包不联网，本页面所示就是全文，没有另一个在线版本。</p></section>
+  <section><h2>你录入的内容留在本机</h2><p>班次类型、循环模板、月历涂抹、课程（课程名称与上课地点由你自己填写）、共同计划的标题与时间、作息与提醒设置，全部写进应用自己的本机数据库。「本机代录」模式下你替伴侣记录的班表同样只存在这台手机上。应用不收集位置、通讯录或健康数据，也没有账号或实名。</p></section>
+  <section><h2>课表图片只在本地识别</h2><p>拍照或选图都通过系统选择器完成，应用不申请相机与相册权限；图片交给端侧文字识别后即丢弃，不上传、不保存原图。</p></section>
+  <section><h2>申请了哪些权限，用来做什么</h2><p>日历读写：把共同计划写进本应用专属的「同休日」日历，并在改期或取消时同步它。提醒发布：到点的出发提醒与每周摘要。通知是否展示由你在系统设置里控制。除这三项之外没有别的权限，且当前安装包不申请联网权限，因此这个版本不具备联网能力。</p></section>
+  <section><h2>系统日历与提醒的边界</h2><p>「同休日」这一本日历里的事件由本应用管理，改期和取消会自动跟着同步。你主动「导出到系统日历」的那一条不归本应用管：取消计划或清空数据都不会删掉它，需要你在系统日历里自行删除。系统侧没有删掉时，应用会保留这条记录并提示你重试，不会声称已经清除。</p></section>
+  <section><h2>云端配对当前未开放</h2><p>当前版本关闭了云端配对、扫码与分享入口，不会有任何班表、课程或计划被上传；共享等级的设置项因此在界面上不出现。若以后开放，上传的也是按等级降维后的忙闲快照，并用 AES-256-GCM 加密、密钥由系统密钥库保管——这套方案目前尚未实现、也未经安全验证，届时会先更新本政策并重新征求你的同意。</p></section>
+  <section><h2>没有第三方统计、广告与埋点</h2><p>应用不集成广告 SDK，不做行为埋点，没有崩溃或遥测上报；也不读取系统剪贴板。</p></section>
+  <section><h2>未成年人</h2><p>本应用面向成年人安排共同时间，不面向儿童，也不提供面向儿童的内容或社交功能。</p></section>
+  <section><h2>怎么删除</h2><p>「我的」页的「清空我的全部数据」会删除本机全部班表、课表、计划与设置，并尝试一并清理本应用写入的日历事件与提醒（没清掉的会如实告诉你）。卸载应用即移除本机数据库与偏好设置。因为没有账号和服务器，不存在需要另行注销的云端账号。</p></section>
+  <section><h2>版本与联系</h2><p>本政策版本 v1.0，自 2026-09-23 起适用。开发者联系方式与本政策的在线版地址：__待填__。</p></section>
+
+  <section>
+    <h2>要点摘要</h2>
+    <ul>
+      <li>班表/课表数据仅存储在本机数据库，不上传任何服务器</li>
+      <li>共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理</li>
+      <li>照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图</li>
+      <li>云端配对当前未开放，这个安装包也没有联网权限；你的班表不会离开这台手机</li>
+    </ul>
+  </section>
+
+  <footer>本页与应用内「隐私政策」全文为同一份文字。政策更新会在此页与本应用内同步发布。</footer>
+</main>
+</body>
+</html>

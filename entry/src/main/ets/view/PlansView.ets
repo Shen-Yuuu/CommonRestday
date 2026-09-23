@@ -1,9 +1,8 @@
 import { promptAction } from '@kit.ArkUI';
 import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult, PlanSummary,
   PlanUseCase, calendarBadgeOf, canExportToCalendar, canRetryCalendarSync, canRetryCleanup,
-  isAppManagedEvent, isOnSystemCalendar } from 'feature';
+  isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
 import { DateLabel } from 'commons';
-import { planKindLabel } from '../util/PlanKindUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DesignTokens } from '../theme/DesignTokens';
 

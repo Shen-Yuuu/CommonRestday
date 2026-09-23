@@ -895,10 +895,39 @@ git status --short
 
 ## Task 6R.4：首发产品与合规收口
 
-- [ ] 创建计划类型只展示“一起吃饭/其他”，保留旧 8 类标签映射用于兼容；
-- [ ] 首发锁竖屏，横屏设备矩阵通过后再解除；
+- [x] 创建计划类型只展示“一起吃饭/其他”，保留旧 8 类标签映射用于兼容；
+- [x] 首发锁竖屏，横屏设备矩阵通过后再解除；
 - [ ] 隐私政策全文托管并统一首启/我的/商店文案；
 - [ ] 确认 bundleName、vendor、签名、备案和提审材料。
+
+> 2026-09-23 前两项完整落地，后两项**只做到仓库侧**——剩下的动作需要开发者的 AGC 账号，本机无法代做。
+>
+> **① 计划类型（D1）**：新建 `feature/src/main/ets/model/PlanKinds.ets`，把"能选什么"（`PLAN_KINDS`＝两项）与
+> "存过的 key 怎么读"（`LEGACY_PLAN_KINDS`＋`planKindLabel` 兜底返回原值）**拆成两张表**——合成一张的话，每精简一次选项
+> 都会把老数据读成空白或英文码。"其他"复用现有 `custom` key，因此**不产生任何数据迁移**，并按定稿要求必填标题。
+> 词表上移进 `feature` 有两个理由：它承载 `plan.kind` 的持久化契约，且离线 runner 不编译 `entry/src/main`（放那儿就测不到）。
+> `entry/util/PlanKindUtil.ets` 删除。证据：新增 `entry/src/test/PlanKindsTest.ets` 5 条；先写失败并确认红因
+> （runner 自己生成的 barrel 是硬编码名单，不读 `feature/Index.ets` → 3 个 `error TS2305`、exit 3、tests not run），
+> 补 `tools/test/run.mjs` 导出行后转绿。
+>
+> **② 竖屏锁（D2）**：`entry/src/main/module.json5` 的 EntryAbility 加 `"orientation": "portrait"`。
+> 解除条件写在 TC §20.6b：**横屏矩阵真机通过**，不是"竖屏锁这条验收通过"——两者容易被混成一回事。
+>
+> **③ 隐私政策（B4）**：全文改为**随包内置** `entry/src/main/ets/component/PrivacyPolicySheet.ets`（十条，
+> 首启弹窗与「我的 · 数据与隐私」共用），`util/PrivacyUtil.ets` 与 `privacy_fulltext_soon` 文案删除。
+> 结构理由：这个包按定稿不带 `INTERNET`，"点开跳浏览器看托管页"在当前形态下做不到——旧入口只会 toast 就是这么来的，
+> 所以填 URL 修不好它。首启摘要四条按阶段 6R.1 的真实行为重写，旧那句"可随时调整隐私共享等级"（控件已被 6R.2 收走）换成
+> "以上为全文摘要，措辞不一致以全文为准"。**未勾的原因**：应用市场仍要求填写可访问 URL，`docs/legal/privacy-policy.html`
+> 已备成可直接上传的自包含页面，但上传与回填 `AppConst.PRIVACY_POLICY_URL` 属账号侧；且"全文与当场行为逐字对照"是 B6 待设备（TC §20.3/§20.3b）。
+>
+> **④ 包身份与材料（B5）**：新建 `docs/release/submission-materials.md`——包身份、签名、备案、隐私政策、商店材料、
+> 开发者信息六张待回填表。**未勾的原因**：表格里每一项的"值"都要账号侧确认（`vendor` 仍是模板值 `example`、
+> `bundleName` 归属未确认、备案状态仓库内至今零记录、签名未配置所以产物是 `-unsigned.hap`）。
+> `com.huawei.*` 前缀可能被审核质疑这一点在文档里**明确标为判断**，因为本仓库没有华为官方"禁用该前缀"的条款可引。
+>
+> **门禁**：`node tools/verify.mjs --steps=offline,debug,release,ohostest` → **0 type error / 195 passed / 0 failed / exit 0**，
+> 三条 clean 出包 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` 352→**349**（debug/release 同值）、ohosTest 260，基线按下降收紧。
+> **B4/B5 均不判关闭**：代码与材料到位 ≠ 提审材料齐备，账号侧与设备侧各欠一半。
 
 ## Task 6R.5：真机验收与签名出包
 

@@ -7,7 +7,7 @@ import {
   PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome,
   ScanResult, SettingsResult
 } from 'feature';
-import { openPrivacyPolicy } from '../util/PrivacyUtil';
+import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
 import { DesignTokens } from '../theme/DesignTokens';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { ownerParam } from '../model/RouteParams';
@@ -61,6 +61,8 @@ export struct MeView {
   @State private myHorizon: string = '120';
   @State private myMinSlot: number = 120;
   @State private clearing: boolean = false;
+  /** 《隐私政策》全文半模态（与首启弹窗同一个组件，随包出厂、离线可读）。 */
+  @State private policyOpen: boolean = false;
   // 提醒与通知（Task 4.3 低打扰策略：默认只有"需行动"这一类会响）
   @State private alertsOn: boolean = true;
   @State private preciseOn: boolean = false;
@@ -1543,8 +1545,7 @@ export struct MeView {
         })
 
         this.navRow($r('sys.symbol.checkmark_shield'), '隐私政策', '权限用途与数据去向', false, () => {
-          const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-          openPrivacyPolicy(ctx, $r('app.string.privacy_fulltext_soon'));
+          this.policyOpen = true;
         })
 
         this.divider()
@@ -1559,6 +1560,22 @@ export struct MeView {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
+      .bindSheet($$this.policyOpen, this.policySheet(), {
+        detents: [SheetSize.LARGE],
+        dragBar: false,
+        showClose: false,
+        // 底色/圆角由 PrivacyPolicySheet 自己画，系统层再铺一次就是两层不透明背景
+        backgroundColor: Color.Transparent,
+        blurStyle: BlurStyle.NONE
+      })
     }
+  }
+
+  /** 《隐私政策》全文（与首启弹窗同一个组件、同一份文本）。 */
+  @Builder
+  policySheet() {
+    PrivacyPolicySheet({ onClose: () => {
+      this.policyOpen = false;
+    } })
   }
 }

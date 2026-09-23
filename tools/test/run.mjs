@@ -464,6 +464,7 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'featureIndex.ts'),
     "export * from './feature/main/ets/model/PresentationModels';\n"
     + "export * from './feature/main/ets/model/RhythmRules';\n"
+    + "export * from './feature/main/ets/model/PlanKinds';\n"
     + "export * from './feature/main/ets/model/PlanFlow';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"

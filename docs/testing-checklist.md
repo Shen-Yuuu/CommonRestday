@@ -11,10 +11,10 @@
 
 | 口径 | 怎么跑 | 能证明 | 当前状态 |
 |---|---|---|---|
-| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`；TypeScript 错误直接返回非零，不再"假绿"） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **0 类型错误 / 190 passed / 0 failed**（2026-09-23 阶段 6R.2 复跑，新增 8 条云关闭态与清空播报用例；`ProfileSettingsService` 已从 runner 跳过名单放回） |
+| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`；TypeScript 错误直接返回非零，不再"假绿"） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **0 类型错误 / 195 passed / 0 failed**（2026-09-23 阶段 6R.4 复跑，新增 5 条计划类型用例：可选项只剩两项、"其他"复用 `custom`、旧 8 类标签仍渲染、未知 key 读出自己、"其他"必填标题） |
 | 离线预算测量 | `node tools/perf/budget.mjs` | 引擎重算、快照编解码、读模型投影**在开发机上**相对 16ms 的位置（下界） | 已测：120 天稠密配对 P95 14.30ms、366 天 73.45ms（超预算）、codec ≤0.16ms |
 | 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`node tools/verify.mjs --steps=ohostest` → BUILD SUCCESSFUL，`ArkTS:WARN` 260），**未执行 → 待设备**（阶段 6R.2 起配对残留改由用例自己经 `preferences` 种下，因为生产写入口已删） |
-| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 352、未配置签名故跳过签名 |
+| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 349（阶段 6R.4 复跑）、未配置签名故跳过签名 |
 | 手工走查 | 下面 §1–§20 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返、开关关档表现、数据删除动作 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
@@ -116,7 +116,8 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ## 6. 计划创建 → 受管日历写入 → 共同计划出现（阶段 2 出口，阶段 6R.1 重写）
 
-- [ ] 6.1 窗口详情 Sheet：标题、计划类型（一起吃饭 / 看电影 / 接送孩子 / 回父母家 / 办证体检 / 短途旅行 / 共同自习 / **自定义**；切类型时未手工改过的标题跟随切换，末项「自定义」清空要求自填）、时间调节 `±15 分钟，限制在窗口内`——推到窗口边界时加减号禁用，不允许越界
+- [ ] 6.1 窗口详情 Sheet：标题、计划类型（**只有两项：一起吃饭 / 其他**——阶段 6R.4 按验收报告 §5 D1 收窄，`其他` 沿用旧的 `custom` key；切类型时未手工改过的标题跟随切换，选「其他」时清空要求自填，再切回「一起吃饭」默认名要回得来）、时间调节 `±15 分钟，限制在窗口内`——推到窗口边界时加减号禁用，不允许越界
+- [ ] 6.1b **旧类型的兼容显示**：库里 `kind` 为 `movie/pickup/parents/errand/trip/study` 的历史计划，计划卡上仍念作「看电影/接送孩子/回父母家/办证体检/短途旅行/共同自习」，不出现空白或裸英文码；认识不了的码**原样显示**（宁显原始值也不留空）。这条只能靠构造数据验：离线断言已有 5 条（`planKinds`），设备侧看的是渲染结果
 - [ ] 6.2 计划长度下限 15 分钟：把结束点往起点收，越界时提示 `计划时长至少 15 分钟`
 - [ ] 6.3 **默认勾选「写入系统日历」**：开态下创建走的是**受管写入**——本应用在自己的「同休日」专属日历上 `addEvent`，**不弹系统日程确认页**（弹确认页的是 6.6 的导出口，别混）；关闭时 `writeToCalendar=false`，计划只留在应用里
 - [ ] 6.4 首次触发**日历权限**：允许 → 应用 `getCalendar`/`createCalendar` 建出专属账户与「同休日」日历，toast `计划已创建，并写入系统日历`；随后打开系统日历 App，**把日历切到「同休日」那一本**能看到该日程（不在"我的日历"里，也不在系统默认日历里，找不到就是没翻到那一本）
@@ -458,7 +459,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 - [x] 18.1.1 五个开关的口径都落在**少数几个判据函数**里，页面只消费判据、不各自发明关闭态（2026-09-23 `grep -rn "FeatureFlags\."` 全仓复验，逐处点数）：`calendarFlow`→`PlanUseCase`（写日历编排，关掉一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`/`canExportToCalendar` 两个入口判据；`cloudPairing`→**四侧**：`ProfileSettingsService.cloudBlocked()`（三个写动作共用的第一句）与 `unpair` 的云侧分支、`PairingShareGateway` 五处（`channels`/`offerFromScan`/`shareLink`/`offerIncoming`/`acceptOffer`）、`ScheduleUseCase` 快照推拉两处、`MeView` 五处 + `ScheduleHub` 一处（入口与文案）；`scanPairing`→`PairingShareGateway.channels` 一处（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth` 一处。除 `cloud` 模块内部之外没有其它读取方
 - [x] 18.1.2 `newShell` 已删除：旧四 Tab 壳层在阶段 1 就被换掉、从来没有可切换分支，release 包里它是 `false` 而无人读，属于谎报型开关（rollout 文档 §3.1）。壳层回退方式＝整包回退
-- [x] 18.1.3 当前档位离线全绿：0 类型错误 / **190 passed** / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` **352**（debug/release 同值）、ohosTest **260**。基线沿革 361/361/266 → 357/357/262（6R.1 把重复写库收进 `ScheduleRepo.setPlanColumns`）→ 352/352/260（6R.2 删掉 `deriveKeyHex`+`savePairKey` 两个方法体与三处调用点），一律按"只降不升"改在 `tools/verify-baseline.json`
+- [x] 18.1.3 当前档位离线全绿：0 类型错误 / **195 passed** / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` **349**（debug/release 同值）、ohosTest **260**。基线沿革 361/361/266 → 357/357/262（6R.1 把重复写库收进 `ScheduleRepo.setPlanColumns`）→ 352/352/260（6R.2 删掉 `deriveKeyHex`+`savePairKey` 两个方法体与三处调用点）→ **349/349/260**（6R.4；−3 的逐位归因未核对——上一档日志已被复跑覆盖，只知道本轮删了 `PrivacyUtil`/`PlanKindUtil` 两个文件并把计划类型词表上移进 `feature`），一律按"只降不升"改在 `tools/verify-baseline.json`
 - [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **169 passed / 13 failed**，失败项全部是日历口径（写成的状态不是 `MANAGED_WRITTEN`、一次日历调用都没发、取消/改期后残留句柄没被清）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别；日志 `../.crdtest/6r1-off-calendarflow.log`（13 条 FAIL 里 12 条是 `expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …` 与 `double_submit… expected 1 but got 0`，第 13 条正是那条档位断言本身）
 - [x] 18.1.5 `newCard = false`、`responsiveV2 = false` 各自单独编译通过（日志 `../.crdtest/build-6-2-off-newCard.log`、`build-6-2-off-responsiveV2.log`），三档恢复后 `build-6-2-final.log` 再绿一次
 - [x] 18.1.6 档位摘要一行齐全：`FeatureFlags.summary()` 由 `PresentationModelsTest` 断言五档都在、且按 rollout 顺序排列（漏一档 = 日志证明不了这个包的现场状态）
@@ -499,16 +500,16 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
   - [ ] 20.1.4 **撤权限时的谎报检查**：先在系统设置里收回日历权限再点清空 → toast 必须出现 `N 项日历/提醒没清掉，可稍后重试` 或 `「同休日」日历没有清空，请到系统日历里检查`，**绝不能**只报一句"已清空本机全部数据"；本机表此时确实已清（本机数据是能立刻收回的那一份），重新授权后残留计划上的「重新清理」要还能点
   - [ ] 20.1.5 周摘要提醒那条：开过开关后清空，系统"定时提醒"里没有残留句柄（`clearAllData` 只 `cancelReminder(weeklyId)` 一条，句柄丢失的情况要实测）
 - [ ] 20.2 **删除伴侣档案后共同计划仍在**：按 §3.5 删伴侣，再看共同计划分段——`plan` 表按实现是不动的（弹窗也只承诺清除"TA 的全部班表/课表数据"）。确认这是产品要的口径；若要求一起删，需要新增级联并补离线断言
-- [ ] 20.3 **隐私弹窗 5 处文案与实际行为逐字对照**（G4 的判定依据，缺一处就是文案落后于实现）：
-  - `班表/课表数据仅存储在本机数据库，不上传任何服务器` —— 阶段 6R.2 之后这句**在首发包里是字面成立的**：`createInvite/joinByCode` 关闭态第一句就返回，不发云函数；本包连 `ohos.permission.INTERNET` 都没声明。设备侧确认法见 §20.5；提审文案里这句不需要再加限定，但**必须与"云端未开放"那句同屏出现**，否则一旦开档这句就成了谎话
-  - `日历事件：仅在你确认创建共同计划时写入系统日历` —— 阶段 6R.1 之后这句**已经不准确**，必须在提审前改口径（Task 6R.4 / G4）：现在默认是"创建时由本应用直接写进应用专属的「同休日」日历"，用户确认的是应用里那个「写入系统日历」开关（默认开），**不再**经过系统日程确认页；只有「导出到系统日历」那条走 `editEvent`。设备侧同时确认两件事：专属日历这一本的名字确实显示为「同休日」；`calendarFlow` 关档时一次都不写
-  - `照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图` —— 走系统 Picker + 端侧 `textRecognition`，无相机/相册权限声明，一致
-  - `未来云端同步仅存储加密后的忙闲数据，且以你设置的隐私等级为准` —— "未来"用词与 `CLOUD_BLOCKED` 一致；阶段 6R.2 起等级设置**在关闭态根本不渲染**，所以这句里的"你设置的"当前无处可设 → 与下一句一起在 Task 6R.4 重写（要么删掉等级这半句，要么改成"云端开放后可设置"）
-  - `你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）。` —— **阶段 6R.2 后这句已确定与实现冲突**（`partnerSyncCard()` 在 `cloudPairing=false` 时不渲染 `levelBlock`，「我的」页找不到这个开关）。提审前必须改成不承诺当前不存在的能力，属 Task 6R.4 / G4-5
-  - 《隐私政策》全文入口：当前 `AppConst.PRIVACY_POLICY_URL` 是空串 → 只弹 `隐私政策全文即将上线`。成文并填 URL 后回到这里复点一次
+- [ ] 20.3 **隐私文案与实际行为逐字对照**（G4 的判定依据，缺一处就是文案落后于实现）。阶段 6R.4 已按实现重写首启摘要与全文，所以本条现在验的是"重写后的话当场是否成立"：
+  - 首启摘要四条（`privacy_point_*`）逐条对上：`班表/课表数据仅存储在本机数据库，不上传任何服务器` → §20.5 的三条硬证据；`共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理` → §6.3（受管写入，不弹系统确认页）+ §6.6（导出那条永不试删）；`照片仅用于本地识别课表…` → §5 的 OCR 链路；`云端配对当前未开放，这个安装包也没有联网权限…` → §9.1 + §20.5 ①
+  - 摘要末尾「上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准」：这句替掉了旧稿承诺的"你可以随时在「我的」页调整隐私共享等级"——**旧那句在当前档位是空头支票**（等级控件在 `cloudPairing=false` 时不渲染，阶段 6R.2 已收走），设备侧确认新那句对应的全文真的能打开
+  - 《隐私政策》全文入口（首启弹窗 + 「我的 · 数据与隐私」两处）：点下去**直接落到全文半模态**，能滚到最后一节「版本与联系」、能按「关闭」回来；不再出现「隐私政策全文即将上线」的 toast（该文案与 `PrivacyUtil` 已一并删除，`grep privacy_fulltext_soon` 只应命中历史文档）
+  - 全文十条与 `docs/legal/privacy-policy.md`、`docs/legal/privacy-policy.html` 是同一份文字：抽查「系统日历与提醒的边界」（导出的那条不归本应用管）与「云端配对当前未开放」（关闭态零上传、等级项界面上不出现）两节，措辞必须与当场行为一致；`AppConst.PRIVACY_POLICY_URL` 仍为空时，页内最后一行应显示"在线版地址尚未填写；本页面即当前版本的全文"
+- [ ] 20.3b **全文页的可读性**：全文在 360vp、2.0× 系统字体、深色、读屏下都要能完整读到（半模态 LARGE 档、内部 Scroll 不截断最后一节）；读屏能按节标题逐节念出，「关闭」按钮有可朗读名
 - [ ] 20.4 **release 档出包**（debug 绿不代表 release 绿）：`hvigorw clean` 后跑 `-p buildMode=release`。2026-09-23 首次运行在 5 个 HAR 上报 `00304036` 缺 `obfuscation-rules.txt`（模块的 `build-profile.json5` 引了不存在的文件，即使 `enable:false` 也会校验），补齐模板文件后成功。下次新增 HAR 时同样要带这个文件
 - [ ] 20.5 **关闭态"零网络"的设备侧证实**（G2 的收尾，阶段 6R.2 之后判据已换）：不再要求"点生成邀请码看它 toast"——那个按钮在当前档位根本不渲染（§9.1）。改为三条硬证据：① `bm dump -n <bundleName>` 的权限清单里没有 `ohos.permission.INTERNET`；② 冷启动后飞一圈全部页面（含深链 `aa start -U crdpair://…` 与系统分享面板），`hilog` 里 `cloudFunction`/`AgcPairingClient` **零条**记录；③ **飞行模式**下把 P0 主链（录班表→三答案→窗口→计划→日历→取消→卡片）完整跑一遍，现象与联网时逐屏一致。旧稿那句"能过只因为 AGC 没配置"已作废：现在守卫在 service 第一句，且短码派生密钥的写入口已从源码删除（发布清单 §2 G2、验收报告 §9.4）
-- [ ] 20.6 **横屏实测**（矩阵里唯一"零适配"的一维）：全仓没有任何 `orientation` 声明与横屏布局分支 → 横屏时容器宽度会落进 medium/expanded，从而在手机上触发为平板设计的留白、居中封顶与共同时间双栏（§13.2/§13.4）。逐屏看能不能接受；不能接受就在 `module.json5` 的 ability 上加 `orientation` 锁竖屏（属产品决定，本轮不替用户做）
+- [ ] 20.6 **首发竖屏锁生效**（阶段 6R.4 落地，D2 定稿：锁竖屏，横屏真机矩阵通过后再解除）：`module.json5` 的 EntryAbility 现在写死 `"orientation": "portrait"`。手机上从任一页面横握 → **画面不旋转**，首页/共同时间/我的三档都不会落进 medium/expanded 端出为平板设计的留白与双栏（§13.2/§13.4）。系统「自动旋转」开着也应当不转，转了就是锁没生效
+  - [ ] 20.6b **解除条件**：本条通过**不等于**横屏已适配。横屏矩阵（平板/折叠屏展开态 + 手机横握逐屏可读）仍要在真机上单独跑通，才允许删掉那行 `orientation`；在此之前平板上也保持竖屏，属已知取舍而不是缺陷
 
 ---
 

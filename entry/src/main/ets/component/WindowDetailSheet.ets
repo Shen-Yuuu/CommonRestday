@@ -2,13 +2,12 @@ import { promptAction, Chip } from '@kit.ArkUI';
 import { MIN_PER_DAY } from 'domain';
 import { DateLabel } from 'commons';
 import {
-  CreatePlanOptions, isOnSystemCalendar, LOCAL_ONLY_NOTE, MIN_PLAN_MIN,
-  PlanDraft, PlanUseCase, defaultDraft, planDraftError
+  CreatePlanOptions, isOnSystemCalendar, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, OTHER_PLAN_KIND_KEY,
+  PlanDraft, PlanKindOption, PLAN_KINDS, PlanUseCase, defaultDraft, planDraftError
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { GlassStrength } from '../theme/MaterialPolicy';
 import { GlassSurface } from './GlassSurface';
-import { PLAN_KINDS, PlanKindOption } from '../util/PlanKindUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const STEP_MIN = 15;
@@ -105,13 +104,11 @@ export struct WindowDetailSheet {
   // ---------- 类型与标题 ----------
 
   pickKind(idx: number): void {
-    const prev = PLAN_KINDS[this.kindIdx];
-    // 标题未被手工修改（仍为上一类型默认名）时跟随类型切换；自定义则保留原文本
-    if (!this.titleTouched || this.title === prev.label) {
-      this.title = idx === PLAN_KINDS.length - 1 ? '' : PLAN_KINDS[idx].label;
-      if (idx === PLAN_KINDS.length - 1) {
-        this.titleTouched = true;
-      }
+    // 标题没被手工改过就跟着类型走；「其他」没有默认名，留空等用户自填。
+    // 选了「其他」不置 titleTouched：只有两项时"点过去再点回来"很常见，钉住标题会让
+    // 切回「一起吃饭」时默认名回不来。
+    if (!this.titleTouched) {
+      this.title = PLAN_KINDS[idx].key === OTHER_PLAN_KIND_KEY ? '' : PLAN_KINDS[idx].label;
     }
     this.kindIdx = idx;
   }

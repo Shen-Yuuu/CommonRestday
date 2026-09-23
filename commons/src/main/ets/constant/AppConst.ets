@@ -9,8 +9,11 @@ export class AppConst {
   /** 卡片定时刷新（毫秒，6h）。 */
   static readonly FORM_UPDATE_MS: number = 6 * 60 * 60 * 1000;
   /**
-   * 《隐私政策》全文 URL（AGC 托管页）。
-   * 占位空串 = 尚未上线：入口点击时 toast 提示，不跳转；URL 就绪后填入即生效。
+   * 《隐私政策》在线版地址（商店提审材料与托管页用）。
+   *
+   * 阶段 6R.4 起应用内的全文不再依赖它：首发包没有联网权限，全文随包出厂
+   * （entry/component/PrivacyPolicySheet），空串时也只是不显示那一行链接，
+   * 不再 toast「即将上线」把用户挡在全文外面。
    */
   static readonly PRIVACY_POLICY_URL: string = '';
 }

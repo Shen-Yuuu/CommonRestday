@@ -12,9 +12,11 @@
  */
 export class FeatureFlags {
   /**
-   * 系统日历写入链路（阶段 2）。读取方两处：PlanUseCase.writeCalendar 决定是否请系统日历
-   * 落一条日程，PlanFlow.canRetryCalendarSync 决定是否给出「写入日历」入口——入口与链路
-   * 必须同时退场，否则回退档会留下一个点了不会有任何反应的按钮。
+   * 系统日历链路（阶段 2 起，阶段 6R.1 换成应用专属「同休日」日历的受管写入）。读取方两处：
+   * `PlanUseCase` 的日历编排（关掉时一条日历调用都不发，状态归一成 `NOT_REQUESTED`），
+   * 以及 `PlanFlow` 的写入口判断（`canRetryCalendarSync` 与 `canExportToCalendar` 同时关档）——
+   * 入口与链路必须一起退场，否则回退档会留下点了不会有任何反应的按钮。
+   * 清理路径**不受本档控制**：开档时写进去的日程，关档后照样删得掉，不留没人认领的孤儿。
    */
   static readonly calendarFlow: boolean = true;
   /**

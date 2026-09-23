@@ -18,7 +18,7 @@ const STEP_MIN = 15;
  * - 顶部：日期 + 窗口起止 + 时长 + 标签；
  * - 时间轴可视化：窗口横条 + 计划区间高亮预览（Row 比例布局）；
  * - 计划类型选择 + 标题（默认=类型名）+ 起止调节：±15 分钟步进，硬限制在 [窗口起, 窗口止]；
- * - 「创建计划」→ PlanUseCase.createPlan：系统日历由用户当面确认，
+ * - 「创建计划」→ PlanUseCase.createPlan：默认受管写入应用专属「同休日」日历（开关可关成"只留在应用里"），
  *   没写成时计划照样保留，toast 明说"仅保存在应用内"。
  *
  * 视觉：Sheet 整体是玻璃顶层（规范 §3.3），表单区另铺近实色子表面保证输入可读性；
@@ -44,8 +44,8 @@ export struct WindowDetailSheet {
   @State planStart: number = 0;
   @State planEnd: number = 0;
   @State saving: boolean = false;
-  /** 高级选项：跳过系统日历确认页直接 addEvent，默认关（写别人的日历该由本人点保存）。 */
-  @State directWrite: boolean = false;
+  /** 是否写进应用专属「同休日」日历（受管：改期与取消会自动跟着同步）。默认开。 */
+  @State writeToCalendar: boolean = true;
   private titleTouched: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
@@ -148,7 +148,7 @@ export struct WindowDetailSheet {
       return;
     }
     this.saving = true;
-    const options: CreatePlanOptions = { directCalendarWrite: this.directWrite };
+    const options: CreatePlanOptions = { writeToCalendar: this.writeToCalendar };
     const r = await PlanUseCase.createPlan(this.winStart, this.winEnd, draft.title, draft.kind,
       draft.start, draft.end, options);
     if (!r.ok) {
@@ -404,23 +404,23 @@ export struct WindowDetailSheet {
 
       Divider().color($r('app.color.divider'))
 
-      // ⑦ 高级：默认走系统日历确认，显式打开才直写
+      // ⑦ 系统日历：默认写进应用专属日历（受管），关掉只留在应用里
       Row({ space: 10 }) {
         Column({ space: 2 }) {
-          Text('直接写入系统日历').fontSize(13).fontColor($r('app.color.text_secondary'))
-          Text('打开后不再弹系统日程确认页，由本应用直接保存')
+          Text('写入系统日历').fontSize(13).fontColor($r('app.color.text_secondary'))
+          Text('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
 
-        Toggle({ type: ToggleType.Switch, isOn: this.directWrite })
+        Toggle({ type: ToggleType.Switch, isOn: this.writeToCalendar })
           .selectedColor($r('app.color.brand_pink'))
           // 开关自己没有任何文字标签，读屏只会念"开/关"，说不出关的是哪件事
-          .accessibilityText('直接写入系统日历')
-          .accessibilityDescription('打开后不再弹系统日程确认页，由本应用直接保存')
+          .accessibilityText('写入系统日历')
+          .accessibilityDescription('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')
           .onChange((on: boolean) => {
-            this.directWrite = on;
+            this.writeToCalendar = on;
           })
       }
       .width('100%')

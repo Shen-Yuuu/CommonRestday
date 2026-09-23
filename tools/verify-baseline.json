@@ -1,8 +1,8 @@
 {
   "_note": "ArkTS:WARN 上限来自 clean 后的完整出包（增量构建会把编译任务判为 UP-TO-DATE 而少报）。数量上升即 verify 失败；下降要显式改这里，不静默放宽。",
   "arktsWarn": {
-    "debug": 361,
-    "release": 361,
-    "ohostest": 266
+    "debug": 357,
+    "release": 357,
+    "ohostest": 262
   }
 }

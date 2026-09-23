@@ -3,7 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
-import { CalendarGateway, PairingShareGateway, ReminderGateway, ScheduleUseCase } from 'feature';
+import { CalendarGateway, PairingShareGateway, PlanUseCase, ReminderGateway, ScheduleUseCase } from 'feature';
 import { Logger } from 'commons';
 import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
 
@@ -16,7 +16,7 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
-    // 系统日历确认与本地提醒都要 UIAbility 上下文；两者拿不到上下文时静默降级
+    // 系统日历（受管写入与导出）和本地提醒都要 UIAbility 上下文；拿不到上下文时一律静默降级
     CalendarGateway.init(this.context);
     ReminderGateway.init(this.context);
     // 扫码/系统分享同样要上下文；能力不具备时网关按"不可用"回话，页面无需判机型
@@ -88,6 +88,11 @@ export default class EntryAbility extends UIAbility {
     } catch (e) {
       // Settings 尚未初始化：onCreate 的初始化完成后本就会重算一次
     }
+    // 补删系统侧残留：取消/改期时删不动的日程与提醒只留在看不见的行里，
+    // 用户不会再有入口点"重试"，权限恢复后的这一次就是它唯一的机会（验收报告 B2）。
+    PlanUseCase.sweepPendingProjections().catch((e: Error) => {
+      Logger.warn('EntryAbility', 'projection sweep failed: ' + e.message);
+    });
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 

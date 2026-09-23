@@ -1,10 +1,16 @@
 import { promptAction } from '@kit.ArkUI';
 import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult, PlanSummary,
-  PlanUseCase, calendarBadgeOf, canRetryCalendarSync, isOnSystemCalendar } from 'feature';
+  PlanUseCase, calendarBadgeOf, canExportToCalendar, canRetryCalendarSync, canRetryCleanup,
+  isAppManagedEvent, isOnSystemCalendar } from 'feature';
 import { DateLabel } from 'commons';
 import { planKindLabel } from '../util/PlanKindUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DesignTokens } from '../theme/DesignTokens';
+
+/** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
+function joinNote(main: string, note: string): string {
+  return note === '' ? main : main + '；' + note;
+}
 
 /**
  * 计划列表（US5 / FR-010 / FR-012，阶段 2 Task 2.3）：
@@ -12,7 +18,8 @@ import { DesignTokens } from '../theme/DesignTokens';
  * - 冲突条目：原因（已按对方隐私等级降维）+ 受影响区间 + 替代窗口，给四个动作——
  *   采用替代时间 / 重新选择窗口 / 保留原计划 / 取消计划；
  * - "保留原计划"只是不再催改期，冲突事实与状态都留着，安排再变动会重新提示；
- * - 日历没写成的条目常驻"仅保存在应用内"，并提供补写入口（改期失败后同一条路径可重试）；
+ * - 日历徽标按"归谁管"分说法：应用受管的写成/待清理、editEvent 导出的由系统日历管理、
+ *   没写成的常驻"仅保存在应用内"，并各自给出可用出口（补写 / 导出 / 重新清理）；
  * - 监听 recomputeCount 刷新（创建/取消/课表变更自动重算后状态同步）。
  */
 @Component
@@ -106,11 +113,11 @@ export struct PlansView {
     });
   }
 
-  /** 取消计划二次确认。 */
+  /** 取消计划二次确认：能说"日历上那条会一并删掉"的只有应用受管的那份。 */
   confirmCancel(p: PlanSummary): void {
     this.getUIContext().showAlertDialog({
       title: '取消计划',
-      message: '确定取消「' + p.title + '」？该时段将恢复空闲，系统日历日程（如有）会一并移除。',
+      message: '确定取消「' + p.title + '」？该时段将恢复空闲。' + this.cancelCalendarNote(p.calendarState),
       primaryButton: {
         value: '确定取消',
         action: () => this.doCancel(p)
@@ -123,18 +130,30 @@ export struct PlansView {
     });
   }
 
+  /** 取消前关于系统日历的一句实话：导出的那份本应用删不动。 */
+  private cancelCalendarNote(calendarState: string): string {
+    if (isAppManagedEvent(calendarState)) {
+      return '应用写入的系统日历日程会一并删除。';
+    }
+    if (isOnSystemCalendar(calendarState)) {
+      return '导出的那条日程由系统日历管理，需要你在系统日历里删除。';
+    }
+    return '';
+  }
+
   async doCancel(p: PlanSummary): Promise<void> {
     if (this.working) {
       return;
     }
     this.working = true;
     const r: PlanOpResult = await PlanUseCase.cancelPlan(p.id);
-    this.say(r.ok ? '已取消计划，该时段恢复空闲' : r.error);
+    // 本机一定取消；系统侧没清掉的部分由 cleanupNote 说，不留"已全部清理干净"的错觉
+    this.say(r.ok ? joinNote('已取消计划，该时段恢复空闲', r.cleanupNote) : r.error);
     this.reload();
     this.working = false;
   }
 
-  /** 采用替代时间（冲突动作一）：二次确认后级联改期（日历日程与提醒同步迁移）。 */
+  /** 采用替代时间（冲突动作一）：二次确认后级联改期（受管日程与提醒同步迁移）。 */
   askAcceptAlternative(p: PlanSummary): void {
     const c = p.conflict;
     const when = c != null && c.altStart > 0
@@ -142,7 +161,9 @@ export struct PlansView {
       : '';
     this.getUIContext().showAlertDialog({
       title: '改到替代时间',
-      message: (when !== '' ? '新时间：' + when + '。' : '') + '系统日历日程与提醒会一并更新。',
+      message: (when !== '' ? '新时间：' + when + '。' : '')
+        + (isAppManagedEvent(p.calendarState) ? '系统日历日程与提醒会一并更新。'
+          : '计划会改到新时间；' + this.cancelCalendarNote(p.calendarState)),
       primaryButton: {
         value: '确认改期',
         action: () => this.doAcceptAlternative(p)
@@ -164,9 +185,9 @@ export struct PlansView {
     if (!r.ok) {
       this.say(r.error);
     } else {
-      // 计划已经改到新时间；日历没跟上时不喊失败，条目上的补写入口就是重试
-      this.say(isOnSystemCalendar(r.calendarState) ? '已改期，日历与提醒已同步'
-        : '已改期（' + LOCAL_ONLY_NOTE + '）');
+      // 计划已经改到新时间；日历没跟上时不喊失败，条目上的重试入口才是该点的那个
+      this.say(joinNote(isOnSystemCalendar(r.calendarState) ? '已改期，日历与提醒已同步'
+        : '已改期（' + LOCAL_ONLY_NOTE + '）', r.cleanupNote));
     }
     this.reload();
     this.working = false;
@@ -184,7 +205,7 @@ export struct PlansView {
     this.working = false;
   }
 
-  /** 把"仅保存在应用内"的计划补写到系统日历（改期/创建失败后的重试入口）。 */
+  /** 把"仅保存在应用内"的计划补写到系统日历（创建/改期没写成时的重试入口）。 */
   async doSyncCalendar(p: PlanSummary): Promise<void> {
     if (this.working) {
       return;
@@ -192,6 +213,33 @@ export struct PlansView {
     this.working = true;
     const r: PlanOpResult = await PlanUseCase.syncToCalendar(p.id);
     this.say(r.ok ? '已写入系统日历' : r.error);
+    this.reload();
+    this.working = false;
+  }
+
+  /**
+   * 导出到系统日历（editEvent）：日程交给系统日历，之后由用户在系统日历里改删。
+   * 只有日历上确实还没有这条计划时才给这个出口——见 PlanUseCase.exportToCalendar 的口径。
+   */
+  async doExportCalendar(p: PlanSummary): Promise<void> {
+    if (this.working) {
+      return;
+    }
+    this.working = true;
+    const r: PlanOpResult = await PlanUseCase.exportToCalendar(p.id);
+    this.say(r.ok ? joinNote('已导出到系统日历', r.cleanupNote) : r.error);
+    this.reload();
+    this.working = false;
+  }
+
+  /** 重新清理系统侧残留（权限撤回后重新授权即可清掉；启动时也会自动补一次）。 */
+  async doRetryCleanup(p: PlanSummary): Promise<void> {
+    if (this.working) {
+      return;
+    }
+    this.working = true;
+    const r: PlanOpResult = await PlanUseCase.retryProjection(p.id);
+    this.say(r.ok ? joinNote('系统侧已清理干净', r.cleanupNote) : joinNote(r.error, r.cleanupNote));
     this.reload();
     this.working = false;
   }
@@ -357,13 +405,22 @@ export struct PlansView {
     .alignItems(HorizontalAlign.Start)
   }
 
-  /** 日历徽标：计划只存在应用内时常驻说明，能力可用时给出补写入口。 */
+  /**
+   * 日历徽标 + 与状态相配的出口：没写成的给「写入日历」（受管）与「导出到系统日历」，
+   * 待清理的只给「重新清理」——这时日历上还挂着旧日程，补写就是同一天两条。
+   */
   @Builder
   calendarBlock(p: PlanSummary, badge: string) {
     Row({ space: 8 }) {
       Text(badge).fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+      if (canRetryCleanup(p.calendarState)) {
+        this.linkAction('重新清理', p.title, $r('app.color.info_blue'), () => this.doRetryCleanup(p))
+      }
       if (canRetryCalendarSync(p.calendarState)) {
         this.linkAction('写入日历', p.title, $r('app.color.info_blue'), () => this.doSyncCalendar(p))
+      }
+      if (canExportToCalendar(p.calendarState)) {
+        this.linkAction('导出到系统日历', p.title, $r('app.color.info_blue'), () => this.doExportCalendar(p))
       }
     }
     .width('100%')

@@ -78,7 +78,7 @@ export class MigrationRunner {
    */
   static readonly RESTORE_CLEANUP_SQL: string[] = [
     `UPDATE plan SET calendar_state = 'LOCAL_ONLY', my_event_id = ''
-     WHERE calendar_state IN ('WRITTEN', 'PENDING')`,
+     WHERE calendar_state IN ('WRITTEN', 'PENDING', 'MANAGED_WRITTEN', 'EXTERNAL_UNMANAGED', 'CLEANUP_PENDING')`,
     `UPDATE plan SET reminder_id = -1 WHERE reminder_id >= 0`,
     `UPDATE plan SET sync_state = 'LOCAL_ONLY' WHERE sync_state <> 'LOCAL_ONLY'`
   ];

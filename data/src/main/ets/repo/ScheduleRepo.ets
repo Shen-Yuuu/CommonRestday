@@ -24,13 +24,17 @@ export interface PlanRow extends PlanBlock {
   windowRef: string;
   /** 冲突检测结果 JSON（替代窗口起止）；空串表示无冲突或无替代。 */
   conflictHint: string;
-  /** 关联的系统日历日程 id（Calendar Kit 写入成功后记录）；空串表示未写入日历。 */
+  /** 关联的系统日历日程 id：受管写入/导出的那条日程；空串表示系统日历里没有它。 */
   myEventId: string;
   /** 关联的本地提醒 id（reminderAgentManager 发布成功后记录）；-1 表示未注册提醒。 */
   reminderId: number;
   /** 最后修改时间（epoch ms）；所有 plan 写入方共同维护，供后续增量同步排序。 */
   updatedAt: number;
-  /** 系统日历确认状态机：NOT_REQUESTED/PENDING/WRITTEN/DECLINED/FAILED/REMOVED。 */
+  /**
+   * 系统日历投影状态机：NOT_REQUESTED/PENDING/MANAGED_WRITTEN/EXTERNAL_UNMANAGED/
+   * CLEANUP_PENDING/LOCAL_ONLY/UNSUPPORTED/FAILED（取值与含义见 feature 的 CalendarState）。
+   * 存字符串而不是枚举：data 不依赖 feature，读侧统一由 normalizeCalendarState 归一。
+   */
   calendarState: string;
   /** 云同步状态机：LOCAL_ONLY/PENDING/SYNCED/ERROR；与配对状态相互独立。 */
   syncState: string;
@@ -41,6 +45,11 @@ function channelOf(text: string): WindowChannel {
   const trip: string = WindowChannel.TRIP;
   return text === trip ? WindowChannel.TRIP : WindowChannel.REGULAR;
 }
+
+/** plan 表全部列：清扫类查询要带 status/calendar_state，用不上 RdbPredicates 的 OR 组合。 */
+const PLAN_COLUMNS = `SELECT id, title, kind, status, created_by, window_ref, start_min, end_min,
+        conflict_hint, my_event_id, reminder_id, updated_at, calendar_state, sync_state
+      FROM plan`;
 
 export class ScheduleRepo {
   /**
@@ -298,87 +307,135 @@ export class ScheduleRepo {
   }
 
   /**
+   * 单行按 id 更新若干列。plan 的六个写入口共用这一处 RDB 调用：
+   * 每个方法各写一遍 predicates 只是把同一条"改一行"的语句抄六遍。
+   */
+  private static async setPlanColumns(id: string, vb: relationalStore.ValuesBucket): Promise<void> {
+    const pred = new relationalStore.RdbPredicates('plan');
+    pred.equalTo('id', id);
+    await Db.get().update(vb, pred);
+  }
+
+  /**
    * 回写日历确认结果（CalendarGateway 返回后调用）：状态 + 日程 id。
    * eventId 传空串表示系统日历里没有这条（用户取消/无权限/不可用），计划本身照常保留。
    */
   static async updatePlanCalendar(id: string, calendarState: string, eventId: string): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket =
-      { 'calendar_state': calendarState, 'my_event_id': eventId, 'updated_at': Date.now() };
-    await Db.get().update(vb, pred);
+    await ScheduleRepo.setPlanColumns(id,
+      { 'calendar_state': calendarState, 'my_event_id': eventId, 'updated_at': Date.now() });
+  }
+
+  /**
+   * 一次投影回写：日历状态 + 日程 id + 提醒句柄。
+   *
+   * 取消/改期后"还剩哪些系统侧句柄"必须由调用方一次说清（删成功的传空、删不掉的原样留着），
+   * 分成两次写会出现"日程已清、提醒句柄还挂着"的半套状态，重试判据就不可信了。
+   */
+  static async updatePlanProjection(id: string, calendarState: string, eventId: string,
+    reminderId: number): Promise<void> {
+    await ScheduleRepo.setPlanColumns(id, {
+      'calendar_state': calendarState, 'my_event_id': eventId, 'reminder_id': reminderId,
+      'updated_at': Date.now()
+    });
   }
 
   /** 回写计划关联的本地提醒 id（reminderAgentManager 发布成功后调用；-1 表示无提醒）。 */
   static async updatePlanReminder(id: string, reminderId: number): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'reminder_id': reminderId, 'updated_at': Date.now() };
-    await Db.get().update(vb, pred);
+    await ScheduleRepo.setPlanColumns(id, { 'reminder_id': reminderId, 'updated_at': Date.now() });
   }
 
   static async updatePlanStatus(id: string, status: string): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket = { 'status': status, 'updated_at': Date.now() };
-    await Db.get().update(vb, pred);
+    await ScheduleRepo.setPlanColumns(id, { 'status': status, 'updated_at': Date.now() });
   }
 
   /** 改期：更新计划起止（接受冲突替代窗口时调用；状态由重算的冲突检测复核）。 */
   static async updatePlanTime(id: string, start: number, end: number): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket =
-      { 'start_min': start, 'end_min': end, 'updated_at': Date.now() };
-    await Db.get().update(vb, pred);
+    await ScheduleRepo.setPlanColumns(id,
+      { 'start_min': start, 'end_min': end, 'updated_at': Date.now() });
   }
 
   /** 冲突检测结果回写：状态 + conflict_hint（替代窗口 JSON，空串表示无冲突/无替代）。 */
   static async updatePlanConflict(id: string, status: string, conflictHint: string): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.equalTo('id', id);
-    const vb: relationalStore.ValuesBucket =
-      { 'status': status, 'conflict_hint': conflictHint, 'updated_at': Date.now() };
-    await Db.get().update(vb, pred);
+    await ScheduleRepo.setPlanColumns(id,
+      { 'status': status, 'conflict_hint': conflictHint, 'updated_at': Date.now() });
   }
 
   /** 状态非 CANCELLED 的计划，按开始时间升序（含 conflict_hint）。 */
   static async listActivePlans(): Promise<PlanRow[]> {
-    const pred = new relationalStore.RdbPredicates('plan');
-    pred.notEqualTo('status', 'CANCELLED');
-    pred.orderByAsc('start_min');
-    const rs = await Db.get().query(pred);
+    const sql = PLAN_COLUMNS + `
+      WHERE status <> 'CANCELLED'
+      ORDER BY start_min ASC`;
+    return ScheduleRepo.queryPlans(sql);
+  }
+
+  /**
+   * 需要清扫"系统侧残留"的计划（**含 CANCELLED**），按开始时间升序。
+   *
+   * 两类，判据各不相同：
+   * - calendar_state = CLEANUP_PENDING：本机已经改完，日程/提醒删不动、句柄还留着等重试；
+   * - status = CANCELLED 且带着句柄：已取消的计划本不该在日历上留东西（连这条 SQL 之前崩溃的
+   *   那种"标了取消没来得及回写"也算进来）。
+   *
+   * 不能只看"有没有 my_event_id"——活动计划的 id 是正常投影，照那个条件清扫会把用户
+   * 还要用的日程全删了。listActivePlans 也帮不上忙：它过滤掉 CANCELLED，孤儿正好藏在里面。
+   */
+  static async listOrphanProjectionPlans(): Promise<PlanRow[]> {
+    const sql = PLAN_COLUMNS + `
+      WHERE calendar_state = 'CLEANUP_PENDING'
+         OR (status = 'CANCELLED'
+             AND ((my_event_id IS NOT NULL AND my_event_id <> '') OR reminder_id >= 0))
+      ORDER BY start_min ASC`;
+    return ScheduleRepo.queryPlans(sql);
+  }
+
+  /**
+   * 带着系统侧句柄（日程 id 或提醒 id）的全部计划——**含 CANCELLED、含活动计划**。
+   * "清空我的全部数据"在清库之前用它把日历和提醒一起带走：那句承诺不该只管本机表。
+   */
+  static async listPlansCarryingHandles(): Promise<PlanRow[]> {
+    const sql = PLAN_COLUMNS + `
+      WHERE (my_event_id IS NOT NULL AND my_event_id <> '') OR reminder_id >= 0
+      ORDER BY start_min ASC`;
+    return ScheduleRepo.queryPlans(sql);
+  }
+
+  private static async queryPlans(sql: string): Promise<PlanRow[]> {
+    const rs = await Db.get().querySql(sql);
     const out: PlanRow[] = [];
     while (rs.goToNextRow()) {
-      const hintIdx = rs.getColumnIndex('conflict_hint');
-      const evIdx = rs.getColumnIndex('my_event_id');
-      const ridIdx = rs.getColumnIndex('reminder_id');
-      const cbIdx = rs.getColumnIndex('created_by');
-      const wrIdx = rs.getColumnIndex('window_ref');
-      const uaIdx = rs.getColumnIndex('updated_at');
-      const csIdx = rs.getColumnIndex('calendar_state');
-      const ssIdx = rs.getColumnIndex('sync_state');
-      const p: PlanRow = {
-        id: rs.getString(rs.getColumnIndex('id')),
-        title: rs.getString(rs.getColumnIndex('title')),
-        kind: rs.getString(rs.getColumnIndex('kind')),
-        status: rs.getString(rs.getColumnIndex('status')),
-        createdBy: rs.isColumnNull(cbIdx) ? 'ME' : rs.getString(cbIdx),
-        windowRef: rs.isColumnNull(wrIdx) ? '' : rs.getString(wrIdx),
-        start: rs.getLong(rs.getColumnIndex('start_min')),
-        end: rs.getLong(rs.getColumnIndex('end_min')),
-        conflictHint: rs.isColumnNull(hintIdx) ? '' : rs.getString(hintIdx),
-        myEventId: rs.isColumnNull(evIdx) ? '' : rs.getString(evIdx),
-        reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx),
-        // 迁移补列后旧行为默认值；NULL 兜底同 DDL 默认，避免读取分支依赖迁移顺序
-        updatedAt: rs.isColumnNull(uaIdx) ? 0 : rs.getLong(uaIdx),
-        calendarState: rs.isColumnNull(csIdx) ? 'NOT_REQUESTED' : rs.getString(csIdx),
-        syncState: rs.isColumnNull(ssIdx) ? 'LOCAL_ONLY' : rs.getString(ssIdx)
-      };
-      out.push(p);
+      out.push(ScheduleRepo.planRowOf(rs));
     }
     rs.close();
     return out;
+  }
+
+  /** 计划行读取：两处分站共用，NULL 兜底与 DDL 默认一致（迁移补列后旧行为默认值）。 */
+  private static planRowOf(rs: relationalStore.ResultSet): PlanRow {
+    const hintIdx = rs.getColumnIndex('conflict_hint');
+    const evIdx = rs.getColumnIndex('my_event_id');
+    const ridIdx = rs.getColumnIndex('reminder_id');
+    const cbIdx = rs.getColumnIndex('created_by');
+    const wrIdx = rs.getColumnIndex('window_ref');
+    const uaIdx = rs.getColumnIndex('updated_at');
+    const csIdx = rs.getColumnIndex('calendar_state');
+    const ssIdx = rs.getColumnIndex('sync_state');
+    const p: PlanRow = {
+      id: rs.getString(rs.getColumnIndex('id')),
+      title: rs.getString(rs.getColumnIndex('title')),
+      kind: rs.getString(rs.getColumnIndex('kind')),
+      status: rs.getString(rs.getColumnIndex('status')),
+      createdBy: rs.isColumnNull(cbIdx) ? 'ME' : rs.getString(cbIdx),
+      windowRef: rs.isColumnNull(wrIdx) ? '' : rs.getString(wrIdx),
+      start: rs.getLong(rs.getColumnIndex('start_min')),
+      end: rs.getLong(rs.getColumnIndex('end_min')),
+      conflictHint: rs.isColumnNull(hintIdx) ? '' : rs.getString(hintIdx),
+      myEventId: rs.isColumnNull(evIdx) ? '' : rs.getString(evIdx),
+      reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx),
+      updatedAt: rs.isColumnNull(uaIdx) ? 0 : rs.getLong(uaIdx),
+      calendarState: rs.isColumnNull(csIdx) ? 'NOT_REQUESTED' : rs.getString(csIdx),
+      syncState: rs.isColumnNull(ssIdx) ? 'LOCAL_ONLY' : rs.getString(ssIdx)
+    };
+    return p;
   }
 
   // ---------- 窗口缓存 ----------

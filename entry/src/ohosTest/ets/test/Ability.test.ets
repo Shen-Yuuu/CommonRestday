@@ -8,9 +8,9 @@ import {
 import { Db, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import {
   CalendarCapability, CalendarOutcome, CalendarState, CalendarWriteResult, CommonTimeQueryService,
-  MIN_PLAN_MIN, PlanConflictView, PlanSummary, ReminderCapability, ScheduleCommandService,
-  ScheduleUseCase, WindowChannel, WindowFilter, WindowFilterKey, WindowSummary,
-  PlanUseCase, isOnSystemCalendar
+  MIN_PLAN_MIN, PlanCapabilities, PlanConflictView, PlanSummary, ReminderCapability, RemoveOutcome,
+  ScheduleCommandService, ScheduleUseCase, WindowChannel, WindowFilter, WindowFilterKey,
+  WindowSummary, PlanUseCase, isAppManagedEvent, isOnSystemCalendar
 } from 'feature';
 
 /**
@@ -22,7 +22,7 @@ import {
  * "落到设备上的数据，真的能被下一次查询按同一口径读回来"。两边都只驱动公开 API。
  *
  * 两处刻意不依赖真机系统能力：
- * - 系统日历确认页要人手点一次，自动化里换成按次发号的确定性端口（bindCapabilities）；
+ * - 系统日历写入要弹确认页，自动化里换成按次发号的确定性端口（PlanCapabilities.bind）；
  *   真机确认页本身列在 docs/testing-checklist.md 的手工项里。
  * - 提醒端口恒返回 -1：验收不该往通知栏塞东西。
  *
@@ -38,29 +38,42 @@ const PLAN_TITLE = 'E2E 阶段2验收计划';
 /** 临时班次类型 id：整天占用，afterAll 删除。 */
 const FIXTURE_SHIFT = 'test-e2e-fullday';
 
-/** 确定性日历端口：每次写入发一个新事件 id，改期时旧 id 进 removed。 */
+/** 确定性日历端口：每次受管写入发一个新事件 id，改期时旧 id 进 removed。 */
 class E2eCalendar implements CalendarCapability {
   calls: number = 0;
   removed: string[] = [];
+  exports: number = 0;
+  purges: number = 0;
 
-  async confirm(title: string, startMin: number, endMin: number, direct: boolean): Promise<CalendarWriteResult> {
+  async write(title: string, startMin: number, endMin: number): Promise<CalendarWriteResult> {
     this.calls = this.calls + 1;
     return { outcome: CalendarOutcome.WRITTEN, eventId: 'e2e-evt-' + this.calls };
   }
 
-  async remove(eventId: string): Promise<boolean> {
+  async exportToSystem(title: string, startMin: number, endMin: number): Promise<CalendarWriteResult> {
+    this.exports = this.exports + 1;
+    return { outcome: CalendarOutcome.EXPORTED, eventId: 'e2e-ext-' + this.exports };
+  }
+
+  async remove(eventId: string): Promise<RemoveOutcome> {
     this.removed.push(eventId);
+    return RemoveOutcome.REMOVED;
+  }
+
+  async purgeManagedCalendar(): Promise<boolean> {
+    this.purges = this.purges + 1;
     return true;
   }
 }
 
-/** 提醒端口：恒 -1 = 不注册系统提醒。 */
+/** 提醒端口：恒 -1 = 不注册系统提醒（也就没有句柄要取消）。 */
 class E2eReminder implements ReminderCapability {
   async publish(title: string, startMin: number): Promise<number> {
     return -1;
   }
 
-  async cancel(reminderId: number): Promise<void> {
+  async cancel(reminderId: number): Promise<boolean> {
+    return true;
   }
 }
 
@@ -147,7 +160,7 @@ export default function abilityTest() {
       const ctx = abilityDelegatorRegistry.getAbilityDelegator().getAppContext();
       await Db.init(ctx);
       await SettingsStore.init(ctx);
-      PlanUseCase.bindCapabilities(CAL, new E2eReminder());
+      PlanCapabilities.bind(CAL, new E2eReminder());
       hilog.info(DOMAIN, TAG, '%{public}s', 'fixture ready');
     })
 
@@ -228,9 +241,10 @@ export default function abilityTest() {
       const created = await PlanUseCase.createPlan(h.start, h.end, PLAN_TITLE, 'MEAL', h.start, planEnd);
       expect(created.ok).assertTrue();
       planId = created.planId;
-      // 默认走"用户当面确认"的路径；日历只是投影，事件 id 回写在计划行上
-      expect(created.calendarState).assertEqual(CalendarState.WRITTEN);
+      // 默认路径是"写进本应用专属日历"的受管投影：改期/取消能自动跟上，事件 id 回写在计划行上
+      expect(created.calendarState).assertEqual(CalendarState.MANAGED_WRITTEN);
       expect(isOnSystemCalendar(created.calendarState)).assertTrue();
+      expect(isAppManagedEvent(created.calendarState)).assertTrue();
       const row1 = await planRowOf(planId);
       expect(row1 != null).assertTrue();
       expect((row1 as PlanRow).myEventId).assertEqual('e2e-evt-1');
@@ -241,7 +255,7 @@ export default function abilityTest() {
       expect(card1.title).assertEqual(PLAN_TITLE);
       expect(card1.status).assertEqual('OK');
       expect(card1.conflict == null).assertTrue();
-      expect(card1.calendarState).assertEqual(CalendarState.WRITTEN);
+      expect(card1.calendarState).assertEqual(CalendarState.MANAGED_WRITTEN);
       // 这段时间不再空闲：窗口页里已经盖不住计划的起点了
       expect(covered(await pageWindows(now), h.start, hostChannel)).assertFalse();
 
@@ -274,7 +288,7 @@ export default function abilityTest() {
       // 采用替代时间：计划搬到替代窗口，日历事件随之迁移
       const accepted = await PlanUseCase.acceptAlternative(planId);
       expect(accepted.ok).assertTrue();
-      expect(accepted.calendarState).assertEqual(CalendarState.WRITTEN);
+      expect(accepted.calendarState).assertEqual(CalendarState.MANAGED_WRITTEN);
       const row2 = await planRowOf(planId);
       expect(row2 != null).assertTrue();
       expect((row2 as PlanRow).start).assertEqual(view.altStart);

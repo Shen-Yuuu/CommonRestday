@@ -7,6 +7,7 @@ import {
 } from 'domain';
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
+import { normalizeCalendarState } from '../model/PlanFlow';
 import { DayViewData, ScheduleUseCase } from './ScheduleUseCase';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, HomeSummary,
@@ -704,7 +705,9 @@ export class CommonTimeQueryService {
       const p: PlanSummary = {
         id: r.id, title: r.title, kind: r.kind, start: r.start, end: r.end,
         status: r.status, conflictText: conflictTextOf(r), conflict: conflictViewOf(r),
-        calendarState: r.calendarState
+        // 读边界归一：库里可能还写着阶段 2 的 'WRITTEN'（那时 editEvent 与直写没分家），
+        // 不归一就会把删不掉的日程显示成"本应用会替你同步"。
+        calendarState: normalizeCalendarState(r.calendarState)
       };
       out.push(p);
     }

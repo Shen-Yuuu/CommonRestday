@@ -11,10 +11,10 @@
 
 | 口径 | 怎么跑 | 能证明 | 当前状态 |
 |---|---|---|---|
-| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`，失败返回非零） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **177 passed / 0 failed**（2026-09-23 复跑，含阶段 4 的卡片投影/配对链接、阶段 6.1 的恢复清理与 6.2 的档位断言） |
+| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`；TypeScript 错误直接返回非零，不再"假绿"） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **0 类型错误 / 182 passed / 0 failed**（2026-09-23 阶段 6R.1 复跑，含重写后的 19 条日历生命周期用例） |
 | 离线预算测量 | `node tools/perf/budget.mjs` | 引擎重算、快照编解码、读模型投影**在开发机上**相对 16ms 的位置（下界） | 已测：120 天稠密配对 P95 14.30ms、366 天 73.45ms（超预算）、codec ≤0.16ms |
-| 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL），**未执行 → 待设备** |
-| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 361、未配置签名故跳过签名 |
+| 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL，`ArkTS:WARN` 262），**未执行 → 待设备** |
+| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 357、未配置签名故跳过签名 |
 | 手工走查 | 下面 §1–§20 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返、开关关档表现、数据删除动作 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
@@ -29,7 +29,7 @@
 
 **插桩刻意不覆盖的三件事**（不要在插桩里判通过）：
 
-1. **真实系统日历确认页**——要人手点一次「保存」，见 §6。插桩把日历端口换成确定性假实现（`bindCapabilities`），因此它证明的是"本应用侧的投影编排"，不是"系统日历里真的有那条日程"。
+1. **真实日历**——插桩把日历端口换成确定性假实现（`PlanCapabilities.bind`），所以它证明的是"本应用侧的投影编排"：写成了哪个状态、删了哪个句柄、删不掉时留没留重试线索。它证明不了三件真机才看得见的事：应用专属「同休日」日历真的被 `addEvent` 写进去并能被 `deleteEvent` 删掉；「导出到系统日历」的确认页要人手点一次保存；以及 `purgeManagedCalendar` 在真实账户上清空专属日历。见 §6。
 2. **通知栏**——提醒端口恒返回 `-1`（不注册系统提醒），离线与插桩都不往通知栏塞东西。真实的分层通知与提醒策略（含开关、去重、降级）全部在真机侧，见 §12。
 3. **云端快照**——`CLOUD_BLOCKED`，见 §9。
 
@@ -114,17 +114,20 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 5.7 建计划后：该时段从窗口里扣除；取消后重新出现（不需要手动刷新）
 - [ ] 5.8 玻璃材质只出现在悬浮底栏 / Sheet / 首页唯一主结果三处；页面内容区不叠实时模糊
 
-## 6. 计划创建 → 系统日历确认 → 共同计划出现（阶段 2 出口）
+## 6. 计划创建 → 受管日历写入 → 共同计划出现（阶段 2 出口，阶段 6R.1 重写）
 
 - [ ] 6.1 窗口详情 Sheet：标题、计划类型（一起吃饭 / 看电影 / 接送孩子 / 回父母家 / 办证体检 / 短途旅行 / 共同自习 / **自定义**；切类型时未手工改过的标题跟随切换，末项「自定义」清空要求自填）、时间调节 `±15 分钟，限制在窗口内`——推到窗口边界时加减号禁用，不允许越界
 - [ ] 6.2 计划长度下限 15 分钟：把结束点往起点收，越界时提示 `计划时长至少 15 分钟`
-- [ ] 6.3 **默认不勾选「直接写入系统日历」**：创建时拉起**系统日程确认页**，在系统页点保存后事件才落地（不静默批量写入）
-- [ ] 6.4 首次触发**日历权限**：允许 → 系统日程编辑页 → 在系统页点保存 → toast `计划已创建，并写入系统日历`；随后打开系统日历 App 能找到该日程（应用**不自建日历账户**，`editEvent` 把事件落在系统选定的日历里，所以不要按「同休日」日历去找）
-- [ ] 6.5 在系统确认页点**取消** → 计划仍创建成功，卡片状态显示"仅保存在应用内"（`LOCAL_ONLY`），并给出「写入日历」重试入口
-- [ ] 6.6 勾选「直接写入系统日历」（`打开后不再弹系统日程确认页，由本应用直接保存`）→ 不弹确认页直接写入
-- [ ] 6.7 共同时间 → 共同计划分段看到该计划：标题、时间、状态徽标（`已确认` / `已写入系统日历`）
-- [ ] 6.8 取消计划二次确认：`确定取消「…」？该时段将恢复空闲，系统日历日程（如有）会一并移除` → `已取消计划，该时段恢复空闲`；系统日历里的事件同步消失（真机确认）
-- [ ] 6.9 到点报时：默认**只有系统日历里那条日程负责**——新建计划不会额外注册本应用提醒（§12.3「计划精确提醒」默认关）。要验本应用那条提醒：先按 §12.3 打开开关，再新建/改期一条几分钟后开始的计划
+- [ ] 6.3 **默认勾选「写入系统日历」**：开态下创建走的是**受管写入**——本应用在自己的「同休日」专属日历上 `addEvent`，**不弹系统日程确认页**（弹确认页的是 6.6 的导出口，别混）；关闭时 `writeToCalendar=false`，计划只留在应用里
+- [ ] 6.4 首次触发**日历权限**：允许 → 应用 `getCalendar`/`createCalendar` 建出专属账户与「同休日」日历，toast `计划已创建，并写入系统日历`；随后打开系统日历 App，**把日历切到「同休日」那一本**能看到该日程（不在"我的日历"里，也不在系统默认日历里，找不到就是没翻到那一本）
+- [ ] 6.4b 权限点**拒绝** → 计划照样创建成功，卡片徽标常驻 `仅保存在应用内`，日历 App 里没有任何痕迹
+- [ ] 6.5 关掉「写入系统日历」创建 → 状态同上（`LOCAL_ONLY`），并给出「写入日历」（受管补写）与「导出到系统日历」两个出口
+- [ ] 6.6 **导出到系统日历**（`editEvent`，只在日历上还没有它时给这个入口）→ 拉起系统日程编辑页：点保存 → 徽标变 `已在系统日历，之后由系统日历管理`；点取消 → 仍留 `仅保存在应用内`，不谎报写成了
+- [ ] 6.7 共同时间 → 共同计划分段看到该计划：标题、时间、状态徽标（受管写入无徽标；导出/待清理/无日历/仅本地各说一句实话，文案见 `PlanFlow.calendarBadgeOf`）
+- [ ] 6.8 **改期跟随**：制造冲突 → 采用替代时间 → 受管那份在「同休日」日历里**只剩一条**且时间已是新的（旧那条必须被删掉，留着就是 B2 的孤儿）；导出那份不动、徽标仍是「由系统日历管理」
+- [ ] 6.9 取消计划二次确认：受管那份给 `应用写入的系统日历日程会一并删除。`，导出那份给 `导出的那条日程由系统日历管理，需要你在系统日历里删除。` → 取消后受管事件在日历 App 里真的消失、时段恢复空闲；导出那份**不该**消失，卡片也不能显示"已清空"
+- [ ] 6.10 **删不动时不谎报**（撤回日历权限后再点取消/改期）：卡片徽标 `系统日历或提醒仍待清理` + 「重新清理」文字链；重新授权后点「重新清理」要真的清掉并收敛；把应用退到后台再回前台，自动补扫同一条残留（启动清扫走 `sweepPendingProjections`）
+- [ ] 6.11 到点报时：受管写入的那条由**系统日历自己的提醒**负责；本应用的计划精确提醒默认关（§12.3），要验自己那条先开开关再建一条几分钟后开始的计划
 
 ## 7. 冲突：解释、替代、保留、恢复（阶段 2 出口）
 
@@ -410,14 +413,15 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 17.1.7 库的结构版本比本包高：一条语句都不发，也不把别人的版本号改小
 - [ ] 17.1.8 版本值是脏数据：按"未版本化"重新 stamp，而不是抛异常把启动堵死
 
-### 17.2 真机插桩（`UpgradeMigrationTest`，6 条，编译通过 → 待执行）
+### 17.2 真机插桩（`UpgradeMigrationTest`，7 条，编译通过 → 待执行）
 
 - [ ] 17.2.1 `opened_db_matches_the_target_schema`：真库生效后版本 == 2，重复 init 无副作用
-- [ ] 17.2.2 `restore_marker_demotes_stale_device_facts`：假造的"外来"计划行（`WRITTEN` + 事件 id + 提醒 `777` + `SYNCED`）在重开库后变成 `LOCAL_ONLY` / 空 id / `-1` / `LOCAL_ONLY`，**标题与起止一分不少**
-- [ ] 17.2.3 `pending_confirmation_is_demoted_with_the_rest`：停在"等系统日历确认"的行同样降级——换机后没人还在那台设备上等确认页
-- [ ] 17.2.4 `ordinary_launch_touches_nothing`：没有标记的普通启动一条都不改（否则每次冷启都会把用户已写进日历的计划打回"仅本地"）
-- [ ] 17.2.5 `pairing_reset_lands_on_real_preferences`：清 key / 清 pairId / 状态回 `NONE` / 对方快照游标归 0，这四步在真机 Preferences 上落得住
-- [ ] 17.2.6 `newer_schema_is_never_rewritten`：把 stamp 临时写成 `99` 再重开库，值不变；`finally` 里还原
+- [ ] 17.2.2 `restore_marker_demotes_stale_device_facts`：假造的"外来"计划行（`MANAGED_WRITTEN` + 事件 id + 提醒 `777` + `SYNCED`）在重开库后变成 `LOCAL_ONLY` / 空 id / `-1` / `LOCAL_ONLY`，**标题与起止一分不少**
+- [ ] 17.2.3 `pending_confirmation_is_demoted_with_the_rest`：停在"等日历写入"的行同样降级——换机后那台设备上并没有真的排过写入
+- [ ] 17.2.4 `cleanup_pending_handles_are_voided_before_the_sweep_sees_them`：`CLEANUP_PENDING` 带着来源设备的事件 id 与提醒句柄时，恢复清理要把它一起作废（回 `LOCAL_ONLY` / 空 id / `-1`），并且它从此**不再出现在** `listOrphanProjectionPlans()` 与 `listPlansCarryingHandles()` 里——否则首次前台清扫会拿着别人设备上的 event id 去 `deleteEvent`
+- [ ] 17.2.5 `ordinary_launch_touches_nothing`：没有标记的普通启动一条都不改（否则每次冷启都会把用户已写进日历的计划打回"仅本地"）
+- [ ] 17.2.6 `pairing_reset_lands_on_real_preferences`：清 key / 清 pairId / 状态回 `NONE` / 对方快照游标归 0，这四步在真机 Preferences 上落得住
+- [ ] 17.2.7 `newer_schema_is_never_rewritten`：把 stamp 临时写成 `99` 再重开库，值不变；`finally` 里还原
 
 ### 17.3 只能手工验的（备份 → 恢复往返）
 
@@ -450,10 +454,10 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ### 18.1 已测（不需要设备）
 
-- [x] 18.1.1 五个开关各有且只有一处口径落点：`calendarFlow`→`PlanUseCase.writeCalendar` + `PlanFlow.canRetryCalendarSync`；`cloudPairing`→`MeView` 文案 + `PairingShareGateway.acceptOffer` 写库前拦截；`scanPairing`→`PairingShareGateway.channels`（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth`。全仓 `grep -rn "FeatureFlags\."` 无其它读取方
+- [x] 18.1.1 五个开关各有且只有一处口径落点：`calendarFlow`→`PlanUseCase` 的日历编排（唯一读档处，关掉就一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`（「写入日历」入口，`canExportToCalendar` 与它同处、同样吃这个档）；`cloudPairing`→`MeView` 文案 + `PairingShareGateway.acceptOffer` 写库前拦截；`scanPairing`→`PairingShareGateway.channels`（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth`。全仓 `grep -rn "FeatureFlags\."` 无其它读取方
 - [x] 18.1.2 `newShell` 已删除：旧四 Tab 壳层在阶段 1 就被换掉、从来没有可切换分支，release 包里它是 `false` 而无人读，属于谎报型开关（rollout 文档 §3.1）。壳层回退方式＝整包回退
-- [x] 18.1.3 当前档位离线全绿：177 passed / 0 failed；`entry@default` debug 与 `entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` 361（与阶段 5.4/6.1 基线一致，无新增告警）
-- [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **167 passed / 10 failed**，失败项全部是日历口径（`expected WRITTEN but got NOT_REQUESTED`、`direct_write… expected 2 but got 0`＝一次日历调用都没发）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别
+- [x] 18.1.3 当前档位离线全绿：0 类型错误 / 182 passed / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` 357（debug/release 同值）、ohosTest 262，两道都比阶段 6.4 基线（361 / 266）低——6R.1 把重复的写库实现收进 `ScheduleRepo.setPlanColumns` 后告警位随之减少，基线按"只降不升"改在这里
+- [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **169 passed / 13 failed**，失败项全部是日历口径（写成的状态不是 `MANAGED_WRITTEN`、一次日历调用都没发、取消/改期后残留句柄没被清）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别；日志 `../.crdtest/6r1-off-calendarflow.log`（13 条 FAIL 里 12 条是 `expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …` 与 `double_submit… expected 1 but got 0`，第 13 条正是那条档位断言本身）
 - [x] 18.1.5 `newCard = false`、`responsiveV2 = false` 各自单独编译通过（日志 `../.crdtest/build-6-2-off-newCard.log`、`build-6-2-off-responsiveV2.log`），三档恢复后 `build-6-2-final.log` 再绿一次
 - [x] 18.1.6 档位摘要一行齐全：`FeatureFlags.summary()` 由 `PresentationModelsTest` 断言五档都在、且按 rollout 顺序排列（漏一档 = 日志证明不了这个包的现场状态）
 
@@ -461,7 +465,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 - [ ] 18.2.1 冷启动日志出现 `CrdFlags` 一行，五个档位与 `docs/release/rollout-and-rollback.md` §2 一致：
   `hdc shell "hilog | grep CrdFlags"`
-- [ ] 18.2.2 `calendarFlow` 关档包：新建计划后卡上只有「仅保存在应用内」且**没有**「写入日历」字样；系统日历里不新增事件；取消这类计划不报"删除日程失败"
+- [ ] 18.2.2 `calendarFlow` 关档包：新建计划后卡上只有「仅保存在应用内」且**没有**「写入日历」「导出到系统日历」字样；系统日历里不新增事件；取消这类计划不报"删除日程失败"。例外：关档包对**开档时留下的** `CLEANUP_PENDING` 仍给「重新清理」（清理不受本档控制，见 18.2.3），这是有意的
 - [ ] 18.2.3 `calendarFlow` 关档包对**开档时**写过的计划：取消与改期仍能把原日程从系统日历里清掉（关闭不影响既有投影的清理，rollout 文档 §3.2 数据兼容性）
 - [ ] 18.2.4 `newCard` 关档包：桌面卡片显示停用文案，不是"正在计算…"卡死、也不是昨天的旧结论；日志 `card off, publishing disabled placeholder`
 - [ ] 18.2.5 `responsiveV2` 关档包：折叠屏展开/平板宽度下回到单列，共同时间详情改为半模态，无"外壳两栏、内容窄屏排版"的半开状态
@@ -485,15 +489,16 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 判定过程与阻断项清单在 `docs/release/2026-api26-release-checklist.md`；本节只列**上一到设备就要做、且此前没有任何条目覆盖过**的动作。
 
-- [ ] 20.1 **清空我的全部数据**（此前全清单无一条覆盖它）：我的 → 数据与隐私 → 「清空我的全部数据」→ 二次确认弹窗逐字对照 `将删除本机全部班表/课表/计划/窗口/伴侣档案与设置项，且不可恢复。确定清空？` → 点「清空」→ toast `已清空全部数据`
+- [ ] 20.1 **清空我的全部数据**（此前全清单无一条覆盖它）：我的 → 数据与隐私 → 「清空我的全部数据」→ 二次确认弹窗逐字对照 `将删除本机全部班表/课表/计划/窗口/伴侣档案与设置项，并清除本应用写入「同休日」日历的日程与提醒，且不可恢复。导出到系统日历的日程删不动，需要你自己在系统日历里删除。确定清空？` → 点「清空」→ toast `已清空本机全部数据`（系统侧没清干净时这句话后面会跟着具体几条，见 20.1.3）
   - [ ] 20.1.1 回到首页/共同时间/班表：三答案全部退回"还没录入日程"口径，班表四张状态卡计数归零，伴侣档案消失
   - [ ] 20.1.2 **杀进程重开不再弹隐私弹窗**（`clearAllSettings` 之后代码刻意把同意标记补回去，见 `ProfileSettingsService.clearAllData`）——弹了就是补写没生效
-  - [ ] 20.1.3 **系统日历里残留的日程**：清空前先在日历里留 2 条已写入的计划（`WRITTEN`），清空后打开系统日历看它们还在不在。当前实现**不会删**（`ScheduleRepo.clearAllData` 直接 `DELETE FROM plan`，不读 `calendar_event_id`）。记实测现象：这既是发布门禁 G5 的阻断项，也是决定"补删除"还是"改文案"的依据
-  - [ ] 20.1.4 周摘要提醒那条：若之前开过开关，清空后要确认系统"定时提醒"里没有残留句柄（`clearAllData` 只 `cancelReminder(weeklyId)` 一条，句柄丢失的情况要实测）
+  - [ ] 20.1.3 **系统侧真的被清掉了没有**（阶段 6R.1 改了实现，这条从"记录现象"变成"验收动作"）：清空前留 2 条受管写入的计划 + 1 条导出的日程 + 开着的周摘要提醒 → 清空后打开系统日历确认「同休日」那一本已空（`purgeManagedCalendar`），导出的那条**还在**且 toast 里写着 `1 条导出的日程由系统日历管理，请到系统日历里删除`
+  - [ ] 20.1.4 **撤权限时的谎报检查**：先在系统设置里收回日历权限再点清空 → toast 必须出现 `N 项日历/提醒没清掉，可稍后重试` 或 `「同休日」日历没有清空，请到系统日历里检查`，**绝不能**只报一句"已清空本机全部数据"；本机表此时确实已清（本机数据是能立刻收回的那一份），重新授权后残留计划上的「重新清理」要还能点
+  - [ ] 20.1.5 周摘要提醒那条：开过开关后清空，系统"定时提醒"里没有残留句柄（`clearAllData` 只 `cancelReminder(weeklyId)` 一条，句柄丢失的情况要实测）
 - [ ] 20.2 **删除伴侣档案后共同计划仍在**：按 §3.5 删伴侣，再看共同计划分段——`plan` 表按实现是不动的（弹窗也只承诺清除"TA 的全部班表/课表数据"）。确认这是产品要的口径；若要求一起删，需要新增级联并补离线断言
 - [ ] 20.3 **隐私弹窗 5 处文案与实际行为逐字对照**（G4 的判定依据，缺一处就是文案落后于实现）：
   - `班表/课表数据仅存储在本机数据库，不上传任何服务器` —— 与"本机链路零网络调用"一致；但配对页仍能让 `createInvite` 发出云函数请求（只带 uid 与本地生成的 6 位码），确认这句在提审口径下要不要加限定
-  - `日历事件：仅在你确认创建共同计划时写入系统日历` —— 与 §6.3 的默认一致，但 §6.6 的「直接写入系统日历」开关是这句话的例外；`calendarFlow` 关档时一次都不写
+  - `日历事件：仅在你确认创建共同计划时写入系统日历` —— 阶段 6R.1 之后这句**已经不准确**，必须在提审前改口径（Task 6R.4 / G4）：现在默认是"创建时由本应用直接写进应用专属的「同休日」日历"，用户确认的是应用里那个「写入系统日历」开关（默认开），**不再**经过系统日程确认页；只有「导出到系统日历」那条走 `editEvent`。设备侧同时确认两件事：专属日历这一本的名字确实显示为「同休日」；`calendarFlow` 关档时一次都不写
   - `照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图` —— 走系统 Picker + 端侧 `textRecognition`，无相机/相册权限声明，一致
   - `未来云端同步仅存储加密后的忙闲数据，且以你设置的隐私等级为准` —— "未来"用词与 `CLOUD_BLOCKED` 一致；但等级设置当前无可见效果（见下）
   - `你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）。` —— 在设备上确认这句会不会让人以为"对方现在就能看到不同等级下的差别"；实际差别只有云端开放后才存在

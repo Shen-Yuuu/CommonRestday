@@ -3,9 +3,13 @@ import {
   PAIRED, PAIR_NONE, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
 } from 'data';
 import { AgcPairingClient, PairingSession, SnapshotCrypto } from 'cloud';
-import { reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from './ScheduleUseCase';
+import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
+import { PlanCapabilities } from '../integration/PlanCapabilities';
+import {
+  addCleanupReport, clearAllMessageOf, emptyCleanupReport
+} from '../model/PlanFlow';
 import { horizonError, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
 
 const TAG = 'ProfileSettingsService';
@@ -277,17 +281,32 @@ export class ProfileSettingsService {
 
   // ---------- 清空数据 ----------
 
-  /** 清空 8 张 RDB 表 + 全部设置；隐私同意标记保留，避免重启后重复弹窗。 */
+  /**
+   * 清空 8 张 RDB 表 + 全部设置；隐私同意标记保留，避免重启后重复弹窗。
+   *
+   * 清库之前先把系统侧的东西一起带走（验收报告 B2）：计划级日历日程、计划级提醒、周报提醒，
+   * 再整本清掉应用专属「同休日」日历作兜底（句柄丢了的那些日程也一并删掉）。
+   * "清空我的全部数据"这句话若只管本机表，用户删掉的只是自己看得见的那份，
+   * 日程和提醒还留在系统里——所以清不干净的部分必须报数，不能回一句"已清空"。
+   */
   static async clearAllData(): Promise<SettingsResult> {
+    const report = emptyCleanupReport();
+    let calendarPurged = true;
     try {
+      // 逐条计划：删日程 + 撤提醒（含 CANCELLED 但没删动的残留行）
+      const rows = await ScheduleRepo.listPlansCarryingHandles();
+      addCleanupReport(report, await PlanProjectionCleanupService.cleanupPlanList(rows));
+      calendarPurged = await PlanProjectionCleanupService.purgeManagedCalendar();
       const weeklyId = await SettingsStore.getWeeklyReminderId();
-      if (weeklyId >= 0) {
-        try {
-          await reminderAgentManager.cancelReminder(weeklyId);
-        } catch (e) {
-          // 提醒已被系统清理：取消失败可忽略
-        }
+      if (weeklyId >= 0 && !await PlanCapabilities.reminder().cancel(weeklyId)) {
+        report.remindersPending = report.remindersPending + 1;
       }
+    } catch (e) {
+      // 系统侧清不动也要把本机表清掉：数据在用户设备上，本机那份是能立刻收回的
+      Logger.warn(TAG, 'clearAllData projection cleanup degraded: ' + (e as Error).message);
+      calendarPurged = false;
+    }
+    try {
       const privacyWas = SettingsStore.isPrivacyAccepted();
       await ScheduleRepo.clearAllData();
       await SettingsStore.clearAllSettings();
@@ -298,6 +317,6 @@ export class ProfileSettingsService {
     } catch (e) {
       return fail('清空失败：' + (e as Error).message);
     }
-    return ok('已清空全部数据');
+    return ok(clearAllMessageOf(report, calendarPurged));
   }
 }

@@ -260,7 +260,10 @@ export default function dbMigrationTest() {
       // 口径：日历投影降级并清空来源设备的事件 id；提醒句柄归 -1；云端声明回到仅本地
       expect(db.stmts[0].indexOf("calendar_state = 'LOCAL_ONLY'") >= 0).assertTrue();
       expect(db.stmts[0].indexOf("my_event_id = ''") >= 0).assertTrue();
-      expect(db.stmts[0].indexOf("calendar_state IN ('WRITTEN', 'PENDING')") >= 0).assertTrue();
+      // 6R.1 的新状态一个都不能漏：来源设备上的 MANAGED_WRITTEN / CLEANUP_PENDING 句柄
+      // 换到这台机器上全是空引用，留着只会让清扫去删别人的日历。
+      expect(db.stmts[0].indexOf("calendar_state IN ('WRITTEN', 'PENDING', 'MANAGED_WRITTEN',"
+        + " 'EXTERNAL_UNMANAGED', 'CLEANUP_PENDING')") >= 0).assertTrue();
       expect(db.stmts[1].indexOf('reminder_id = -1') >= 0).assertTrue();
       expect(db.stmts[2].indexOf("sync_state = 'LOCAL_ONLY'") >= 0).assertTrue();
       // 标记随事务一起提交为"已清"：下次启动不再重复降级

@@ -298,3 +298,33 @@ Task 2.2 要求精简类型，但 `PLAN_KINDS` 仍暴露 8 项。
 - [ ] 隐私政策 URL 可访问且与实际权限/开关一致；
 - [ ] 真机可用性、无障碍、卡片、备份和性能证据已归档。
 
+## 9. 整改记录（只追加，不改写上面的判定）
+
+本节记录"代码层面做到哪一步了"，**不构成任何一条阻断项的关闭**：B0/B2 的最终判据是设备上的现象，B6 存在期间它们最多只能写成"代码已改、真机待验"。
+
+### 9.1 B3 —— 已关闭（2026-09-23，提交 `2656341`）
+
+`tools/test/tsconfig.json` 改 `noEmitOnError`，`run.mjs` 在编译有 `error TS` 时**不启动测试**直接返回 3；负向验证过（注入一条类型错误 → `tests: not run`）。被它掩盖的 5 个类型错误全部修掉。新增统一入口 `tools/verify.mjs` + `tools/verify-baseline.json`，`ArkTS:WARN` 只允许降不允许升。
+
+### 9.2 B0 + B2 —— 代码已改，真机待验（2026-09-23，阶段 6R.1）
+
+按 B0 列出的五条整改要求逐一对应（B2 的四条清理要求并进最后两行）：
+
+| 整改要求 | 现在的实现 | 证据与缺口 |
+|---|---|---|
+| 默认受管路径改成 `addEvent` 写应用专属「同休日」日历 | `CalendarGateway.writeEvent` → `open()`（`getCalendar` 失败即 `createCalendar`）→ `cal.addEvent`；计划 Sheet 的「写入系统日历」开关默认开、逐条决定 | 离线 19 条日历用例；出包 0 error；**专属日历是否真建得出、系统日历 App 里是否真看得见 → 待设备** |
+| `editEvent` 只命名为"导出"，落 `EXTERNAL_UNMANAGED`，不承诺自动删除/改期 | `CalendarGateway.exportEvent`（原 `confirmEvent`）；`PlansView` 入口文案「导出到系统日历」+ 徽标「已在系统日历，之后由系统日历管理」；`canExportToCalendar` 只在日历上确实还没有它时放行；清理路径对导出那份**永不试删**（拿它的 id 去删可能删错别人日历里的条目） | 离线用例 `exported_events_are_never_auto_deleted_but_are_reported`；导出确认页现象 → 待设备 |
+| 删除/改期返回结构化结果，删除失败不得无条件成功 | `RemoveOutcome{REMOVED,FAILED}` + `ReminderCapability.cancel(): boolean`；`CleanupReport` 五计数；`calendarStateAfterCleanup` 把"还有残留"分成 `CLEANUP_PENDING` 与 `EXTERNAL_UNMANAGED` 两格 | 离线用例断言"删不动 → 状态不是干净态"；`deleteEvent` 真抛错时的现象 → 待设备 |
+| 删旧事件失败不得覆盖唯一 event ID，留 tombstone 或失败队列 | 句柄原样留在 `plan.my_event_id` / `reminder_id`，状态 `CLEANUP_PENDING`；`ScheduleRepo.updatePlanProjection` 一次写清"状态 + 事件 id + 提醒句柄"，避免出现"日程已清、提醒句柄还挂着"的半套状态；旧投影没让开就**不写新投影** | 离线用例 `undeletable_old_event_blocks_the_new_one_and_stays_retryable` |
+| 取消/改期/清空的计划级提醒孤儿；清空只删本地表 | 新增 `PlanProjectionCleanupService`（只清系统侧、不写库）+ `PlanCapabilities`（端口唯一持有者）；`clearAllData` 先逐条清投影 → `purgeManagedCalendar()` → 撤周摘要提醒 → 才删表，并按 `clearAllMessageOf` 如实播报剩余；`EntryAbility.onForeground` 跑 `sweepPendingProjections()` 补扫；`MeView` 清空确认弹窗写清会连带删掉什么 | 离线 `PlanUseCaseTest` 里"取消清两条 / 取消留残留可扫 / 清扫不误删正常投影 / 导出不试删"四组 + `clearAllMessageOf` 口径 1 条；插桩新增 `cleanup_pending_handles_are_voided_before_the_sweep_sees_them`；**清空 / 撤权 / 补扫的真机现象全部待设备**（TC §20.1.3～§20.1.5、§6.9～§6.10） |
+
+配套收口：`normalizeCalendarState` 把阶段 2 那个"editEvent 与直写不分家"的 `'WRITTEN'` 保守读成 `EXTERNAL_UNMANAGED`（宁可提示"请在系统日历里删除"，也不谎报"本应用会替你删"）；`RESTORE_CLEANUP_SQL` 的降级名单补入全部新状态，来源设备的 `CLEANUP_PENDING` 句柄不会被这台机器的清扫认领。
+
+**本轮实测口径**（2026-09-23，`node tools/verify.mjs --steps=offline,debug,release,ohostest`，日志 `.crdtest/6r1-verify.log`）：offline 0 type error / 182 passed / 0 failed / exit 0；debug 与 release 均 BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` 357；ohosTest 同样 BUILD SUCCESSFUL、`ArkTS:WARN` 262、**未执行**。
+
+**本报告 §1 执行摘要与"不具备提审条件"的结论不变。** B1、B4、B5、B6 本节一项都没动。
+
+### 9.3 D4 —— 基线收紧
+
+`ArkTS:WARN` 上限从 361（debug/release）与 266（ohosTest）降到 357 / 262：`ScheduleRepo` 六个单行写入口合并为 `setPlanColumns`、计划查询合并为 `queryPlans`（ArkTS 的 "Function may throw exceptions" 按 @kit 调用点计数，重复写体会成倍放大告警位）。基线只随实测下降而改，数值记在 `tools/verify-baseline.json`，复跑日志在 `.crdtest/6r1-verify.log`。
+

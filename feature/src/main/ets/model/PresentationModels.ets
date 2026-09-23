@@ -135,7 +135,7 @@ export interface PlanSummary {
   conflictText: string;
   /** status 非 CONFLICT 时为 null。 */
   conflict: PlanConflictView | null;
-  /** plan.calendar_state：非 WRITTEN 时 UI 要常驻"仅保存在应用内"。 */
+  /** plan.calendar_state（读边界已归一）：非 MANAGED_WRITTEN 时 UI 要按 calendarBadgeOf 说清归属。 */
   calendarState: string;
 }
 

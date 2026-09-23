@@ -217,6 +217,13 @@ export class ScheduleRepo {
     const r = planRows.get(id);
     if (r !== undefined) { r.calendarState = calendarState; r.myEventId = eventId; }
   }
+  static async updatePlanProjection(id: string, calendarState: string, eventId: string,
+    reminderId: number): Promise<void> {
+    const r = planRows.get(id);
+    if (r !== undefined) {
+      r.calendarState = calendarState; r.myEventId = eventId; r.reminderId = reminderId;
+    }
+  }
   static async updatePlanReminder(id: string, reminderId: number): Promise<void> {
     const r = planRows.get(id);
     if (r !== undefined) { r.reminderId = reminderId; }
@@ -235,13 +242,26 @@ export class ScheduleRepo {
   }
   /** 与设备侧同口径：排除 CANCELLED，按 start 升序。 */
   static async listActivePlans(): Promise<PlanRow[]> {
-    const out: PlanRow[] = [];
-    planRows.forEach((r: PlanRow) => {
-      if (r.status !== 'CANCELLED') { out.push(r); }
-    });
-    out.sort((a: PlanRow, b: PlanRow) => a.start - b.start);
-    return out;
+    return sortedRows((r: PlanRow) => r.status !== 'CANCELLED');
   }
+  /** 与设备侧同口径：CLEANUP_PENDING，或已取消却仍带着日程/提醒句柄的残留行。 */
+  static async listOrphanProjectionPlans(): Promise<PlanRow[]> {
+    return sortedRows((r: PlanRow) => r.calendarState === 'CLEANUP_PENDING'
+      || (r.status === 'CANCELLED' && (r.myEventId !== '' || r.reminderId >= 0)));
+  }
+  /** 与设备侧同口径：带着日程 id 或提醒句柄的全部行（含 CANCELLED），清空数据前用来带走投影。 */
+  static async listPlansCarryingHandles(): Promise<PlanRow[]> {
+    return sortedRows((r: PlanRow) => r.myEventId !== '' || r.reminderId >= 0);
+  }
+}
+
+function sortedRows(keep: (r: PlanRow) => boolean): PlanRow[] {
+  const out: PlanRow[] = [];
+  planRows.forEach((r: PlanRow) => {
+    if (keep(r)) { out.push(r); }
+  });
+  out.sort((a: PlanRow, b: PlanRow) => a.start - b.start);
+  return out;
 }
 
 export class SettingsStore {
@@ -251,23 +271,24 @@ export class SettingsStore {
 `;
 
 /**
- * 设备侧日历/提醒门面的类型壳：PlanUseCase 只在默认适配器里引用它们，
- * 用例通过 PlanUseCase.bindCapabilities 注入确定性端口实现，所以这里返回"能力不可用"即可。
+ * 设备侧日历/提醒门面的类型壳：PlanCapabilities 的默认适配器引用它们，
+ * 用例通过 PlanCapabilities.bind 注入确定性端口实现，所以这里返回"能力不可用"即可。
  */
 const STUB_GATEWAYS = {
   'CalendarGateway.ts': `
-import { CalendarOutcome, CalendarWriteResult } from '../model/PlanFlow';
+import { CalendarOutcome, CalendarWriteResult, RemoveOutcome } from '../model/PlanFlow';
 
 export class CalendarGateway {
   static init(context: Object): void {}
   static async requestPermissions(): Promise<boolean> { return false; }
-  static async confirmEvent(t: string, s: number, e: number): Promise<CalendarWriteResult> {
-    return { outcome: CalendarOutcome.UNAVAILABLE, eventId: '' };
-  }
   static async writeEvent(t: string, s: number, e: number): Promise<CalendarWriteResult> {
     return { outcome: CalendarOutcome.UNAVAILABLE, eventId: '' };
   }
-  static async removeEvent(eventId: string): Promise<boolean> { return false; }
+  static async exportEvent(t: string, s: number, e: number): Promise<CalendarWriteResult> {
+    return { outcome: CalendarOutcome.UNAVAILABLE, eventId: '' };
+  }
+  static async removeEvent(eventId: string): Promise<RemoveOutcome> { return RemoveOutcome.FAILED; }
+  static async purgeManagedCalendar(): Promise<boolean> { return false; }
 }
 `,
   'ReminderGateway.ts': `
@@ -304,7 +325,9 @@ function prepare() {
     + "export * from './feature/main/ets/usecase/CardSummaryService';\n"
     + "export * from './feature/main/ets/usecase/ScheduleUseCase';\n"
     + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n"
-    + "export * from './feature/main/ets/usecase/PlanUseCase';\n");
+    + "export * from './feature/main/ets/usecase/PlanUseCase';\n"
+    + "export * from './feature/main/ets/usecase/PlanProjectionCleanupService';\n"
+    + "export * from './feature/main/ets/integration/PlanCapabilities';\n");
   for (const [name, body] of Object.entries(STUB_GATEWAYS)) {
     const dir = path.join(OUT, 'feature/main/ets/integration');
     fs.mkdirSync(dir, { recursive: true });

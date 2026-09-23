@@ -17,7 +17,8 @@ import { CalendarState } from 'feature';
  *
  * 覆盖的场景与对应的不可伪造证据：
  * - 全新安装 / 存量升级：生效结构版本 == 本包目标版本（列是否补齐由离线用例与 DDL 同源保证）；
- * - 刚从别的设备恢复：日历投影降级、事件 id 清空、提醒句柄归 -1、云端声明回到仅本地；
+ * - 刚从别的设备恢复：日历投影降级、事件 id 清空、提醒句柄归 -1、云端声明回到仅本地
+ *   （含阶段 6R.1 新增的"待清理"那一格：来源设备的句柄绝不能被这台机器的启动清扫认领）；
  * - 普通启动：同样这批计划行原样不动（不误伤）；
  * - 结构版本比本包高：整包不写库，也不把别人的版本号改小；
  * - 恢复后配对：清 key、清 pairId、状态回 NONE 这三步在真机 Preferences 上确实落得住。
@@ -99,7 +100,7 @@ export default function upgradeMigrationTest() {
 
     /** 恢复标记：只在本机成立的三类事实一起作废，用户数据本身一条不少。 */
     it('restore_marker_demotes_stale_device_facts', 0, async () => {
-      await ScheduleRepo.upsertPlan(staleRow(CalendarState.WRITTEN, 'SYNCED', STALE_REMINDER_ID));
+      await ScheduleRepo.upsertPlan(staleRow(CalendarState.MANAGED_WRITTEN, 'SYNCED', STALE_REMINDER_ID));
       await ScheduleRepo.setMeta(MigrationRunner.RESTORE_PENDING_KEY, MigrationRunner.RESTORE_PENDING_ON);
 
       await relaunch();
@@ -130,15 +131,40 @@ export default function upgradeMigrationTest() {
       expect(r.syncState).assertEqual('LOCAL_ONLY');
     });
 
+    /**
+     * "旧日程删不动"那一格（CLEANUP_PENDING）更要跟着换机作废：这些句柄属于来源设备，
+     * 留下 id 会让这台机器上的启动清扫拿着别人的编号去删日历。
+     * 断言用清扫自己的那份读模型——它空了，才是真的没东西可清。
+     */
+    it('cleanup_pending_handles_are_voided_before_the_sweep_sees_them', 0, async () => {
+      await ScheduleRepo.upsertPlan(staleRow(CalendarState.CLEANUP_PENDING, 'LOCAL_ONLY', STALE_REMINDER_ID));
+      await ScheduleRepo.setMeta(MigrationRunner.RESTORE_PENDING_KEY, MigrationRunner.RESTORE_PENDING_ON);
+
+      await relaunch();
+
+      const r: PlanRow = await fixtureRow() as PlanRow;
+      expect(r.calendarState).assertEqual(CalendarState.LOCAL_ONLY);
+      expect(r.myEventId).assertEqual('');
+      expect(r.reminderId).assertEqual(-1);
+      const orphans: PlanRow[] = await ScheduleRepo.listOrphanProjectionPlans();
+      for (let i = 0; i < orphans.length; i++) {
+        expect(orphans[i].id != FIXTURE_ID).assertTrue();
+      }
+      const carriers: PlanRow[] = await ScheduleRepo.listPlansCarryingHandles();
+      for (let i = 0; i < carriers.length; i++) {
+        expect(carriers[i].id != FIXTURE_ID).assertTrue();
+      }
+    });
+
     /** 普通启动（没有恢复标记）绝不改动画历状态：否则每次冷启都在把用户已写进日历的计划打回"仅本地"。 */
     it('ordinary_launch_touches_nothing', 0, async () => {
-      await ScheduleRepo.upsertPlan(staleRow(CalendarState.WRITTEN, 'SYNCED', STALE_REMINDER_ID));
+      await ScheduleRepo.upsertPlan(staleRow(CalendarState.MANAGED_WRITTEN, 'SYNCED', STALE_REMINDER_ID));
       expect(await ScheduleRepo.getMeta(MigrationRunner.RESTORE_PENDING_KEY)).assertEqual('');
 
       await relaunch();
 
       const r: PlanRow = await fixtureRow() as PlanRow;
-      expect(r.calendarState).assertEqual(CalendarState.WRITTEN);
+      expect(r.calendarState).assertEqual(CalendarState.MANAGED_WRITTEN);
       expect(r.myEventId).assertEqual(STALE_EVENT_ID);
       expect(r.reminderId).assertEqual(STALE_REMINDER_ID);
       expect(r.syncState).assertEqual('SYNCED');

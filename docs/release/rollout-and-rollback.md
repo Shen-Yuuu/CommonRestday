@@ -30,7 +30,7 @@
 | # | 开关 | 当前档位 | 唯一读取方（口径落点） | 顺序上的前置 |
 |---|---|---|---|---|
 | 1 | ~~`newShell`~~ | **已删除**（本轮） | 无：旧四 Tab 壳层已退场，关不回任何链路 | — |
-| 2 | `calendarFlow` | `true` | `PlanUseCase.writeCalendar` + `PlanFlow.canRetryCalendarSync` | 无（本机链路） |
+| 2 | `calendarFlow` | `true` | `PlanUseCase` 的日历编排（`writeManaged`）+ `PlanFlow.canRetryCalendarSync` 与 `canExportToCalendar` | 无（本机链路） |
 | 3 | `cloudPairing` | `false` | `MeView`（文案）+ `PairingShareGateway.acceptOffer`（写库前拦截） | Task 0.4 门禁改写 |
 | 4 | `scanPairing` | `false` | `PairingShareGateway.channels`（且以 `cloudPairing` 为条件） | `cloudPairing = true` |
 | 5 | `newCard` | `true` | `FormAbility.onAddForm` + `FormAbility.refreshCard` | 无（只读本机） |
@@ -52,18 +52,17 @@
   真要退回旧导航形态，只能回到改造前的提交重新出包。
 - **数据兼容性**：无关。
 
-### 3.2 `calendarFlow` —— 系统日历写入链路
+### 3.2 `calendarFlow` —— 系统日历链路（阶段 6R.1 重写为受管写入）
 
 | 项 | 口径 |
 |---|---|
-| 启用条件 | 阶段 2 Task 2.2 出口已达成：写日历一律走系统确认页（不静默批量写）、取消/拒绝时本机计划保留、写失败落 `FAILED` 并给出补写入口。真机侧仍需 `docs/testing-checklist.md` §6（日历确认页）与 §7 勾通过 |
-| 监控指标 | `hilog` 里 `PlanUseCase` 的两类行：`plan created id=… calendar=…` 的取值分布（`WRITTEN` 之外的占比突然升高就说明系统日历侧出了问题）、`calendar write threw:` 出现次数。无远端遥测，指标只能来自用户回传的日志截图 |
-| 关闭影响 | 创建/改期/补写三条路径一条日历调用都不发；`plan.calendar_state` 归一成 `NOT_REQUESTED`，卡片徽标停在「仅保存在应用内」，且**不再出现**「写入日历」入口（`canRetryCalendarSync` 同一档判空返回）。用户看到的是一个纯应用内计划器 |
-| 数据兼容性 | 完全兼容。`calendar_state` / `my_event_id` 两列照常写，不新增语义。开档时写入的日程在关档后仍会被清理：取消走 `clearProjection`、改期走 `migrateCalendar`，两处都在 `writeCalendar` 之外，因此不会留下没人认领的孤儿日程。关档期间 `my_event_id` 恒为空串 |
+| 启用条件 | ①默认路径是**应用专属「同休日」日历的受管写入**（`CalendarGateway.writeEvent` → `getCalendar`/`createCalendar` + `addEvent`），`editEvent` 只剩「导出到系统日历」这一个出口，导出后状态落 `EXTERNAL_UNMANAGED` 且代码里永不试删；②取消/拒绝时本机计划照常保留，写失败落 `FAILED` 并给出补写入口；③删不动时句柄留在计划行、状态转 `CLEANUP_PENDING` 并给「重新清理」。离线侧 19 条日历用例已钉住这三条；真机侧仍需 `docs/testing-checklist.md` §6（专属日历那一本、导出确认页、清理与补扫）与 §7 勾通过 |
+| 监控指标 | `hilog` 里两类行：`CalendarGateway` 的 `managed event written, id=…` / `event exported to system calendar, id=…` / `addEvent failed:` / `deleteEvent degraded:`，以及 `PlanUseCase` 的 `plan created id=… calendar=<状态>`。判据按状态分：`MANAGED_WRITTEN` 之外的占比升高＝日历侧退化；`EXTERNAL_UNMANAGED` 升高说明用户更多走了导出（那份本应用管不动）；出现 `CLEANUP_PENDING` 就是系统侧有残留待清。无远端遥测，指标只能来自用户回传的日志截图 |
+| 关闭影响 | 创建/改期/补写/导出四条路径一条日历调用都不发；`plan.calendar_state` 归一成 `NOT_REQUESTED`，卡片徽标停在「仅保存在应用内」，且**不再出现**「写入日历」与「导出到系统日历」两个入口（`canRetryCalendarSync`/`canExportToCalendar` 同档判空）。用户看到的是一个纯应用内计划器。**例外**：「重新清理」不受本档控制，关档包仍能把开档时留下的日程删掉 |
+| 数据兼容性 | 完全兼容。`calendar_state` / `my_event_id` / `reminder_id` 三列照常写，不新增语义。开档时写入的日程在关档后仍会被清理：取消与改期都走 `PlanProjectionCleanupService`（与写入路径分家），`EntryAbility.onForeground` 的 `sweepPendingProjections()` 也照跑，因此不会留下没人认领的孤儿日程。关档期间新计划的 `my_event_id` 恒为空串 |
 | 已知缺口 | 关档期间用户**没有**任何补写入口，历史计划要等重新开档后才可补写；`NOT_REQUESTED` 与 `LOCAL_ONLY` 在关档时对用户是同一句话（「仅保存在应用内」），这是有意的——回退档不该讲内部状态名 |
 
-`directCalendarWrite`（跳过确认页直接 `addEvent`）是**高级选项目前恒 false**，与 `calendarFlow` 不是一回事：
-前者由用户显式勾选，后者是构建档位。回退时不需要单独处理它。
+> 旧稿这里的"`directCalendarWrite`（跳过确认页直接 `addEvent`）是高级选项目前恒 false"已经不存在了：阶段 6R.1 之后 `addEvent` 就是默认路径，"要不要写日历"由计划 Sheet 上的开关逐条当面决定，没有第二档编译期常量。回退只看 `calendarFlow` 一个档。
 
 ### 3.3 `cloudPairing` —— 云端配对与加密快照
 
@@ -158,12 +157,12 @@ node tools/test/run.mjs
 |---|---|---|
 | 五个开关各有一处口径 | 全仓 `grep FeatureFlags` 结果记在 §2 表里；`newShell` 已删除 | 已核 |
 | 当前档位不出现装饰性开关 | 同上 | 已核（清单 §11.14 关闭） |
-| 当前档位的离线口径 | 运行时 177 passed / 0 failed，但 typecheck 有 5 errors 且 runner 错误返回 0 | **门禁不通过**；见全阶段独立验收 B3 |
-| 当前档位编译 | `entry@default` debug：BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` **361**（与阶段 5/6 基线一致）；`entry@ohosTest` 同样 0 ERROR | 已测 |
-| `calendarFlow = false` 分支 | 单独翻档后 `entry@default` BUILD SUCCESSFUL / 0 ERROR / WARN 361；**离线套件按预期变红：167 passed / 10 failed**，失败项全是日历口径（`… expected WRITTEN but got NOT_REQUESTED`、`direct_write… expected 2 but got 0` = 一次日历调用都没发）+ 那条档位断言 | 已测（日志 `../.crdtest/build-6-2-off-calendarFlow.log`） |
-| `newCard = false` 分支 | `entry@default` BUILD SUCCESSFUL / 0 ERROR / WARN 361（日志 `build-6-2-off-newCard.log`）；卡面表现**未看** | 编译已测，真机待验 |
-| `responsiveV2 = false` 分支 | `entry@default` BUILD SUCCESSFUL / 0 ERROR / WARN 361（日志 `build-6-2-off-responsiveV2.log`）；断点行为**未看** | 编译已测，真机待验 |
-| 三档恢复后的合并状态 | `build-6-2-final.log`（default）+ `build-6-2-ohostest.log` + 离线 177/177 | 已测 |
+| 当前档位的离线口径 | 阶段 6R.3 之后只有这一条算数：**0 type error / 182 passed / 0 failed / exit 0**（旧的"177 passed 但带 5 个类型错误却返回 0"已作废） | 已测（`node tools/test/run.mjs`） |
+| 当前档位编译 | clean 出包 `node tools/verify.mjs --steps=offline,debug,release,ohostest` → 三条全 BUILD SUCCESSFUL、0 ERROR；`ArkTS:WARN` debug **357** / release **357** / ohosTest **262**（基线由 361/361/266 收紧，见 `tools/verify-baseline.json`）；ohosTest **只编译、未执行** | 已测（日志 `../.crdtest/6r1-verify.log`） |
+| `calendarFlow = false` 分支 | 单独翻档后**离线套件按预期变红：169 passed / 13 failed**，失败项全是日历口径（`expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …`、`double_submit… expected 1 but got 0` = 一次日历调用都没发、清理后句柄没留下）+ 那条档位断言本身。阶段 6R.1 重写后又复测了一次，口径与阶段 6.2 一致 | 已测（日志 `../.crdtest/6r1-off-calendarflow.log`；6.2 的出包日志 `build-6-2-off-calendarFlow.log`） |
+| `newCard = false` 分支 | 阶段 6R.1 之后重跑：`entry@default` debug BUILD SUCCESSFUL / 0 ERROR / `ArkTS:WARN` 357；卡面表现**未看** | 编译已测（日志 `../.crdtest/6r1-off-newCard.log`），真机待验 |
+| `responsiveV2 = false` 分支 | 同上重跑：BUILD SUCCESSFUL / 0 ERROR / WARN 357；断点行为**未看** | 编译已测（日志 `../.crdtest/6r1-off-responsiveV2.log`），真机待验 |
+| 三档恢复后的合并状态 | 五档回到 §2 的发布档位（`calendarFlow=on cloudPairing=off scanPairing=off newCard=on responsiveV2=on`）后，上表的 offline/debug/release/ohostest 四步再全绿一次 | 已测（同一份 `6r1-verify.log`） |
 | `cloudPairing = true` / `scanPairing = true` 分支 | 不验证 | **故意不做**：门禁未过，验证会诱导"顺手开一下"。要开先改 `clouddev-api26-spike.md` 结论 |
 | 关档后的真机表现（停用卡面、单列回退、无补写入口） | 无设备 | **待设备**（清单 §18.2） |
 | 按用户分流的灰度、分阶段放量 | 未核对官方控制台 | 缺证据，见 §1 |

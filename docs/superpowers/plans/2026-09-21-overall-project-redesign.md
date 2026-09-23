@@ -847,11 +847,19 @@ git status --short
 
 ## Task 6R.1：重构受管日历生命周期
 
-- [ ] 默认路径不再把 `editEvent` 返回值当作普通权限下可管理的事件；
-- [ ] 应用专属 Calendar 负责受管 `add/update/delete`；`editEvent` 若保留则标记为不可自动同步的导出；
-- [ ] 取消/改期/清空时保留失败状态和可重试清理信息；
-- [ ] 同时清理计划级 ReminderAgent 与周摘要；
+- [x] 默认路径不再把 `editEvent` 返回值当作普通权限下可管理的事件；
+- [x] 应用专属 Calendar 负责受管 `add/update/delete`；`editEvent` 若保留则标记为不可自动同步的导出；
+- [x] 取消/改期/清空时保留失败状态和可重试清理信息；
+- [x] 同时清理计划级 ReminderAgent 与周摘要；
 - [ ] 更新状态模型、UI 徽标、隐私文案、离线测试与 API 26 真机测试。
+
+> 2026-09-23 完成前四项与第五项的代码部分：`CalendarGateway` 按权限边界重写（`writeEvent`＝专属「同休日」日历
+> `addEvent`，`exportEvent`＝`editEvent` 一次性导出）、`CalendarState` 八格 + `normalizeCalendarState` 读边界归一、
+> `PlanProjectionCleanupService`/`PlanCapabilities`/`CleanupReport` 三件套、`CLEANUP_PENDING` + 「重新清理」 +
+> `onForeground` 补扫、`clearAllData` 先清投影再删表并按 `clearAllMessageOf` 如实播报。
+> 离线 **182 passed / 0 type error**（`PlanUseCaseTest` 重写为 19 条）、插桩 3+7 条换到新端口面（只编译）。
+> **本任务最后一项故意不勾**：隐私文案改写在 Task 6R.4，真机执行属 B6 待设备——见
+> `docs/validation/2026-09-23-full-redesign-acceptance.md` §9.2 与 `docs/testing-checklist.md` §6、§20.1。
 
 ## Task 6R.2：纯本地安全与权限封口
 
@@ -862,10 +870,15 @@ git status --short
 
 ## Task 6R.3：严格测试门禁
 
-- [ ] 修复离线 runner 当前 5 个 TypeScript 错误；
-- [ ] typecheck 失败立即非零退出，不执行部分产物；
-- [ ] 只有 `0 type error + 0 failed + exit 0` 才可称为全绿；
+- [x] 修复离线 runner 当前 5 个 TypeScript 错误；
+- [x] typecheck 失败立即非零退出，不执行部分产物；
+- [x] 只有 `0 type error + 0 failed + exit 0` 才可称为全绿；
 - [ ] 补取消、改期、清空、解除配对和删除伴侣的失败路径。
+
+> 2026-09-23 前三项完成（提交 `2656341`，`tools/test/tsconfig.json` + `run.mjs` + 统一入口 `tools/verify.mjs`）。
+> 第四项的前三条（取消 / 改期 / 清空的失败与残留口径）随 Task 6R.1 落地；**解除配对与删除伴侣仍无断言**——
+> 前者在 `CLOUD_BLOCKED` 下无法到达（只能经 G2 那条违规路径配对），后者属阶段 3 门禁解除后的补测，见
+> `docs/release/2026-api26-release-checklist.md` §2 G5 表最后两行。
 
 ## Task 6R.4：首发产品与合规收口
 

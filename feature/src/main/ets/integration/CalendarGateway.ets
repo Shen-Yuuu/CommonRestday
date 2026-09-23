@@ -2,7 +2,7 @@ import { calendarManager } from '@kit.CalendarKit';
 import { abilityAccessCtrl, common, PermissionRequestResult, Permissions } from '@kit.AbilityKit';
 import { Logger } from 'commons';
 import {
-  CalendarOutcome, CalendarWriteResult, epochMinToUtcMs
+  CalendarOutcome, CalendarWriteResult, RemoveOutcome, epochMinToUtcMs
 } from '../model/PlanFlow';
 
 /** 取日历的结果：cal 为 null 时 outcome 说明为什么没拿到。 */
@@ -17,11 +17,12 @@ interface OpenedManager {
   outcome: CalendarOutcome;
 }
 
-/** "同休日"专属日历账户名（本应用唯一的写入目标）。 */
+/** "同休日"专属日历账户名（本应用唯一受管写入目标）。 */
 const CAL_NAME = '同休日';
 
 const TAG = 'CalendarGateway';
 
+/** 没写成的三种说法都不带 eventId。 */
 function missed(outcome: CalendarOutcome): CalendarWriteResult {
   return { outcome: outcome, eventId: '' };
 }
@@ -30,13 +31,26 @@ function written(eventId: number): CalendarWriteResult {
   return { outcome: CalendarOutcome.WRITTEN, eventId: '' + eventId };
 }
 
+function exported(eventId: number): CalendarWriteResult {
+  return { outcome: CalendarOutcome.EXPORTED, eventId: '' + eventId };
+}
+
 /**
- * 系统日历能力门面（阶段 2 Task 2.2）：PlanUseCase 只做业务编排，设备调用与错误码归一在这里。
+ * 系统日历能力门面（阶段 6R.1 按权限边界重写）。
  *
- * 默认走 CalendarManager.editEvent（API 12）——它打开系统日程编辑页，由用户当面确认后才落库，
- * 所以"日历里有这条安排"是用户点头的结果，不是应用偷偷写进去的；
- * addEvent 保留为显式的高级路径（不弹确认直接写），不作为默认。
- * 任何一步失败都归一成 CalendarOutcome，绝不向调用方抛设备异常。
+ * 为什么不再是"默认 editEvent"：本机 SDK 26 的 @ohos.calendarManager.d.ts 在 editEvent 上写明
+ * "Third-party applications can obtain and modify the events after they requested the
+ * READ_WHOLE_CALENDAR permission and the WRITE_WHOLE_CALENDAR permission"，而这两项是 system_basic，
+ * 普通应用拿不到。也就是说 editEvent 创建的那份日程，本应用之后既读不到也删不掉——
+ * 拿它当"可自动同步的受管日程"用，取消/改期就会留下删不掉的孤儿。
+ *
+ * 于是分工：
+ * - writeEvent：受管写入，addEvent 进应用专属「同休日」日历（普通 WRITE_CALENDAR 即可增删改），
+ *   这条是默认路径，"要不要写进系统日历"由用户在应用内的开关当面决定；
+ * - exportEvent：editEvent 只是"导出"，日程之后归系统日历，本应用不承诺再动它；
+ * - removeEvent/purgeManagedCalendar：返回结构化结果，删不动就让调用方留着重试信息。
+ *
+ * 任何一步失败都归一成枚举，绝不向调用方抛设备异常。
  */
 export class CalendarGateway {
   private static context: common.UIAbilityContext | null = null;
@@ -46,29 +60,7 @@ export class CalendarGateway {
     CalendarGateway.context = context;
   }
 
-  /** 默认路径：请用户在系统日历的日程编辑页确认后写入。 */
-  static async confirmEvent(title: string, startMin: number, endMin: number): Promise<CalendarWriteResult> {
-    const opened = await CalendarGateway.manager();
-    if (opened.mgr == null) {
-      return missed(opened.outcome);
-    }
-    try {
-      // editEvent 挂在 CalendarManager 上：它不需要先建好账户，日程落在系统选定的日历里
-      const id = await opened.mgr.editEvent(CalendarGateway.eventOf(title, startMin, endMin));
-      // 接口口径：<0 = 用户在编辑页取消；0 不会返回；抛错另有其态
-      if (id > 0) {
-        Logger.info(TAG, 'event confirmed, id=' + id);
-        return written(id);
-      }
-      Logger.info(TAG, 'event edit canceled by user');
-      return missed(CalendarOutcome.CANCELED);
-    } catch (e) {
-      Logger.warn(TAG, 'editEvent failed: ' + (e as Error).message);
-      return missed(CalendarOutcome.FAILED);
-    }
-  }
-
-  /** 高级路径：跳过系统确认直接写入（仅在用户显式选择时使用）。 */
+  /** 受管写入：写进应用专属「同休日」日历，返回的 id 之后可改可删。 */
   static async writeEvent(title: string, startMin: number, endMin: number): Promise<CalendarWriteResult> {
     const opened = await CalendarGateway.open();
     if (opened.cal == null) {
@@ -76,7 +68,7 @@ export class CalendarGateway {
     }
     try {
       const id = await opened.cal.addEvent(CalendarGateway.eventOf(title, startMin, endMin));
-      Logger.info(TAG, 'event written directly, id=' + id);
+      Logger.info(TAG, 'managed event written, id=' + id);
       return written(id);
     } catch (e) {
       Logger.warn(TAG, 'addEvent failed: ' + (e as Error).message);
@@ -84,21 +76,81 @@ export class CalendarGateway {
     }
   }
 
-  /** 尽力删除日程（计划取消/改期迁移）；空 id 视为已达成，失败只记日志不抛出。 */
-  static async removeEvent(eventId: string): Promise<boolean> {
-    if (eventId === '') {
-      return true;
+  /**
+   * 导出到系统日历：打开系统日程编辑页由用户当面保存。
+   * 之后的日程由系统日历管理，本应用只能记住它、改不动它（见类注释的权限口径）。
+   */
+  static async exportEvent(title: string, startMin: number, endMin: number): Promise<CalendarWriteResult> {
+    const opened = await CalendarGateway.manager();
+    if (opened.mgr == null) {
+      return missed(opened.outcome);
     }
+    try {
+      // editEvent 挂在 CalendarManager 上：不需要先建好账户，日程落在用户选定的日历里
+      const id = await opened.mgr.editEvent(CalendarGateway.eventOf(title, startMin, endMin));
+      // 接口口径：<0 = 用户在编辑页取消；0 不会返回；抛错另有其态
+      if (id > 0) {
+        Logger.info(TAG, 'event exported to system calendar, id=' + id);
+        return exported(id);
+      }
+      Logger.info(TAG, 'event export canceled by user');
+      return missed(CalendarOutcome.CANCELED);
+    } catch (e) {
+      Logger.warn(TAG, 'editEvent failed: ' + (e as Error).message);
+      return missed(CalendarOutcome.FAILED);
+    }
+  }
+
+  /**
+   * 删除日程：空 id 视为已经干净；抛错（权限撤回、日程已被用户删掉、id 不归本应用）一律
+   * 回 FAILED，由调用方保留 event id 作为重试信息——静默当成删掉了，就是把孤儿留给下一次。
+   */
+  static async removeEvent(eventId: string): Promise<RemoveOutcome> {
+    if (eventId === '') {
+      return RemoveOutcome.REMOVED;
+    }
+    const opened = await CalendarGateway.open();
+    if (opened.cal == null) {
+      return RemoveOutcome.FAILED;
+    }
+    try {
+      await opened.cal.deleteEvent(Number(eventId));
+      return RemoveOutcome.REMOVED;
+    } catch (e) {
+      Logger.warn(TAG, 'deleteEvent degraded: ' + (e as Error).message);
+      return RemoveOutcome.FAILED;
+    }
+  }
+
+  /**
+   * 清空应用专属日历里的全部日程（"清空我的全部数据"用）。
+   *
+   * 逐条 deleteEvents 而不是 deleteCalendar 整本账户：SDK 只写明 deleteCalendar 删除
+   * "指定的 Calendar 对象"，是否连带删掉其中日程缺证据，不能拿用户的清理承诺赌它。
+   * 日历账户本身留着（下次写入还要用），所以 true 只表示"日程已清空或本来就没有"。
+   */
+  static async purgeManagedCalendar(): Promise<boolean> {
     const opened = await CalendarGateway.open();
     if (opened.cal == null) {
       return false;
     }
     try {
-      await opened.cal.deleteEvent(Number(eventId));
+      const events = await opened.cal.getEvents();
+      const ids: number[] = [];
+      for (let i = 0; i < events.length; i++) {
+        const evId: number | undefined = events[i].id;
+        if (evId != null && evId > 0) {
+          ids.push(evId);
+        }
+      }
+      if (ids.length === 0) {
+        return true;
+      }
+      await opened.cal.deleteEvents(ids);
+      Logger.info(TAG, 'managed calendar purged, events=' + ids.length);
       return true;
     } catch (e) {
-      // 权限被撤销或日程已被用户删掉：日历侧降级，本机操作照常进行
-      Logger.warn(TAG, 'deleteEvent degraded: ' + (e as Error).message);
+      Logger.warn(TAG, 'purgeManagedCalendar degraded: ' + (e as Error).message);
       return false;
     }
   }
@@ -125,7 +177,7 @@ export class CalendarGateway {
     return { mgr: calendarManager.getCalendarManager(ctx), outcome: CalendarOutcome.WRITTEN };
   }
 
-  /** 取"同休日"专属日历：直写与删除都需要它，账户不存在就建一次。 */
+  /** 受管写入与删除都需要「同休日」日历，账户不存在就建一次。 */
   private static async open(): Promise<OpenedCalendar> {
     const opened = await CalendarGateway.manager();
     if (opened.mgr == null) {
@@ -150,6 +202,9 @@ export class CalendarGateway {
   /**
    * 请求日历读写权限：全部授予返回 true；任一拒绝或请求异常返回 false
    * （调用方降级为"仅保存在应用内"，不崩溃）。
+   *
+   * 只申请 READ/WRITE_CALENDAR（normal 级）：应用专属日历的增删改这两条就够了。
+   * READ/WRITE_WHOLE_CALENDAR 是 system_basic，普通应用申请不到，所以设计上不依赖它们。
    */
   static async requestPermissions(): Promise<boolean> {
     const ctx = CalendarGateway.context;

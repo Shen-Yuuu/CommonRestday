@@ -7,7 +7,10 @@ import { buffer } from '@kit.ArkTS';
  * 传输格式约定：
  * - ciphertext = hex(密文 + 16 字节 authTag 拼接)；
  * - iv = hex(12 字节随机 IV)；
- * - 密钥为 64 位 hex（32 字节），由配对双方以同一口径派生（deriveKeyHex）。
+ * - 密钥为 64 位 hex（32 字节），由调用方交给这里；**本模块不派生、不保存密钥**。
+ *   阶段 6R.2 删掉了原先的 `deriveKeyHex(邀请码)`：6 位数字只有约 20 bit 熵，
+ *   而它当时被明文写进 Preferences，两个条件加起来就不成密钥了。长期容器的唯一候选是 HUKS
+ *   （Task 0.4 门禁未过 → 云端配对保持关闭）。
  */
 
 /** 加密产物（hex 字符串）。 */
@@ -85,19 +88,6 @@ export class SnapshotCrypto {
     } catch (e) {
       return null;
     }
-  }
-
-  /**
-   * 从 6 位邀请码派生 64 位 hex 密钥（SHA-256）。
-   * 配对双方均知晓邀请码，故可推导同一 KEK；
-   * 体验版折中——正式版应由云端下发高熵密钥（KMS 封装），此处仅保证"同码同钥"。
-   */
-  static deriveKeyHex(code: string): string {
-    const md = cryptoFramework.createMd('SHA256');
-    const blob: cryptoFramework.DataBlob = { data: SnapshotCrypto.bytesOf('crd-v1:' + code) };
-    md.updateSync(blob);
-    const digest = md.digestSync();
-    return SnapshotCrypto.toHex(digest.data);
   }
 
   /** 密码学安全随机整数 [0, max)；crypto 随机源异常时退化为 Math.random（仅用于演示邀请码，不用于密钥/IV）。 */

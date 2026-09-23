@@ -24,7 +24,7 @@ const MIN_SLOT_STEPS: number[] = [60, 120, 240];
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
  * - 班表录入不再是底部 Tab，这里给直达入口（我这侧 / 代录 TA 那侧）；
  * - 提醒与通知按低打扰排布：默认只有需行动的一类会响，其余都要用户主动开；
- * - 云端配对未开通时全程降级提示，本机代录照常可用。
+ * - 云端配对关闭时这一页不摆任何云入口（生成/输码/扫码/分享/等级一起收），只留本机代录与退出通道。
  */
 @Component
 export struct MeView {
@@ -823,9 +823,13 @@ export struct MeView {
 
         this.pairingBlock()
 
-        this.divider()
+        // 共享等级只在云端链路开着时才有可见效果（它参与快照生成），关闭态连控件一起收走。
+        // 值本身照旧保存在本机：档位关的是能力，不是用户已经设过的数据。
+        if (FeatureFlags.cloudPairing) {
+          this.divider()
 
-        this.levelBlock()
+          this.levelBlock()
+        }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
@@ -962,7 +966,32 @@ export struct MeView {
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
 
-      if (this.pairState === PAIRED) {
+      if (!FeatureFlags.cloudPairing) {
+        // 关闭态一格云入口都不摆（阶段 6R.2，验收报告 B1）：没有生成邀请码、没有输码、没有扫码、
+        // 没有二维码也没有分享。真正的拒绝在 ProfileSettingsService 那一层，这里只是不给人试探的机会。
+        Text(FeatureFlags.cloudClosedMessage)
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textSecondary)
+        Text('现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。')
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textHint)
+        // 退出通道留着：上一版原型可能在单机上留下 WAITING/PAIRED 标记，藏了入口就不能再撤了
+        if (this.pairState === PAIRED) {
+          Button('解除配对')
+            .width('100%')
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .backgroundColor(DesignTokens.fillWeak)
+            .fontColor(DesignTokens.danger)
+            .onClick(() => this.askUnpair())
+        } else if (this.pairState === PAIR_WAITING) {
+          Button('取消配对')
+            .width('100%')
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .backgroundColor(DesignTokens.fillWeak)
+            .fontColor(DesignTokens.textSecondary)
+            .onClick(() => this.cancelWaiting())
+        }
+      } else if (this.pairState === PAIRED) {
         Text(this.pairedNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)

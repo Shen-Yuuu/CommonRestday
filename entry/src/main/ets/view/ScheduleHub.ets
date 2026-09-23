@@ -1,6 +1,6 @@
 import { router } from '@kit.ArkUI';
 import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
-import { ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
+import { FeatureFlags, ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { ownerFromParams, ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
@@ -348,7 +348,10 @@ export struct ScheduleHub {
               this.auxEntriesCard()
             }
 
-            Text('TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。')
+            // 云端档位关闭时不把用户指向一个已经收起来的入口（阶段 6R.2）
+            Text(FeatureFlags.cloudPairing
+              ? 'TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。'
+              : 'TA 的班表由你在这台手机上代录。')
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textHint)
               .width('100%')

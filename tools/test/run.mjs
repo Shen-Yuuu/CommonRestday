@@ -27,7 +27,9 @@ const LOG = path.join(HERE, 'out', 'last-run.log');
 
 /** 裸模块名 -> 临时 barrel：设备侧源码（@kit、cloud、RDB、Preferences）不参与拷贝，用类型壳替代。 */
 const BARE = {
-  domain: 'domainIndex', feature: 'featureIndex', data: 'dataIndex', commons: 'commonsIndex'
+  domain: 'domainIndex', feature: 'featureIndex', data: 'dataIndex', commons: 'commonsIndex',
+  // 云客户端：@kit.CloudFoundationKit 不参与转译，桩见 STUB_CLOUD。
+  cloud: 'cloudIndex'
 };
 
 /**
@@ -39,8 +41,11 @@ const TREES = [
   { root: 'test', from: 'domain/src/test', skip: [] },
   {
     root: 'feature/main', from: 'feature/src/main',
-    skip: ['ScheduleUseCase.ets',
-      'ScheduleOverviewQueryService.ets', 'ProfileSettingsService.ets',
+    skip: [
+      // ScheduleUseCase 与概览查询要 @kit/taskpool。ProfileSettingsService 已从 skip 里移出：
+      // 它只依赖 SettingsStore/ScheduleRepo/云客户端，三者下面都有同名桩，而验收报告 B1 要求
+      // "关闭态云调用 0 次、pairId/key/state 不变"必须在离线侧断言，不能只写在真机清单里。
+      'ScheduleUseCase.ets', 'ScheduleOverviewQueryService.ets',
       // 两个门面包 @kit.CalendarKit / reminderAgentManager；PlanUseCase 通过能力端口调用它们，
       // 单测注入确定性端口实现，这里只需要类型壳让默认适配器过编译。
       'CalendarGateway.ets', 'ReminderGateway.ets',
@@ -179,9 +184,11 @@ export class RecomputeExecutor {
 
 /** 设备侧门面（SettingsStore/ScheduleRepo）的类型壳：用例只驱动纯装配，能过类型即可。 */
 const STUB_DATA = `
-import { Course, ScheduleOverride, ShiftType, Window } from './main/ets/model/Types';
+import { Course, defaultParams, EngineParams, ScheduleOverride, ShiftType, Window } from './main/ets/model/Types';
 
 export const PAIRED = 'PAIRED';
+export const PAIR_NONE = 'NONE';
+export const PAIR_WAITING = 'WAITING';
 
 export interface PlanRow {
   start: number; end: number; id: string; title: string; kind: string; status: string;
@@ -253,6 +260,17 @@ export class ScheduleRepo {
   static async listPlansCarryingHandles(): Promise<PlanRow[]> {
     return sortedRows((r: PlanRow) => r.myEventId !== '' || r.reminderId >= 0);
   }
+  /** 删除伴侣（本机代录）名下数据：离线只清内存表里 createdBy=PARTNER 的计划行。 */
+  static async deletePartnerData(): Promise<void> {
+    const drop: string[] = [];
+    planRows.forEach((r: PlanRow) => {
+      if (r.createdBy === 'PARTNER') { drop.push(r.id); }
+    });
+    for (const id of drop) { planRows.delete(id); }
+  }
+  static async clearAllData(): Promise<void> {
+    planRows.clear();
+  }
 }
 
 function sortedRows(keep: (r: PlanRow) => boolean): PlanRow[] {
@@ -264,9 +282,136 @@ function sortedRows(keep: (r: PlanRow) => boolean): PlanRow[] {
   return out;
 }
 
+/**
+ * 设置存储的离线桩：设备侧那份是 Preferences 文件（crd_settings），这里换成同名键的内存表，
+ * 于是"写库之前就该返回"这类断言有可观察的落点——桩里没写进去，就是真机上没写进去。
+ * 方法名、同步/异步形态与设备侧逐条对齐（getPairState/getShareLevel 等在设备侧都是 getSync）。
+ */
+const settingsRows = new Map<string, Object>();
+let uidSeq = 0;
+
+function settingOf(key: string, dflt: Object): Object {
+  const v = settingsRows.get(key);
+  return v === undefined ? dflt : v;
+}
+
 export class SettingsStore {
-  static getPairState(): string { return 'NONE'; }
-  static getPartnerProfile(): PartnerProfile | null { return null; }
+  static async setParams(p: EngineParams): Promise<void> {
+    settingsRows.set('engine_params', JSON.stringify(p));
+  }
+  static getParams(): EngineParams {
+    const text = settingOf('engine_params', '') as string;
+    return text === '' ? defaultParams() : (JSON.parse(text) as EngineParams);
+  }
+  static getShareLevel(): number {
+    return Number(settingOf('share_level', 2));
+  }
+  static async setShareLevel(level: number): Promise<void> {
+    settingsRows.set('share_level', level);
+  }
+  static getPairState(): string {
+    return settingOf('pair_state', PAIR_NONE) as string;
+  }
+  static async setPairState(state: string, partnerUid: string): Promise<void> {
+    settingsRows.set('pair_state', state);
+    settingsRows.set('partner_uid', partnerUid);
+  }
+  static getPartnerUid(): string {
+    return settingOf('partner_uid', '') as string;
+  }
+  static getPairId(): string {
+    return settingOf('pair_id', '') as string;
+  }
+  static async savePairId(pairId: string): Promise<void> {
+    settingsRows.set('pair_id', pairId);
+  }
+  /** 只读：长期密钥不再由本应用写入（阶段 6R.2），读到的恒是空串或上一版原型留下的残留。 */
+  static async getPairKey(): Promise<string> {
+    return settingOf('pair_key', '') as string;
+  }
+  static async clearPairKey(): Promise<void> {
+    settingsRows.delete('pair_key');
+  }
+  static getPartnerSnapVer(): number {
+    return Number(settingOf('partner_snap_ver', 0));
+  }
+  static async setPartnerSnapVer(v: number): Promise<void> {
+    settingsRows.set('partner_snap_ver', v);
+  }
+  static async getOrCreateUid(): Promise<string> {
+    const existing = settingOf('device_uid', '') as string;
+    if (existing !== '') {
+      return existing;
+    }
+    uidSeq = uidSeq + 1;
+    const uid = 'uid-offline-' + uidSeq;
+    settingsRows.set('device_uid', uid);
+    return uid;
+  }
+  static getPartnerProfile(): PartnerProfile | null {
+    const v = settingOf('partner_profile', null);
+    return v == null ? null : (v as PartnerProfile);
+  }
+  static async savePartnerProfile(profile: PartnerProfile): Promise<void> {
+    settingsRows.set('partner_profile', profile);
+  }
+  static async clearPartnerProfile(): Promise<void> {
+    settingsRows.delete('partner_profile');
+  }
+  static async getWeeklyReminderId(): Promise<number> {
+    return Number(settingOf('weekly_reminder_id', -1));
+  }
+  static isPrivacyAccepted(): boolean {
+    return settingOf('privacy_accepted', false) === true;
+  }
+  static async acceptPrivacy(): Promise<void> {
+    settingsRows.set('privacy_accepted', true);
+  }
+  static async clearAllSettings(): Promise<void> {
+    settingsRows.clear();
+  }
+}
+`;
+
+/**
+ * 云客户端的离线桩：设备侧那份 import @kit.CloudFoundationKit，不参与转译。
+ * 关键差别：桩**必定成功**（返回一个会话），而真机上 AGC 未配置时 `cloudFunction.call` 必定抛错。
+ * 只有"云端被误配置成功"这一格才能暴露缺失的开关守卫——少一次判断，pairId/pairState 就会被写进本机，
+ * 这正是验收报告 B1 的原始风险。`calls` 与设备侧同名，用来断言关闭态一条请求都没发。
+ */
+const STUB_CLOUD = `
+export interface PairingSession {
+  sessionId: string;
+  code: string;
+  creatorUid: string;
+  status: string;
+  expiresAt: number;
+}
+
+export class AgcPairingClient {
+  /** 云函数调用计数（设备侧同名字段）：关闭态的断言就打这里。 */
+  static calls: number = 0;
+
+  async createPairing(uid: string): Promise<PairingSession> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return mkSession('session-from-the-cloud', '246810', uid);
+  }
+
+  async joinPairing(code: string, uid: string): Promise<PairingSession> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return mkSession('session-from-the-cloud', code, uid);
+  }
+
+  async unpair(pairId: string, uid: string): Promise<void> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+  }
+}
+
+function mkSession(id: string, code: string, creator: string): PairingSession {
+  const s: PairingSession = {
+    sessionId: id, code: code, creatorUid: creator, status: 'WAITING', expiresAt: 0
+  };
+  return s;
 }
 `;
 
@@ -327,6 +472,7 @@ function prepare() {
     + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n"
     + "export * from './feature/main/ets/usecase/PlanUseCase';\n"
     + "export * from './feature/main/ets/usecase/PlanProjectionCleanupService';\n"
+    + "export * from './feature/main/ets/usecase/ProfileSettingsService';\n"
     + "export * from './feature/main/ets/integration/PlanCapabilities';\n");
   for (const [name, body] of Object.entries(STUB_GATEWAYS)) {
     const dir = path.join(OUT, 'feature/main/ets/integration');
@@ -342,6 +488,7 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'dataIndex.ts'),
     "export * from './data/main/ets/db/MigrationRunner';\nexport * from './dataStubs';\n");
   fs.writeFileSync(path.join(OUT, 'dataStubs.ts'), STUB_DATA);
+  fs.writeFileSync(path.join(OUT, 'cloudIndex.ts'), STUB_CLOUD);
   fs.writeFileSync(path.join(OUT, 'feature/main/ets/usecase/ScheduleUseCase.ts'),
     STUB_SCHEDULE_USECASE);
   const perfDir = path.join(OUT, 'feature/main/ets/performance');

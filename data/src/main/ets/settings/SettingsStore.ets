@@ -201,16 +201,20 @@ export class SettingsStore {
     return uid;
   }
 
-  /** 快照加密密钥（32 字节 hex，64 字符）；未生成时返回空串。 */
+  /**
+   * 快照加密密钥（32 字节 hex，64 字符）；没有就返回空串。
+   *
+   * **只读**：本应用不往 Preferences 写长期密钥（改造文档 §0.3 红线 + 阶段 6R.2）。
+   * 之前那个写入口 `savePairKey` 连同 `SnapshotCrypto.deriveKeyHex` 一起删掉了——它写进去的是
+   * "6 位邀请码 SHA-256"出来的密钥，熵只有 ~20 bit，而 Preferences 是明文可读的键值文件。
+   * 长期密钥的唯一容器是 HUKS（Task 0.4 尚未验证，所以云端配对保持关闭）。
+   * 这里保留读，是为了让读到残留值时快照链路仍要校验长度，也是为了把旧原型留下的那条清干净。
+   */
   static async getPairKey(): Promise<string> {
     return SettingsStore.p().getSync(KEY_PAIR_KEY, '') as string;
   }
 
-  static async savePairKey(hex: string): Promise<void> {
-    await SettingsStore.p().put(KEY_PAIR_KEY, hex);
-    await SettingsStore.p().flush();
-  }
-
+  /** 清掉上一版原型可能留在沙箱里的密钥（解除配对、清空数据、恢复完成回调都用它）。 */
   static async clearPairKey(): Promise<void> {
     await SettingsStore.p().delete(KEY_PAIR_KEY);
     await SettingsStore.p().flush();

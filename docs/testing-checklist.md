@@ -11,10 +11,10 @@
 
 | 口径 | 怎么跑 | 能证明 | 当前状态 |
 |---|---|---|---|
-| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`；TypeScript 错误直接返回非零，不再"假绿"） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **0 类型错误 / 182 passed / 0 failed**（2026-09-23 阶段 6R.1 复跑，含重写后的 19 条日历生命周期用例） |
+| 离线单测 | `node tools/test/run.mjs`（日志 `tools/test/out/last-run.log`；TypeScript 错误直接返回非零，不再"假绿"） | 领域引擎、读模型、用例编排、迁移与恢复决策、灰度档位的口径正确 | **0 类型错误 / 190 passed / 0 failed**（2026-09-23 阶段 6R.2 复跑，新增 8 条云关闭态与清空播报用例；`ProfileSettingsService` 已从 runner 跳过名单放回） |
 | 离线预算测量 | `node tools/perf/budget.mjs` | 引擎重算、快照编解码、读模型投影**在开发机上**相对 16ms 的位置（下界） | 已测：120 天稠密配对 P95 14.30ms、366 天 73.45ms（超预算）、codec ≤0.16ms |
-| 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`hvigor --mode module -p module=entry@ohosTest assembleHap` → BUILD SUCCESSFUL，`ArkTS:WARN` 262），**未执行 → 待设备** |
-| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 357、未配置签名故跳过签名 |
+| 真机插桩 | `entry/src/ohosTest`（DevEco 的 OhosTest 运行配置） | 真实 RDB / Preferences 上写进去的数据，能被下一次查询按同一口径读回来 | 编译通过（`node tools/verify.mjs --steps=ohostest` → BUILD SUCCESSFUL，`ArkTS:WARN` 260），**未执行 → 待设备**（阶段 6R.2 起配对残留改由用例自己经 `preferences` 种下，因为生产写入口已删） |
+| 命令行出包 | `hvigorw clean` + `assembleHap -p buildMode=release --no-daemon` | release 档能真的产出包（debug 绿不代表 release 绿，见 §20.4） | 2026-09-23 起 **BUILD SUCCESSFUL**，产物 `entry-default-unsigned.hap`、`ArkTS:WARN` 352、未配置签名故跳过签名 |
 | 手工走查 | 下面 §1–§20 | 系统弹窗、权限、真实日历、渲染、热区、读屏、扫码、卡片、通知栏、性能采样、备份恢复往返、开关关档表现、数据删除动作 | **全部待设备** |
 
 **任何"待设备"项不得因为前一种口径通过而勾掉。**
@@ -167,34 +167,36 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ## 9. 云端入口降级（保持关闭，不是待办）
 
-- [ ] 9.1 我的 → 伴侣与同步 → **生成邀请码**：toast `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`，**不崩溃**，且页面**停在未配对态**（不进"等待对方输码"、不出现大字短码与「本机标记已配对」）；上方"本机代录"链路照常可用（FR-015）。进入了等待态＝`createPairing` 真的成功了 → 见 §9.4
-- [ ] 9.2 **输码加入**：非 6 位数字被拒并提示 `请输入对方分享的 6 位配对码`；6 位数字但云端不可用时统一提示 `加入失败：云端配对暂未开放或配对码无效`，不进入"等待对方输码"的假状态
-- [ ] 9.3 云端不可用时，共同时间、计划、冲突、录入全程无阻断（`FeatureFlags.cloudPairing = false`。更正：档位是 `feature/src/main/ets/config/FeatureFlags.ets` 里的**源码常量**，不是 BuildProfile 映射；无远端下发通道。注意 `ProfileSettingsService.createInvite/joinByCode` 两个入口**没有**读这个开关，见 §20.5）
-- [ ] 9.4 **停止条件（不是通过项）**：任何时候真机上都不应出现"已配对 + 加密同步"的成功态。当前 `createInvite/joinByCode` 走的是"短码派生长期密钥 → `SettingsStore.savePairKey` 落 Preferences"的原型实现，**违反阶段 3 门禁**（长期密钥不得写入 Preferences / 源码 / 二维码 / 日志）。若 AGC 端点意外可达并真的配对成功，判为**验收失败**并立刻回退，不得顺手打开同步
-- [ ] 9.5 「本机标记已配对」是体验版按钮：它只把本机状态置为已配对，**没有任何服务端推送**。文案已按"尚未同步"口径改过——状态文字 `已标记配对`、卡内说明 `本机已标记为已配对，但云端未开通：TA 的班表不会自动同步。现在就要共同时间，请用上方「伴侣（本机代录）」。`、身份卡 `本机标记已配对 · 云端未开通，未同步`。真机上逐字对这三句，出现旧的"会按你的隐私等级加密后同步给 TA"＝有人回退或擅自开了 `cloudPairing` → 判失败。**注意**：这一屏只能经 §9.4 的违规路径到达，所以本轮判为**门禁解除后复验**，不因没看到而勾掉
+- [ ] 9.1 **「我的 · 伴侣与同步」在关闭态一格云入口都不摆**（阶段 6R.2 改了判据：不再有"点了之后 toast 降级"这回事）：逐项目视确认**没有**「生成邀请码」、「输入配对码」输入框、「扫码配对」、二维码、「分享配对链接」、共享等级（L1/L2/L3）；**有**的是本机代录分区、说明文字 `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`、以及一句「现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。」；上方"本机代录"链路照常可用（FR-015）
+- [ ] 9.2 **本机代录不受关闭态影响**：代录建档/编辑/清空、共同时间、计划、冲突四条都正常；`FeatureFlags.cloudPairing=false` 时共同页的来源标注恒为「本机代录」，不出现「云端快照」
+- [ ] 9.3 云端不可用时，共同时间、计划、冲突、录入全程无阻断（`FeatureFlags.cloudPairing = false`。档位是 `feature/src/main/ets/config/FeatureFlags.ets` 里的**源码常量**，不是 BuildProfile 映射；无远端下发通道。**更正（阶段 6R.2）**：旧的"两个入口没读这个开关，见 §20.5"已经不成立——`createInvite/joinByCode/markPaired` 现在第一句就看档位，扫码/分享/外来深链在网关层各自先拒，本包连 `ohos.permission.INTERNET` 都没有。这一条现在验的是"关掉之后本机链路确实一点差异没有"，尤其飞行模式下（→ §20.5 改成飞行模式回归）
+- [ ] 9.4 **停止条件（不是通过项）**：任何时候真机上都不应出现"已配对 + 加密同步"的成功态。**阶段 6R.2 起这是双重不可能**：①档位关闭且入口不渲染；②短码派生密钥的实现（`SnapshotCrypto.deriveKeyHex` + `SettingsStore.savePairKey`）已从源码删除，本机没有任何写密钥的路径。若仍然出现等待态/短码/已配对，说明有人同时改了 `FeatureFlags` 和 `CloudApi` → 判**验收失败**并回退，不得顺手打开同步
+- [ ] 9.5 **「本机标记已配对」这屏当前不可达**（阶段 6R.2）：该按钮与它的三句"尚未同步"口径文案都挂在 `cloudPairing=true` 的分支里，关闭态既不渲染也点不到；关闭态只有退出通道——残留 `PAIRED` → 「解除配对」按钮，残留 `WAITING` → 「取消配对」按钮。真机判据改为：**若沙箱里确实有旧原型留下的 `pair_state=PAIRED`**，进这一页应看到「已标记配对」的本机读法 + 一个能按的「解除配对」，按下后四项标记（key/pairId/状态/快照游标）清空且**没有**任何云请求（`hilog` 过滤 `AgcPairingClient`/`cloudFunction` 应为空）。三句旧文案的逐字核对属**门禁解除后复验**，本轮不因没看到而勾掉
 - [ ] 9.6 配对页与隐私设置页仍是占位路由（`NOT_READY` → 落到「我的」Tab），不出现空白页
 
 ## 10. 扫码、二维码与系统分享（阶段 4 Task 4.1 出口）
 
 **先划清"当前根本没有这条路径"和"路径没验"**，否则会把未实现当成通过：
 
-- `FeatureFlags.scanPairing = false`，而扫码入口的显示条件是 `canIUse(Scan) && scanPairing` → **当前构建里「扫码配对」按钮不会出现**。
-- `MeView.pairToken` 全仓**没有任何写入方**（服务端还没签发一次性凭据）→ `PairLink.build('')` 返回空串 → 「二维码 + 分享配对链接」那一屏的代码在位但**进不去**。
-- 「大字短码」那一屏同样进不去：它挂在 `pairState === PAIR_WAITING` 下，而等待态只由 `createInvite` 成功写入——**云端可达本身就是 §9.4 的失败条件**。所以本轮真机上不该看到短码屏、二维码、「本机标记已配对」按钮。
-- 结论：10.1–10.7 验的是**门禁关闭时该看到什么**（本轮就能跑）；10.8–10.11 要临时改开关/临时凭据才能跑，属于**门禁解除后的复验项**，本轮不因没跑而勾掉，也不因没跑而判失败。
+- `FeatureFlags.scanPairing = false`，且扫码入口的显示条件是 `cloudPairing && canIUse(Scan) && scanPairing` → **当前构建里「扫码配对」按钮不会出现**。阶段 6R.2 之后即使有人绕过页面直接调 `offerFromScan()`，也只会拿到 `UNSUPPORTED + 云端配对暂未开放…`，相机视图不会打开。
+- `MeView.pairToken` 全仓**没有任何写入方**（服务端还没签发一次性凭据）→ `PairLink.build('')` 返回空串；`shareLink()` 在关闭态连链接是不是空都不看，直接拒 → 「二维码 + 分享配对链接」那一屏的代码在位但**进不去**。
+- 「大字短码」那一屏同样进不去：它挂在 `pairState === PAIR_WAITING` 下，而等待态只由 `createInvite` 成功写入，那条路径现在第一句就被档位挡住（§9.1/§9.4）。所以本轮真机上不该看到短码屏、二维码、「本机标记已配对」按钮。
+- **深链是这一节唯一"入口还在"的路径**：`crdpair` scheme 仍然注册（旧包发出去的链接不该在装机后报错），但 `offerIncoming()` 在关闭态**一律返回 false**——不弹确认页、不在进程内存留痕、不广播 `pairOfferCount`。所以 10.3/10.5/10.6/10.7 的判据已从"弹出什么样的确认页"改成"确实什么都不弹"。
+- 结论：10.1–10.7 验的是**门禁关闭时该看到什么**（本轮就能跑，且现在预期是"什么都看不到"）；10.8–10.11 要临时改开关/临时凭据才能跑，属于**门禁解除后的复验项**，本轮不因没跑而勾掉，也不因没跑而判失败。
 
-- [ ] 10.1 我的 → 伴侣与同步（未配对态）：只有 **生成邀请码 / 输码加入** 两个按钮，没有「扫码配对」，也没有指向未知能力的死入口
-- [ ] 10.2 无扫码能力时（`canIUse(Scan)` 为 false 的设备/模拟器）出现 `这台设备不支持扫码：配对以 6 位短码为准，让对方手动输入。`；有扫码能力的真机上这行**不该出现**（但 `scanPairing=false` 也不给扫码按钮）——记下这个组合，若它看着像坏了，就在阶段 6.2 前把文案与开关一起校准，不要临时把开关拨上充数
-- [ ] 10.3 **深链在门禁关闭时也是活的**（这条本轮就能验，别漏）：`module.json5` 已注册 scheme `crdpair` + `ohos.want.action.viewData` + `entity.system.default`。用系统里任一能拉起 `crdpair://join?t=<22–128 位 base64url>` 的方式进本机（命令行传 uri 的具体参数名以设备上的 `aa` 帮助为准，本清单不写没验过的命令）→ 弹「确认配对请求」，正文 `收到一次性配对凭据 ABCDEF…UVWX。接受后由云端确认，本应用不会自动绑定。`，**token 只露首尾**，整条凭据不出现在屏幕与日志里
-- [ ] 10.4 确认页点「接受」→ toast `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`，配对状态**不变**、不写密钥、不出现"已配对"（`acceptOffer` 在 `cloudPairing=false` 时直接回失败）。**停止条件**：若真出现成功态或"等待对方输码"，判验收失败并回退
-- [ ] 10.5 确认页点「忽略」→ 请求被取走清空；同一条链接再拉一次要**重新弹**（一次性凭据不缓存），且一次拉起只弹一次
-- [ ] 10.6 非本应用内容一律无痕：普通网址/支付码 → `这不是同休日的配对码`；`crdpair://join?t=tooshort` → `二维码内容不是有效的配对链接`；`crdpair://other?...` → 同 `MALFORMED` 口径；带已过期 `exp` → `这个配对链接已过期，请对方重新生成`。**四条都不得弹确认页**，也不得把 token 写进任何持久化
-- [ ] 10.7 冷启动深链不丢请求：进程被杀时由链接拉起 → 首页挂载后仍能弹确认页（`AppNavigator` 挂载前查 `peekOffer`，页面 `aboutToAppear` 补取一次）；**待确认请求只在进程内存**，杀进程即消失
+- [ ] 10.1 我的 → 伴侣与同步（未配对态、`cloudPairing=false`）：**云入口为零**——没有「生成邀请码」、「输入配对码」输入框、「扫码配对」、二维码、分享，也没有共享等级；只有本机代录分区 + 一句未开放说明（逐字见 §9.1）。**出现其中任何一项＝有人把 `cloudPairing` 翻上了或回退了 6R.2**，判失败
+- [ ] 10.2 无扫码能力时（`canIUse(Scan)` 为 false 的设备/模拟器）出现 `这台设备不支持扫码：配对以 6 位短码为准，让对方手动输入。`；有扫码能力的真机上这行**不该出现**（但 `scanPairing=false` 也不给扫码按钮）——记下这个组合，若它看着像坏了，就在阶段 6.2 前把文案与开关一起校准，不要临时把开关拨上充数。**注意**：关闭态这三句都到不了屏幕（`channels` 不给入口、`offerFromScan` 先回未开放），这条属门禁解除后的复验
+- [ ] 10.3 **深链在门禁关闭时什么都不弹**（阶段 6R.2 改了判据，本轮就能验）：`module.json5` 仍注册 scheme `crdpair` + `ohos.want.action.viewData` + `entity.system.default`。用系统里任一能拉起 `crdpair://join?t=<22–128 位 base64url>` 的方式进本机（命令行传 uri 的具体参数名以设备上的 `aa` 帮助为准，本清单不写没验过的命令）→ 期望：**应用正常启动到首页，不弹「确认配对请求」，状态栏/角标/日志里没有任何待确认痕迹**，`hilog` 里 `cloudFunction` 零条。旧稿"弹确认页且 token 只露首尾"的判据一并作废（关闭态没有任何理由让用户看到一条无法完成的配对请求）
+- [ ] 10.4 确认页点「接受」→ toast `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`，配对状态**不变**、不写密钥、不出现"已配对"（`acceptOffer` 在 `cloudPairing=false` 时直接回失败）。**当前无法从真机走到这一屏**（10.3 已说明深链不弹确认页），所以这条只剩两类证据：源码静态核对 `acceptOffer` 的关闭态分支 + 设备上"若能到达即说明有人开档"→ 判验收失败并回退。网关整体在离线 runner 里被跳过（依赖 Scan Kit 与 `AppStorage`），所以**没有**离线断言撑着，别把它写成"已测"
+- [ ] 10.5 确认页点「忽略」→ 请求被取走清空；同一条链接再拉一次要**重新弹**（一次性凭据不缓存），且一次拉起只弹一次。**判据同 10.4：当前到不了这一屏**，设备侧改验"重复拉起同一条深链，两次都不弹任何东西"
+- [ ] 10.6 非本应用内容一律无痕：普通网址/支付码 → `这不是同休日的配对码`；`crdpair://join?t=tooshort` → `二维码内容不是有效的配对链接`；`crdpair://other?...` → 同 `MALFORMED` 口径；带已过期 `exp` → `这个配对链接已过期，请对方重新生成`。**四条都不得弹确认页**，也不得把 token 写进任何持久化。**关闭态这四句提示同样不会出现**（`offerIncoming` 在解析前就返回 false）→ 本轮只验"无痕"这一半，逐句提示文案属门禁解除后复验
+- [ ] 10.7 冷启动深链：进程被杀时由链接拉起 → **关闭态下首页挂载后什么都不弹**（`AppNavigator` 的 `peekOffer()` 恒为 null，因为它压根没被写入）。"不丢请求 + 补取一次"的旧判据要等开档后才重新成立；**待确认请求只在进程内存**，杀进程即消失
 - [ ] 10.8 短码主路径那屏（需先有合法 `createInvite`，也就是门禁解除后）：大字 6 位码 + `对方在 TA 的「我的 · 伴侣与同步」输入此码即可。二维码与分享链接只承载服务端签发的一次性凭据，云端配对开通后自动出现。` + 「复制配对码」（`已复制到剪贴板` / `复制失败，请手动记下` / 未生成时 `还没有配对码，先点「生成邀请码」`）。**屏幕上不该有二维码**，有就是有人在没有一次性凭据时画了个假码
 - [ ] 10.9 扫码结果码分支（需临时开 `scanPairing` + 真机）：用户主动退出扫码（Scan Kit `1000500002`）**静默返回**，不提示失败；模拟器/缺 Scan 后端（`1000500001`）→ `扫码结果需真机复验（模拟器不具备完整扫码能力）`，判为**未验证**而不是失败；其他错误 → `扫码失败，请重试或改用 6 位配对码`
 - [ ] 10.10 分享面板（需一次性凭据才能验真）：`link` 为空时不打开面板，直接 `没有可分享的配对链接：链接只承载服务端签发的一次性凭据，请把 6 位配对码告诉 TA`；凭据过期 → `配对链接已失效，请重新生成`；系统分享不可用时**退回剪贴板**而不是报错
 - [ ] 10.11 二维码只画 `crdpair://join?t=<一次性凭据>`：截图、转发、被第三方扫码器记进历史都不该泄露长期密钥或邀请历史（**配对码不进链接**）。扫码器实测：扫出来的文本必须就是这个 scheme，出现 6 位短码或任何密钥片段判失败
 - [ ] 10.12 **本轮已知偏离（不勾通过）**：二维码/分享/短码三屏都缺内容源（`pairToken` 无写入方、等待态只能由违规路径进入），因此"扫码配对"整条闭环在真机上无法端到端验证。它必须等阶段 3 门禁解除 + 服务端 `pairing-init` 上线后按 §19 的 3.5 另立清单复验
+- [ ] 10.13 **阶段 6R.2 带来的新偏离（记录，不判失败）**：`crdpair` scheme 仍然注册，但关闭态 `offerIncoming()` 一律返回 false，于是"点开一个配对链接"的现象征是**应用正常启动、什么都不弹**。保留注册是有意的（旧包/对方手机发出的链接不该在升级后变成"无应用可打开"），代价是这类链接当前对用户没有任何解释。若真机走查认为不可接受，解法是在 `EntryAbility` 侧对"被 `crdpair` 拉起但档位关闭"给一句 toast——那是 entry 层的新增交互，属阶段 6R.4 的文案批次，本轮不扩范围
 
 ## 11. 桌面 2×2 服务卡片（阶段 4 Task 4.2 出口）
 
@@ -454,9 +456,9 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ### 18.1 已测（不需要设备）
 
-- [x] 18.1.1 五个开关各有且只有一处口径落点：`calendarFlow`→`PlanUseCase` 的日历编排（唯一读档处，关掉就一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`（「写入日历」入口，`canExportToCalendar` 与它同处、同样吃这个档）；`cloudPairing`→`MeView` 文案 + `PairingShareGateway.acceptOffer` 写库前拦截；`scanPairing`→`PairingShareGateway.channels`（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth`。全仓 `grep -rn "FeatureFlags\."` 无其它读取方
+- [x] 18.1.1 五个开关的口径都落在**少数几个判据函数**里，页面只消费判据、不各自发明关闭态（2026-09-23 `grep -rn "FeatureFlags\."` 全仓复验，逐处点数）：`calendarFlow`→`PlanUseCase`（写日历编排，关掉一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`/`canExportToCalendar` 两个入口判据；`cloudPairing`→**四侧**：`ProfileSettingsService.cloudBlocked()`（三个写动作共用的第一句）与 `unpair` 的云侧分支、`PairingShareGateway` 五处（`channels`/`offerFromScan`/`shareLink`/`offerIncoming`/`acceptOffer`）、`ScheduleUseCase` 快照推拉两处、`MeView` 五处 + `ScheduleHub` 一处（入口与文案）；`scanPairing`→`PairingShareGateway.channels` 一处（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth` 一处。除 `cloud` 模块内部之外没有其它读取方
 - [x] 18.1.2 `newShell` 已删除：旧四 Tab 壳层在阶段 1 就被换掉、从来没有可切换分支，release 包里它是 `false` 而无人读，属于谎报型开关（rollout 文档 §3.1）。壳层回退方式＝整包回退
-- [x] 18.1.3 当前档位离线全绿：0 类型错误 / 182 passed / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` 357（debug/release 同值）、ohosTest 262，两道都比阶段 6.4 基线（361 / 266）低——6R.1 把重复的写库实现收进 `ScheduleRepo.setPlanColumns` 后告警位随之减少，基线按"只降不升"改在这里
+- [x] 18.1.3 当前档位离线全绿：0 类型错误 / **190 passed** / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` **352**（debug/release 同值）、ohosTest **260**。基线沿革 361/361/266 → 357/357/262（6R.1 把重复写库收进 `ScheduleRepo.setPlanColumns`）→ 352/352/260（6R.2 删掉 `deriveKeyHex`+`savePairKey` 两个方法体与三处调用点），一律按"只降不升"改在 `tools/verify-baseline.json`
 - [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **169 passed / 13 failed**，失败项全部是日历口径（写成的状态不是 `MANAGED_WRITTEN`、一次日历调用都没发、取消/改期后残留句柄没被清）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别；日志 `../.crdtest/6r1-off-calendarflow.log`（13 条 FAIL 里 12 条是 `expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …` 与 `double_submit… expected 1 but got 0`，第 13 条正是那条档位断言本身）
 - [x] 18.1.5 `newCard = false`、`responsiveV2 = false` 各自单独编译通过（日志 `../.crdtest/build-6-2-off-newCard.log`、`build-6-2-off-responsiveV2.log`），三档恢复后 `build-6-2-final.log` 再绿一次
 - [x] 18.1.6 档位摘要一行齐全：`FeatureFlags.summary()` 由 `PresentationModelsTest` 断言五档都在、且按 rollout 顺序排列（漏一档 = 日志证明不了这个包的现场状态）
@@ -471,6 +473,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 18.2.5 `responsiveV2` 关档包：折叠屏展开/平板宽度下回到单列，共同时间详情改为半模态，无"外壳两栏、内容窄屏排版"的半开状态
 - [ ] 18.2.6 关档包的数据完整性：班表、课程、计划、冲突、TA 档案一条不少（规则 3：只关能力不关数据）
 - [ ] 18.2.7 扫码入口的前置关系：只开 `scanPairing`（`cloudPairing` 仍 false）时「我的」页不出现扫码按钮
+- [ ] 18.2.8 `cloudPairing` 关档包（**这就是首发包**，不用另出）：①「我的 · 伴侣与同步」按 §9.1 逐项目视，云入口为零；②系统设置里该应用的权限页**没有**"网络"相关项，`bm dump -n <bundleName>` 的权限清单只有 3 条；③若沙箱里有旧原型残留的 `pair_state=PAIRED`，按 §9.5 确认「解除配对」按得动且 `hilog` 里没有 `cloudFunction` 记录；④飞行模式下把 P0 主链（录班表→三答案→窗口→计划→日历→取消）跑一遍，与 Wi-Fi 下无差异
 
 ### 18.3 本轮明确没做（不勾通过，也不判失败）
 
@@ -497,14 +500,14 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
   - [ ] 20.1.5 周摘要提醒那条：开过开关后清空，系统"定时提醒"里没有残留句柄（`clearAllData` 只 `cancelReminder(weeklyId)` 一条，句柄丢失的情况要实测）
 - [ ] 20.2 **删除伴侣档案后共同计划仍在**：按 §3.5 删伴侣，再看共同计划分段——`plan` 表按实现是不动的（弹窗也只承诺清除"TA 的全部班表/课表数据"）。确认这是产品要的口径；若要求一起删，需要新增级联并补离线断言
 - [ ] 20.3 **隐私弹窗 5 处文案与实际行为逐字对照**（G4 的判定依据，缺一处就是文案落后于实现）：
-  - `班表/课表数据仅存储在本机数据库，不上传任何服务器` —— 与"本机链路零网络调用"一致；但配对页仍能让 `createInvite` 发出云函数请求（只带 uid 与本地生成的 6 位码），确认这句在提审口径下要不要加限定
+  - `班表/课表数据仅存储在本机数据库，不上传任何服务器` —— 阶段 6R.2 之后这句**在首发包里是字面成立的**：`createInvite/joinByCode` 关闭态第一句就返回，不发云函数；本包连 `ohos.permission.INTERNET` 都没声明。设备侧确认法见 §20.5；提审文案里这句不需要再加限定，但**必须与"云端未开放"那句同屏出现**，否则一旦开档这句就成了谎话
   - `日历事件：仅在你确认创建共同计划时写入系统日历` —— 阶段 6R.1 之后这句**已经不准确**，必须在提审前改口径（Task 6R.4 / G4）：现在默认是"创建时由本应用直接写进应用专属的「同休日」日历"，用户确认的是应用里那个「写入系统日历」开关（默认开），**不再**经过系统日程确认页；只有「导出到系统日历」那条走 `editEvent`。设备侧同时确认两件事：专属日历这一本的名字确实显示为「同休日」；`calendarFlow` 关档时一次都不写
   - `照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图` —— 走系统 Picker + 端侧 `textRecognition`，无相机/相册权限声明，一致
-  - `未来云端同步仅存储加密后的忙闲数据，且以你设置的隐私等级为准` —— "未来"用词与 `CLOUD_BLOCKED` 一致；但等级设置当前无可见效果（见下）
-  - `你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）。` —— 在设备上确认这句会不会让人以为"对方现在就能看到不同等级下的差别"；实际差别只有云端开放后才存在
+  - `未来云端同步仅存储加密后的忙闲数据，且以你设置的隐私等级为准` —— "未来"用词与 `CLOUD_BLOCKED` 一致；阶段 6R.2 起等级设置**在关闭态根本不渲染**，所以这句里的"你设置的"当前无处可设 → 与下一句一起在 Task 6R.4 重写（要么删掉等级这半句，要么改成"云端开放后可设置"）
+  - `你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）。` —— **阶段 6R.2 后这句已确定与实现冲突**（`partnerSyncCard()` 在 `cloudPairing=false` 时不渲染 `levelBlock`，「我的」页找不到这个开关）。提审前必须改成不承诺当前不存在的能力，属 Task 6R.4 / G4-5
   - 《隐私政策》全文入口：当前 `AppConst.PRIVACY_POLICY_URL` 是空串 → 只弹 `隐私政策全文即将上线`。成文并填 URL 后回到这里复点一次
 - [ ] 20.4 **release 档出包**（debug 绿不代表 release 绿）：`hvigorw clean` 后跑 `-p buildMode=release`。2026-09-23 首次运行在 5 个 HAR 上报 `00304036` 缺 `obfuscation-rules.txt`（模块的 `build-profile.json5` 引了不存在的文件，即使 `enable:false` 也会校验），补齐模板文件后成功。下次新增 HAR 时同样要带这个文件
-- [ ] 20.5 **云配对入口在开关关闭时的真实行为**（G2 的代码阻断项，设备接入后先复现一次再决定改法）：`FeatureFlags.cloudPairing` 保持 `false`，点「生成邀请码」→ 期望停在未配对态 + `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`。这条现在能过**只因为 AGC 没配置**、`cloudFunction.call` 必抛错；`createInvite/joinByCode` 里没有 flag 判断，成功分支会 `savePairKey(deriveKeyHex(code))`（§0.3 红线）。修复位置与方案见发布清单 §2 G2
+- [ ] 20.5 **关闭态"零网络"的设备侧证实**（G2 的收尾，阶段 6R.2 之后判据已换）：不再要求"点生成邀请码看它 toast"——那个按钮在当前档位根本不渲染（§9.1）。改为三条硬证据：① `bm dump -n <bundleName>` 的权限清单里没有 `ohos.permission.INTERNET`；② 冷启动后飞一圈全部页面（含深链 `aa start -U crdpair://…` 与系统分享面板），`hilog` 里 `cloudFunction`/`AgcPairingClient` **零条**记录；③ **飞行模式**下把 P0 主链（录班表→三答案→窗口→计划→日历→取消→卡片）完整跑一遍，现象与联网时逐屏一致。旧稿那句"能过只因为 AGC 没配置"已作废：现在守卫在 service 第一句，且短码派生密钥的写入口已从源码删除（发布清单 §2 G2、验收报告 §9.4）
 - [ ] 20.6 **横屏实测**（矩阵里唯一"零适配"的一维）：全仓没有任何 `orientation` 声明与横屏布局分支 → 横屏时容器宽度会落进 medium/expanded，从而在手机上触发为平板设计的留白、居中封顶与共同时间双栏（§13.2/§13.4）。逐屏看能不能接受；不能接受就在 `module.json5` 的 ability 上加 `orientation` 锁竖屏（属产品决定，本轮不替用户做）
 
 ---

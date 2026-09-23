@@ -82,6 +82,12 @@ export function generateInviteCode(): string {
  *   AGC 开通（agconnect-services.json + 云函数部署）前调用必然降级，属预期主路径。
  */
 export class AgcPairingClient implements PairingApi {
+  /**
+   * 进程内云函数调用计数（阶段 6R.2，验收报告 B1 的"关闭态 0 次调用"断言用）。
+   * 只做计数、不做业务：读它不需要权限，也不跨进程。
+   */
+  static calls: number = 0;
+
   async createPairing(uid: string): Promise<PairingSession> {
     const payload: Record<string, Object> = { 'uid': uid, 'code': generateInviteCode() };
     const result = await AgcPairingClient.call('pairing-create', payload);
@@ -107,6 +113,7 @@ export class AgcPairingClient implements PairingApi {
    * - 其余异常一律 CloudApiError(1002)。
    */
   static async call(name: string, data: Record<string, Object>): Promise<string | Object> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
     try {
       const result = await cloudFunction.call({
         name: name,

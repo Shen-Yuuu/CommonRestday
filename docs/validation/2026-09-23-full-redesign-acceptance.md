@@ -328,3 +328,21 @@ Task 2.2 要求精简类型，但 `PLAN_KINDS` 仍暴露 8 项。
 
 `ArkTS:WARN` 上限从 361（debug/release）与 266（ohosTest）降到 357 / 262：`ScheduleRepo` 六个单行写入口合并为 `setPlanColumns`、计划查询合并为 `queryPlans`（ArkTS 的 "Function may throw exceptions" 按 @kit 调用点计数，重复写体会成倍放大告警位）。基线只随实测下降而改，数值记在 `tools/verify-baseline.json`，复跑日志在 `.crdtest/6r1-verify.log`。
 
+> **2026-09-23 追加（阶段 6R.2 后再降一档）**：357 / 357 / 262 → **352 / 352 / 260**。降的原因是 B1 封口删掉了真实的调用点，不是措辞变化——`SnapshotCrypto.deriveKeyHex` 与 `SettingsStore.savePairKey` 两个方法体（各含 `cryptoFramework` / `preferences` 的"可能抛异常"位）连同 `ProfileSettingsService` 里三处 `savePairKey` 调用一起消失。实测命令 `node tools/verify.mjs --steps=offline,debug,release,ohostest`，日志 `.crdtest/verify-{debug,release,ohostest}.log`。
+
+### 9.4 B1 —— 代码已封口，权限面已收窄（2026-09-23，阶段 6R.2）
+
+B1 列的四条整改逐条落地，并额外把"关不掉"的结构依赖删了。**这一条仍不构成阻断项关闭**：B6 存在期间，"关闭态一个字节都不出本机"的最终证据只能是真机抓包/权限核查。
+
+| 整改要求 | 现在的实现 | 证据 |
+|---|---|---|
+| 两个 service 方法第一行先检查 `cloudPairing`，关闭时在任何 UID、网络和写库动作之前返回 | `ProfileSettingsService.cloudBlocked()`（单一判据）；`createInvite`/`joinByCode`/`markPaired` 三条的第一句即返回 `FeatureFlags.cloudClosedMessage`，`getOrCreateUid()` 与 `AgcPairingClient` 都在其后；`unpair`/`cancelWaiting` **不受拒**（本地清除永远执行，云端解绑只在开启时才发） | 离线 `profileSettingsGuardTest` 前三个用例断言"关闭态返回后 `AgcPairingClient.calls === 0`、pairId/pairState/partnerUid 全不变"；`markPaired` 单列一条：能写到库里的 `PAIRED` 就是界面上的"正在同步" |
+| `MeView` 关闭时隐藏生成/输码/扫码/分享等级 | `pairingBlock()` 第一段 `if (!FeatureFlags.cloudPairing)`：只给未开放说明 + 本机代录指引 + 退出通道（残留 `PAIRED`/`WAITING` 仍可解除）；`partnerSyncCard()` 的 `divider + levelBlock` 一并收走；`ScheduleHub` 的 TA 侧提示去掉"请用配对"这半句 | 编译期分支（`else if` 链在关闭分支之后），非运行时隐藏；出包 0 error |
+| 删除或隔离生产路径中的 `deriveKeyHex + KEY_PAIR_KEY` | `SnapshotCrypto.deriveKeyHex` **删除**（该模块头注明"不派生、不保存密钥"）；`SettingsStore.savePairKey` **删除**，`getPairKey` 转为只读、`clearPairKey` 只用于清旧原型残留；`AgcSnapshotSync` 的推拉在 `ScheduleUseCase.pullPartnerSnapshot/pushMySnapshot` 第一句看档位 | 结构保险：只翻 `cloudPairing` 复现不出"短码派生密钥落 Preferences"，因为写入口已经不存在（`grep savePairKey` 只剩注释与文档） |
+| 增加"开关关闭时云客户端 0 次调用、pairId/key/state 均不变"的离线测试 | `AgcPairingClient.calls` 进程内计数（生产与替身同名）；`tools/test/run.mjs` 的 `STUB_DATA` 补出真实签名对齐的内存 `SettingsStore`/`ScheduleRepo`，并把 `ProfileSettingsService` 从 feature 跳过名单里放回来（替身不忠实就没法证 B1）；替身**总是成功**，因此"0 次调用"只能由守卫给出，不能靠云恰好没配 | 离线 **190 passed / 0 type error / exit 0**（新增 8 条）；变异验证：临时删掉 `createInvite` 首句守卫 → 仅 `create_invite_returns_before_uid_cloud_and_writes` 失败（`expected false but got true`）→ 还原 |
+
+另外两处不属于 B1 清单但同批落：`PairingShareGateway` 的 `channels()/offerFromScan()/shareLink()/offerIncoming()` 四个入口在网关层各自先拒（关闭态连相机视图、分享面板、外来 want 留痕与 `pairOfferCount` 广播都不发生，对应 §7「不得只在 UI 隐藏」）；`entry/src/main/module.json5` 移除 `ohos.permission.INTERNET`（`requestPermissions` 只剩 3 条：`READ_CALENDAR`、`WRITE_CALENDAR`、`PUBLISH_AGENT_REMINDER`），纯本地版即便有代码也发不出请求。
+
+**未做**：解除配对与删除伴侣的"云端成功路径"断言（`CLOUD_BLOCKED` 下不可达，见发布清单 §2 G5 表最后两行）；ohosTest 的 `pairing_reset_lands_on_real_preferences` 已改成用 `@kit.ArkData` 的 `preferences` 直接种 `pair_key` 残留（生产写入口已删，残留由测试自己造），**仍属未执行**。
+
+

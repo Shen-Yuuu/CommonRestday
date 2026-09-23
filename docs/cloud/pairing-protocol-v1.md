@@ -246,6 +246,8 @@ spike §1 的静态核验已经否决了两种写法：本 SDK 的 HUKS **没有
 三条实现约束：
 
 1. Preferences 只存**别名**（如 `crd-pair-<pairId>`）与 `pairId`，`SettingsStore.savePairKey/getPairKey` 这条密钥持久化路径在实施时必须**删除**；
+   > **阶段 6R.2 已完成这一条的"删除写入口"半边**：`savePairKey` 与 `SnapshotCrypto.deriveKeyHex` 已从源码移除，`getPairKey` 转为只读、`clearPairKey` 只用于清旧原型残留（换机恢复与解除配对时调用）。
+   > 剩下的是"存别名"这半边：HUKS 别名方案尚未实现（Task 0.4 `CLOUD_BLOCKED`），届时 `getPairKey` 这个读接口也应一并换成 `getPairKeyAlias()`，别留一个读密钥材料的口子。
 2. 别名生命周期必须在 spike 里实测：卸载重装、备份恢复、清数据后别名是否还在。若"恢复后别名不存在"，则本机必须能感知密钥丢失并引导重新配对（`KEY_UNAVAILABLE` → 提示重新配对），不得静默生成新别名造成双方密钥永久不一致；
 3. 密钥失配的表现必须与"解密失败"一致：保留最后有效快照 + 提示重新配对，**不删对方数据、不进入半同步状态**。
 
@@ -284,7 +286,7 @@ UNPAIRED ──create──▶ WAITING ──join──▶ PENDING_CONFIRM ─�
 
 | # | 位置 | 现状 | v1 要求 |
 |---|---|---|---|
-| 1 | `SnapshotCrypto.deriveKeyHex()` + `SettingsStore.savePairKey/getPairKey` | `SHA256('crd-v1:'+code)`，密钥 hex 落 Preferences | **删除**，改 HUKS 别名（§6） |
+| 1 | `SnapshotCrypto.deriveKeyHex()` + `SettingsStore.savePairKey/getPairKey` | ~~`SHA256('crd-v1:'+code)`，密钥 hex 落 Preferences~~ **已随阶段 6R.2 删除**（`deriveKeyHex`/`savePairKey` 不存在；`getPairKey` 只读，供清理与"没钥匙就停住"判断） | 余下动作：把 `getPairKey` 换成 `getPairKeyAlias()`，密钥材料改由 HUKS 别名承载（§6） |
 | 2 | `SnapshotCrypto` AAD | 固定 `'crd-v1'` | `pairId\|ownerUid\|version\|schemaVersion`（§5.1） |
 | 3 | `EncryptedPayload` | `{ciphertext, iv}`，tag 拼在密文尾，hex | 独立 `authTag` + `algorithm`，base64（§5.1） |
 | 4 | `CloudApi.call()` | `cloudFunction.call({name, version, data})`，未传 timeout | 显式 `timeout: 30000` + `requestId`（§3.3） |

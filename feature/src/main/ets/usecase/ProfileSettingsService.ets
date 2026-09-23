@@ -2,8 +2,9 @@ import { EngineParams, defaultParams, hhmmToMin, minToHHmm } from 'domain';
 import {
   PAIRED, PAIR_NONE, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
 } from 'data';
-import { AgcPairingClient, PairingSession, SnapshotCrypto } from 'cloud';
+import { AgcPairingClient, PairingSession } from 'cloud';
 import { Logger } from 'commons';
+import { FeatureFlags } from '../config/FeatureFlags';
 import { ScheduleUseCase } from './ScheduleUseCase';
 import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
 import { PlanCapabilities } from '../integration/PlanCapabilities';
@@ -183,7 +184,19 @@ export class ProfileSettingsService {
     return ok('已保存，重启后仍保持');
   }
 
-  // ---------- 云端配对（AGC 未就绪时全程降级，不影响本机代录） ----------
+  // ---------- 云端配对（阶段 6R.2：开关关闭时这里是真边界，不是"AGC 恰好没配"） ----------
+
+  /**
+   * 配对相关的四个写动作共用这一句判断，且必须在**任何**副作用之前：
+   * 不生成/读回 uid、不发云函数、不写 pairId/pairKey/pairState。
+   *
+   * 为什么不能靠"AGC 未配置所以调用必然抛错"来保证：换机、复用证书或误关联云工程之后，
+   * 成功分支就会把 pairId 与配对态写进本机（验收报告 B1）。今天这条路径还多一重结构保险——
+   * 长期密钥的写入 API 已经从 SettingsStore 删掉了，翻开关也复现不出"短码派生密钥存 Preferences"。
+   */
+  private static cloudBlocked(): boolean {
+    return !FeatureFlags.cloudPairing;
+  }
 
   static getPairState(): string {
     try {
@@ -193,27 +206,31 @@ export class ProfileSettingsService {
     }
   }
 
-  /** 生成邀请码（创建方）：稳定 uid → pairing-create → 存 pairId + 派生密钥 → WAITING。 */
+  /** 生成邀请码（创建方）：稳定 uid → pairing-create → 存 pairId → WAITING。关闭态一条请求都不发。 */
   static async createInvite(): Promise<InviteResult> {
+    if (ProfileSettingsService.cloudBlocked()) {
+      const blocked: InviteResult = { ok: false, code: '', message: FeatureFlags.cloudClosedMessage };
+      return blocked;
+    }
     try {
       const uid = await SettingsStore.getOrCreateUid();
       const session: PairingSession = await new AgcPairingClient().createPairing(uid);
       await SettingsStore.savePairId(session.sessionId);
-      await SettingsStore.savePairKey(SnapshotCrypto.deriveKeyHex(session.code));
       await SettingsStore.setPairState(PAIR_WAITING, '');
       const r: InviteResult = { ok: true, message: '配对码已生成，发给 TA 吧', code: session.code };
       return r;
     } catch (e) {
       Logger.warn(TAG, 'createPairing degraded: ' + (e as Error).message);
-      const r: InviteResult = {
-        ok: false, code: '', message: '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录'
-      };
+      const r: InviteResult = { ok: false, code: '', message: FeatureFlags.cloudClosedMessage };
       return r;
     }
   }
 
-  /** 输码加入（加入方）：配对码无效/云端未开通统一失败提示，页面只 toast。 */
+  /** 输码加入（加入方）：关闭态直接拒；开启后配对码无效/云端未开通统一失败提示，页面只 toast。 */
   static async joinByCode(codeText: string): Promise<SettingsResult> {
+    if (ProfileSettingsService.cloudBlocked()) {
+      return fail(FeatureFlags.cloudClosedMessage);
+    }
     const code = codeText.trim();
     if (code.length !== 6 || Number.isNaN(Number(code))) {
       return fail('请输入对方分享的 6 位配对码');
@@ -222,7 +239,6 @@ export class ProfileSettingsService {
       const uid = await SettingsStore.getOrCreateUid();
       const session: PairingSession = await new AgcPairingClient().joinPairing(code, uid);
       await SettingsStore.savePairId(session.sessionId);
-      await SettingsStore.savePairKey(SnapshotCrypto.deriveKeyHex(code));
       await SettingsStore.setPairState(PAIRED, '');
     } catch (e) {
       Logger.warn(TAG, 'joinPairing degraded: ' + (e as Error).message);
@@ -233,8 +249,14 @@ export class ProfileSettingsService {
     return ok('配对成功，班表将按隐私等级加密同步');
   }
 
-  /** 创建方确认完成配对（体验版：无服务端推送，对方输码后手动确认）。 */
+  /**
+   * 创建方确认完成配对：只在云端真的接通后才有意义。
+   * 关闭态必须拒——写进库的 PAIRED 在界面上就是"正在同步"那句谎（TC §9.5 的偏离口径）。
+   */
   static async markPaired(): Promise<SettingsResult> {
+    if (ProfileSettingsService.cloudBlocked()) {
+      return fail(FeatureFlags.cloudClosedMessage);
+    }
     try {
       await SettingsStore.setPairState(PAIRED, '');
     } catch (e) {
@@ -257,15 +279,20 @@ export class ProfileSettingsService {
     }
   }
 
-  /** 解除配对：云端尽力解绑（失败忽略），本地配对标记/密钥/对方快照游标一律清干净。 */
+  /**
+   * 解除配对：本地配对标记/密钥残留/对方快照游标一律清干净；云端解绑只在开关打开时才发。
+   *
+   * 注意这条**不受关闭态拒绝**：上一版原型可能在本机留下 PAIRED 与 pair_key，而云入口已经藏起来了，
+   * 用户必须还能亲手撤掉这些标记，否则界面会一直挂着"已配对"。「开关只关能力，不关数据」。
+   */
   static async unpair(): Promise<SettingsResult> {
     try {
-      const pairId = SettingsStore.getPairId();
-      const uid = await SettingsStore.getOrCreateUid();
-      try {
-        await new AgcPairingClient().unpair(pairId, uid);
-      } catch (e) {
-        Logger.warn(TAG, 'unpair cloud degraded: ' + (e as Error).message);
+      if (FeatureFlags.cloudPairing) {
+        try {
+          await new AgcPairingClient().unpair(SettingsStore.getPairId(), await SettingsStore.getOrCreateUid());
+        } catch (e) {
+          Logger.warn(TAG, 'unpair cloud degraded: ' + (e as Error).message);
+        }
       }
       await SettingsStore.savePairId('');
       await SettingsStore.clearPairKey();

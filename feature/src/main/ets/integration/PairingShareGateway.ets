@@ -27,8 +27,8 @@ export const PAIR_OFFER_KEY = 'pairOfferCount';
 /** Scan Kit 口径：1000500002 是用户主动取消（不是失败）；1000500001 内部错误在模拟器上最常见。 */
 const SCAN_CANCELLED = 1000500002;
 const SCAN_INTERNAL = 1000500001;
-/** 云端未开通的统一说法（与验收清单 §9.1 一致）。 */
-export const PAIR_CLOUD_CLOSED = '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录';
+/** 云端未开通的统一说法：与 service 层（ProfileSettingsService）逐字同一句，见 FeatureFlags。 */
+export const PAIR_CLOUD_CLOSED = FeatureFlags.cloudClosedMessage;
 
 /** 入口该怎么摆：emphasizeCode 为真时把 6 位短码抬成主路径。 */
 export interface PairChannels {
@@ -84,14 +84,16 @@ export class PairingShareGateway {
     return PairingShareGateway.context;
   }
 
-  /** 能力探测：一次读出来，页面只管摆或不摆。 */
+  /** 能力探测：一次读出来，页面只管摆或不摆。关闭态三条一起收，不留"点了没反应"的入口。 */
   static channels(): PairChannels {
-    const scanCap = canIUse(SYSCAP_SCAN);
+    const cloud = FeatureFlags.cloudPairing;
+    // 一次性凭据由服务端签发，所以配对码与二维码的语义是"对方在云端等 TA 认领"：
+    // 没有云端就没有可认领的东西。扫码与分享以云端配对为前提，顺序写成代码而不是靠页面记得。
+    const scanCap = cloud && canIUse(SYSCAP_SCAN);
     const out: PairChannels = {
-      // 扫码以云端配对为前提：rollout 顺序是 cloudPairing → scanPairing，
-      // 这里把顺序写成代码，单开 scanPairing 不会露出一个只能失败的入口
-      scan: scanCap && FeatureFlags.cloudPairing && FeatureFlags.scanPairing,
-      share: canIUse(SYSCAP_SHARE),
+      // 档位顺序是 cloudPairing → scanPairing：单开 scanPairing 不会露出一个只能失败的入口
+      scan: scanCap && FeatureFlags.scanPairing,
+      share: cloud && canIUse(SYSCAP_SHARE),
       emphasizeCode: !scanCap
     };
     return out;
@@ -102,6 +104,10 @@ export class PairingShareGateway {
    * 结果只解析、不执行：合法请求交给调用方去弹确认页。
    */
   static async offerFromScan(): Promise<ScanResult> {
+    // 页面把入口藏了不算守住：直接调到这里也一样不发相机视图（验收报告 §7「不得只在 UI 隐藏」）。
+    if (!FeatureFlags.cloudPairing) {
+      return scanFail(ScanOutcome.UNSUPPORTED, PAIR_CLOUD_CLOSED);
+    }
     const ctx = PairingShareGateway.host();
     if (ctx == null || !canIUse(SYSCAP_SCAN)) {
       return scanFail(ScanOutcome.UNSUPPORTED, '本机不支持扫码，请用 6 位配对码');
@@ -130,6 +136,9 @@ export class PairingShareGateway {
    * link 为空（服务端还没签发 token）时直接拒绝：没有合规内容可分享，就不该打开分享面板。
    */
   static async shareLink(link: string): Promise<PairOpResult> {
+    if (!FeatureFlags.cloudPairing) {
+      return fail(PAIR_CLOUD_CLOSED);
+    }
     if (link === '') {
       return fail('没有可分享的配对链接：链接只承载服务端签发的一次性凭据，请把 6 位配对码告诉 TA');
     }
@@ -176,8 +185,12 @@ export class PairingShareGateway {
   /**
    * 收下外部来的配对意图（want.uri）。
    * 非 OFFER 一律不留痕：外来的普通网址/别的 App 的码不该在本机产生任何待确认状态。
+   * 云端关闭时同样一律不留痕——连"进程内存里有一条待确认请求"和那次广播都不发生。
    */
   static offerIncoming(rawUri: string): boolean {
+    if (!FeatureFlags.cloudPairing) {
+      return false;
+    }
     const res = PairLink.parse(rawUri);
     if (res.kind !== PairLinkKind.OFFER || res.offer === null) {
       return false;

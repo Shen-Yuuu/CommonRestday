@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from '@ohos/hypium';
 import { abilityDelegatorRegistry } from '@kit.TestKit';
 import { common } from '@kit.AbilityKit';
+import { preferences } from '@kit.ArkData';
 import { MIN_PER_DAY, todayEpochDay } from 'domain';
 import {
   Db, MigrationRunner, PAIRED, PAIR_NONE, SCHEMA_VERSION, SCHEMA_VERSION_KEY,
@@ -21,7 +22,8 @@ import { CalendarState } from 'feature';
  *   （含阶段 6R.1 新增的"待清理"那一格：来源设备的句柄绝不能被这台机器的启动清扫认领）；
  * - 普通启动：同样这批计划行原样不动（不误伤）；
  * - 结构版本比本包高：整包不写库，也不把别人的版本号改小；
- * - 恢复后配对：清 key、清 pairId、状态回 NONE 这三步在真机 Preferences 上确实落得住。
+ * - 恢复后配对：清 key、清 pairId、状态回 NONE 这三步在真机 Preferences 上确实落得住
+ *   （密钥残留由测试直接经 Preferences 种下——阶段 6R.2 已删掉生产写入口，见 seedLegacyPairKey）。
  *
  * 两处刻意不在自动化里做：
  * - 备份框架真正跑一次"备份 → 恢复到另一台设备"要两台机器（或本机备份到 PC 再恢复），
@@ -64,6 +66,26 @@ async function fixtureRow(): Promise<PlanRow | null> {
 /** 每次现取，避免把 Context 存在闭包变量里（也省掉"是否已赋值"的麻烦）。 */
 function appCtx(): common.Context {
   return abilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+}
+
+/**
+ * 沙箱里那份真实的 crd_settings。store 名与键名必须与 SettingsStore 一致（data 层没有
+ * 对外暴露这两个常量，也没有测试专用的写入口）——对不上就等于没在验收生产路径。
+ */
+const PREFS_STORE = 'crd_settings';
+/** 旧原型把"邀请码 SHA-256"当长期密钥写进来的那个键。 */
+const LEGACY_PAIR_KEY = 'pair_key';
+
+/**
+ * 把长期密钥残留"种"进沙箱：阶段 6R.2 删掉了生产写入口（`savePairKey` + `deriveKeyHex`），
+ * 但"换机恢复前，明文 Preferences 里可能留着上一版留下的密钥"这条输入事实仍然成立，
+ * 而清理它的 `clearPairKey()` 是生产代码。所以残留由测试自己经 Preferences 造出来，
+ * 断言的仍是那条真实落盘的清理链路——而不是把密钥断言删掉来迁就"没有写入口"。
+ */
+async function seedLegacyPairKey(value: string): Promise<void> {
+  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
+  await prefs.put(LEGACY_PAIR_KEY, value);
+  await prefs.flush();
 }
 
 /**
@@ -180,10 +202,12 @@ export default function upgradeMigrationTest() {
       const hadVer: number = SettingsStore.getPartnerSnapVer();
       const hadKey: string = await SettingsStore.getPairKey();
       try {
-        await SettingsStore.savePairKey('not-a-real-huks-handle');
+        await seedLegacyPairKey('not-a-real-huks-handle');
         await SettingsStore.savePairId('pair-from-the-old-device');
         await SettingsStore.setPairState(PAIRED, 'uid-of-the-old-partner');
         expect(SettingsStore.getPairState()).assertEqual(PAIRED);
+        // 残留确实经过了真实的 Preferences 落盘，不是被读逻辑吞掉了
+        expect(await SettingsStore.getPairKey()).assertEqual('not-a-real-huks-handle');
 
         // 与 EntryBackupAbility.onRestore 同一组调用
         await SettingsStore.clearPairKey();
@@ -202,7 +226,7 @@ export default function upgradeMigrationTest() {
         await SettingsStore.setPairState(hadState, hadUid);
         await SettingsStore.setPartnerSnapVer(hadVer);
         if (hadKey !== '') {
-          await SettingsStore.savePairKey(hadKey);
+          await seedLegacyPairKey(hadKey);
         }
       }
     });

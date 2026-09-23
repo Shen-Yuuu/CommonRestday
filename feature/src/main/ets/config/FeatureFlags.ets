@@ -27,6 +27,13 @@ export class FeatureFlags {
   /** 扫码配对（阶段 4）。以 cloudPairing 为前提，门禁未过前保持 false。 */
   static readonly scanPairing: boolean = false;
   /**
+   * `cloudPairing=false` 时**唯一**允许的用户口径（阶段 6R.2，验收报告 B1）。
+   * 放在档位旁边而不是页面里，是因为这句话有三个出口必须逐字一致：service 层的拒绝
+   * （ProfileSettingsService）、网关层的拒绝（PairingShareGateway）与「我的」页的说明文本。
+   * 少一处、或措辞变一点，就会出现"UI 说没开放但代码还在发请求"的那种假安全。
+   */
+  static readonly cloudClosedMessage: string = '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录';
+  /**
    * 桌面 2×2 卡片内容（阶段 4）。读取方：FormAbility。关闭时卡片照常存在（添加动作在系统侧），
    * 但下发「桌面卡片已停用」而不是空白，也不是昨天的旧结论。
    */

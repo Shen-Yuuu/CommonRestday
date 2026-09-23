@@ -8,6 +8,7 @@ import {
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
+import { FeatureFlags } from '../config/FeatureFlags';
 import { NotificationGateway } from '../integration/NotificationGateway';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { AppConst, Logger } from 'commons';
@@ -198,11 +199,16 @@ export class ScheduleUseCase {
 
   /**
    * 拉取并解密对方快照（AGC 就绪后生效）：
-   * 未配对/密钥缺失/云端不可用/解密或解码失败一律返回 null（调用方降级本机代录），不抛异常。
+   * 开关关闭 / 未配对 / 密钥缺失 / 云端不可用 / 解密或解码失败一律返回 null（调用方降级本机代录），不抛异常。
    */
   static async pullPartnerSnapshot(): Promise<PartnerBusyResult | null> {
+    // 关闭态第一道：一条云请求都不发（阶段 6R.2）。档位在 source 里，编译期就翻不出来。
+    if (!FeatureFlags.cloudPairing) {
+      return null;
+    }
     try {
       const pairId = SettingsStore.getPairId();
+      // 只读：本应用已不往 Preferences 写长期密钥（阶段 6R.2），读不到密钥就是没钥匙——快照链路自然停住。
       const keyHex = await SettingsStore.getPairKey();
       if (pairId === '' || keyHex === '') {
         return null;
@@ -239,9 +245,12 @@ export class ScheduleUseCase {
 
   /**
    * 构建并加密推送我的快照（我的 shareLevel + 单调递增版本）。
-   * 全链路 try-catch：未配对/AGC 未就绪/加密失败均静默返回 false，绝不影响本机主流程。
+   * 全链路 try-catch：开关关闭/未配对/AGC 未就绪/加密失败均静默返回 false，绝不影响本机主流程。
    */
   static async pushMySnapshot(startEpochDay: number): Promise<boolean> {
+    if (!FeatureFlags.cloudPairing) {
+      return false;
+    }
     try {
       const pairId = SettingsStore.getPairId();
       const keyHex = await SettingsStore.getPairKey();

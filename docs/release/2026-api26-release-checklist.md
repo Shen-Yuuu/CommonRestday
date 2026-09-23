@@ -14,6 +14,12 @@
 > 取消/改期/清空的删不掉的句柄一律保留成 `CLEANUP_PENDING` 并给「重新清理」+ 回前台补扫，清空先清投影再删表并如实报告剩余），
 > 对应离线断言 182 条全绿、插桩用例已同步，但**"系统日历里真的出现/真的消失"仍无任何设备证据**，所以 B0/B2 只算"代码已改、真机待验"。
 > **本文件的结论不变：仍不具备提审条件**——B1（云开关不是安全边界）、B4（隐私政策与权限文案）、B5（签名与包身份）、B6（零设备证据）一条都没关。
+>
+> **阶段 6R.2 之后（同日）补充**：G2/B1 的**代码**部分已封口——`createInvite/joinByCode/markPaired` 第一句看档位，
+> 关闭态不发 uid 生成、不发云函数、不写配对标记；`deriveKeyHex` 与 `savePairKey` 两个生产写入口**已删除**（翻开关复现不出"短码派生密钥落 Preferences"）；
+> `module.json5` 首发移除 `INTERNET`；`MeView` 关闭态一格云入口都不摆。离线新增 8 条守卫用例（190 passed / 0 类型错误）。
+> G3 的"构造性满足"因此更硬了一层，但 **G2 的判定仍停在待设备**（真机确认这个包确实一条请求都不出本机），
+> B4/B5/B6 一项没动，本文件的"不具备提审条件"结论不变。
 
 ## 0. 判定口径（先读这一节）
 
@@ -27,9 +33,9 @@
 |---|---|---|
 | 清干净 | `hvigorw clean --no-daemon` | BUILD SUCCESSFUL（7 tasks） |
 | release 出包 | `hvigorw assembleHap --mode module -p product=default -p module=entry@default -p buildMode=release --no-daemon` | **首次运行失败**，修复后 BUILD SUCCESSFUL，产物 `entry/build/default/outputs/default/entry-default-unsigned.hap` |
-| 告警基线 | 同上（统一入口 `node tools/verify.mjs`，先 `clean` 再比 `tools/verify-baseline.json`） | `ArkTS:WARN` **357**（debug 与 release 同值，均比阶段 6.4 的 361 低）、0 error |
-| 离线套件 | `node tools/test/run.mjs` | 阶段 6R.3 起 **0 类型错误 / 182 passed / 0 failed / exit 0**（此前"177 passed 但带 5 个 TypeScript 错误且返回 0"的假绿口径已撤销，见上） |
-| 插桩包 | `node tools/verify.mjs --steps=ohostest` | 2026-09-23 复跑：编译通过、0 error、`ArkTS:WARN` 262（基线由 266 收紧），**未执行 → 待设备** |
+| 告警基线 | 同上（统一入口 `node tools/verify.mjs`，先 `clean` 再比 `tools/verify-baseline.json`） | 阶段 6R.2 实测 `ArkTS:WARN` **352**（debug 与 release 同值）、ohosTest **260**、0 error（基线沿革 361→357→352 见独立验收 §9.3） |
+| 离线套件 | `node tools/test/run.mjs` | 阶段 6R.2 复跑 **0 类型错误 / 190 passed / 0 failed / exit 0**（阶段 6R.3 起才有"0 类型错误才算绿"的口径；此前"177 passed 但带 5 个 TypeScript 错误且返回 0"的假绿口径已撤销，见上） |
+| 插桩包 | `node tools/verify.mjs --steps=ohostest` | 2026-09-23 复跑：编译通过、0 error、`ArkTS:WARN` 260，**未执行 → 待设备** |
 
 **修复的那条失败必须记下来**：`buildMode=release` 在 5 个 HAR（`commons/domain/data/cloud/feature`）上报
 `00304036 Not Found — The obfuscation rule file './obfuscation-rules.txt' cannot be found`。
@@ -48,31 +54,33 @@
 
 P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲突处理 → 卡片。当前只有两类证据：
 
-- 离线 182 用例（含日历生命周期 19 条、冲突三动作、卡片六态投影、迁移与恢复决策、档位断言）；
+- 离线 190 用例（含日历生命周期 19 条、冲突三动作、卡片六态投影、迁移与恢复决策、档位断言、云关闭态守卫 6 条与清空播报口径 2 条）；
 - 插桩 3 条端到端用例 + 7 条升级/恢复用例**编译通过、未执行**（TC §0.1、§17.2），刻意不覆盖真实日历写入与删除、通知栏、云端快照。
 
 已知偏离（不当通过、也不判失败，逐条在原文件里）：TC §11.16（卡片点击不带窗口 id）、§13.13/§13.14（大屏双栏无设备可构造）、§14.4（ChipV2 热区未实测）、§17.4（"PAIRED 但无密钥"无运行时自愈）、§10.12（扫码整条闭环无法端到端验）。
 
-### G2 功能开关关闭时纯本地版可发布 —— **不通过（代码）**
+### G2 功能开关关闭时纯本地版可发布 —— **代码已封口（阶段 6R.2）；判定停在待设备**
 
 `cloudPairing=false` 时纯本地链路确实完整可用：全仓 `rg` 确认除 `cloud` 模块外**没有任何网络调用**
 （无 `@kit.NetworkKit`、无 `http.createHttp`），TC §18.1.4 还单独验证过 `calendarFlow=false` 时关闭分支真的在链路上（169 passed / 13 failed，失败项全是日历口径 + 那条档位断言）。
 
-**但有一个入口没有被开关拦住**：
+**2026-09-23 复核登记的"有一个入口没有被开关拦住"已按 B1 四条整改逐条改掉**：
 
-- `feature/src/main/ets/usecase/ProfileSettingsService.ets`
-  `createInvite()`（L193）与 `joinByCode()`（L212）**先** `await new AgcPairingClient().createPairing/joinPairing(...)` 发出云函数请求，**再**在成功分支里 `SettingsStore.savePairKey(SnapshotCrypto.deriveKeyHex(code))`；
-- 唯一让它今天不生效的原因是 **AGC 未配置**（仓库里既没有 `agconnect-services.json` 也没有 `cloud-config.json`，`cloudFunction.call` 必然抛错走降级），**不是** `FeatureFlags.cloudPairing`；
-- 一旦有人把云工程关联上（换机、复用证书、误配置），这条路径会**真的把配对成功态写进本机**，并且用"6 位邀请码派生长期密钥存 Preferences"——同时撞改造文档 §0.3 的两条红线（邀请码不得作为长期快照密钥、长期密钥不得写入 Preferences）。TC §9.4 已经把它写成"停止条件"，但停止条件靠的是"后端不存在"，不是代码。
+- `ProfileSettingsService` 新增单一判据 `cloudBlocked()`，`createInvite()` / `joinByCode()` / `markPaired()` **第一句**就返回 `FeatureFlags.cloudClosedMessage`——在其之前既不 `getOrCreateUid()`、也不 `new AgcPairingClient()`、更不写 `pairId/pairKey/pairState`；成功分支里的 `savePairKey(deriveKeyHex(code))` 三处全部删除；
+- **结构保险**（防"以后只翻开关就复活不安全实现"）：`SnapshotCrypto.deriveKeyHex` 与 `SettingsStore.savePairKey` 两个方法**已从源码删除**，`getPairKey` 转为只读、`clearPairKey` 只用来清旧原型残留；
+- 入口不再只在 UI 上藏：`PairingShareGateway.channels()` 把 `share`/`scan` 都以云端档位为前提，`offerFromScan()` / `shareLink()` / `offerIncoming()` 在网关层各自先拒（关闭态不开相机、不开分享面板、外来 want 不留痕也不广播 `pairOfferCount`）；`ScheduleUseCase.pullPartnerSnapshot/pushMySnapshot` 第一句看档位；
+- `MeView` 关闭态一格云入口都不摆（生成/输码/扫码/二维码/分享/共享等级一起收），只留本机代录说明与**退出通道**（上一版原型留下的 `PAIRED`/`WAITING` 仍能被用户亲手撤掉——「开关只关能力，不关数据」）；
+- `entry/src/main/module.json5` 移除 `ohos.permission.INTERNET`：`requestPermissions` 现在只有 3 条（`READ_CALENDAR`/`WRITE_CALENDAR`/`PUBLISH_AGENT_REMINDER`），这个包即便代码有漏网的云调用也发不出去。
 
-**提审前必办**：在 `createInvite()` / `joinByCode()` 的 `try` 之前加 `if (!FeatureFlags.cloudPairing) { return fail(同一句降级文案); }`（写库前不发请求），或让这两个按钮在 `cloudPairing=false` 时不渲染。改完后 `MeView` 的文案分支可以一并收敛。
-本条不在 Task 6.4 的文件清单内，所以本轮**只登记不修改**（改造文档 §0.1：只改任务列出的文件）。
+**证据**：离线新增 `entry/src/test/ProfileSettingsGuardTest.ets` 8 条（含"关闭态 `AgcPairingClient.calls === 0` 且 pairId/key/state 三者不变"），190 passed / 0 类型错误 / exit 0；替身的云客户端**总是成功**，所以这条断言只能由守卫给出、不能靠"AGC 恰好没配"。变异验证：临时移除 `createInvite` 首句守卫 → 只有那条用例失败。
+
+**为什么还判待设备**：G2 要的是"这个包交出去是可发布的"，而"移除 INTERNET 之后一切照常 + 飞行模式无差异 + 权限面板里没有联网项"这三条只有设备能给（TC §9.3、§9.5、§18.2.1、§20.5）。阶段 3 门禁未解除前，仍然**不允许测试性打开** `cloudPairing`。
 
 ### G3 云数据库无敏感明文 —— **通过（构造性满足）**
 
 不是"加密做得好"，而是**当前根本没有任何数据会到云数据库**：
 
-- `AgcSnapshotSync.pushSnapshot` 的唯一调用方 `ScheduleUseCase.pushMySnapshot()`（L244）以 `pairId === '' || keyHex === ''` 为前提短路返回 false，而这两个值只有走 G2 那条违规路径才会出现；
+- `AgcSnapshotSync.pushSnapshot` 的唯一调用方 `ScheduleUseCase.pushMySnapshot()` 现在**第一句**就是 `if (!FeatureFlags.cloudPairing) return false`；其后 `pairId === '' || keyHex === ''` 那道短路仍然在，且因为 `SettingsStore.savePairKey` 已删除，本机已经没有任何代码路径能写出密钥——G2 那条违规路径不再是"配了就能同步"，而是"连钥匙都造不出来"；
 - 云数据库侧：`entry/src/main/resources/rawfile` 为空，云 schema 从未部署（`docs/cloud/operations-runbook.md` §1 第 5 项仍未执行）；
 - 通知与卡片文本已按"不含课程名/班次名/地点/计划标题/昵称"实现（TC §11.11、§12.10，均**待设备**复核）。
 
@@ -80,15 +88,15 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 ### G4 隐私文案与实际权限一致 —— **不通过（材料+文案）**
 
-实际权限只有 4 条（`entry/src/main/module.json5`）：`READ_CALENDAR`、`WRITE_CALENDAR`（两条带 `reason: $string:calendar_perm_reason` = 「用于将共同计划写入系统日历，并在取消计划时同步移除」）、`PUBLISH_AGENT_REMINDER`、`INTERNET`（后两条**无 reason / 无 usedScene**）。逐条比对结果：
+实际权限只有 3 条（`entry/src/main/module.json5`）：`READ_CALENDAR`、`WRITE_CALENDAR`（两条带 `reason: $string:calendar_perm_reason` = 「用于将共同计划写入系统日历，并在取消计划时同步移除」）、`PUBLISH_AGENT_REMINDER`（无 reason / 无 usedScene）。**阶段 6R.2 已按定稿移除 `INTERNET`**，所以下表第 2 行的处置已落地、其余各行的口径仍需在 6R.4 统一。逐条比对结果：
 
 | # | 现状 | 结论 |
 |---|---|---|
 | 1 | 首启弹窗的《隐私政策》全文入口只 toast「隐私政策全文即将上线」（`AppConst.PRIVACY_POLICY_URL` 是空串，`PrivacyUtil.openPrivacyPolicy` 因此不跳转） | **阻断**：应用市场要求可访问的隐私政策链接。必须先成文并托管，再谈提审。文案里"未来云端同步仅存储加密后的忙闲数据"这类前瞻性表述，全文里要如实写明**当前未开通** |
-| 2 | `INTERNET` 已声明，但按 G2，唯一使用方是门禁关闭的配对链路 | **需处理**：要么本轮就从 `module.json5` 移除 `INTERNET`（纯本地版确实用不到），要么在隐私政策与提审"权限用途说明"里如实写"仅用于尚未开放的配对功能"。留着一个无用途说明的联网权限是最容易被打回的组合 |
+| 2 | `INTERNET` **已声明但无用** | **已处理（阶段 6R.2）**：`module.json5` 删掉该权限，`requestPermissions` 只剩 3 条；纯本地版连"发不出去"都不成立——没有联网权限。隐私政策与提审"权限用途说明"里因此**不得**出现"联网权限"字样，云端档位真正打开的那个包才把它加回来（`docs/release/rollout-and-rollback.md` §3.3）。仍需设备复核：无 INTERNET 时日历/提醒/卡片链路确实无差异 |
 | 3 | `PUBLISH_AGENT_REMINDER` 无 `reason` | **需核对（缺证据）**：本机 SDK 的 `permissions.d.ts` 不标注授权方式；代码里它从未走 `requestPermissionsFromUser`（`ReminderGateway` 直接发布提醒），这与 system_grant 一致，所以缺 reason 很可能合规。提审前按官方权限列表复核该权限是否需要用途说明 |
 | 4 | 弹窗第二句「日历事件：仅在你确认创建共同计划时写入系统日历」 | **文案落后于实现（阶段 6R.1 之后差距更大）**：默认路径已经改成"创建时由本应用直接 `addEvent` 写进应用专属的「同休日」日历"，用户确认的是计划 Sheet 上默认勾选的「写入系统日历」开关（TC §6.3），**不再**经过系统日程确认页；`editEvent` 只剩「导出到系统日历」这一个出口（TC §6.6）。"你确认"三个字仍然成立、但"确认什么"已经完全变了，`calendarFlow=false` 关档时更是一次都不写。提审前按这三态重写这句（属 Task 6R.4） |
-| 5 | 弹窗末尾「你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）」 | **承诺了当前无可见效果的能力**：等级只参与快照生成，而快照链路关闭（docs/03 L14 已注明"等级只在有云时才有意义"）。要么在「我的」该卡上加一行"云端配对开放后才会影响 TA 看到的内容"，要么本轮先隐藏等级设置 |
+| 5 | 弹窗末尾「你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）」 | **半处理（阶段 6R.2）+ 文案待改（6R.4）**：这条承诺的控件已经按档位收走了——`partnerSyncCard()` 在 `cloudPairing=false` 时不渲染 `levelBlock`，所以"当前版本调了没有任何可见效果"这件事不再发生在用户眼前（等级值仍存本机，档位关的是能力不是数据）。剩下的缺口是**弹窗那句本身**：首发版根本没有可调的等级，这句仍是空头承诺，须与第 4 行同批重写（属 Task 6R.4） |
 | 6 | OCR 页文案「照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图」 | **一致**：`pages/OcrCourse.ets` 走 `cameraPicker.pick` + `PhotoViewPicker.select`（系统 Picker，无需应用侧相机/相册权限），识别用端侧 `textRecognition`；全仓无图片上传代码 |
 | 7 | `AppScope/app.json5`：`bundleName: com.huawei.commonrestday`、`vendor: example`、`versionName 1.0.0 / versionCode 1000000` | **阻断/待定稿**：`vendor` 明显仍是模板值；包名前缀与开发者主体也必须在首个正式包前确认。包名正式使用后不可随意更换（改了就是另一个应用：卡片、深链 scheme `crdpair`、已授权权限全部重来） |
 
@@ -101,21 +109,22 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 | 取消计划 | `PlanUseCase` + `PlanProjectionCleanupService`（只清系统侧、不写库） | 窗口恢复空闲 + 受管日程移除 + 本应用提醒取消；**删不动时句柄原样留着**、状态转 `CLEANUP_PENDING`、卡片给「重新清理」 | **有**（19 条日历用例里含"删不动→留句柄→重试→补写""导出那份永不试删"） | 待设备（TC §6.9、§6.10） |
 | 冲突改期 | 同上迁移 | 旧事件删 + 新事件写；旧投影没让开就**不写新的**（避免同一天两条） | **有** | 待设备（TC §6.8、§7.6） |
 | 删除伴侣档案 | `ProfileSettingsService.deletePartner` | `clearPartnerProfile` + 4 张表 `owner='PARTNER'` 行；**plan 表不动**（共同计划是本机的，口径与弹窗文案一致） | 无 | 待设备（TC §3.5） |
-| 解除配对 | `ProfileSettingsService.unpair` | 云侧 `pairing-unpair`（当前必降级）+ 本机清 key/pairId/状态/快照游标 | 无 | **本轮无法到达**（只能经 G2 违规路径配对，TC §9.4） |
+| 解除配对 | `ProfileSettingsService.unpair` | 本机清 key 残留/pairId/状态/快照游标（**关闭态照样全执行**，因为云入口已藏起来，用户必须还能亲手撤掉上一版原型留下的标记）；云侧 `pairing-unpair` 只在 `cloudPairing=true` 时才发 | **有**（阶段 6R.2：`unpair_still_clears_local_marks_without_a_cloud_call` 断言关闭态本地四项清空且 `AgcPairingClient.calls===0`；`cancel_waiting_needs_no_cloud` 同样） | 真机上的"已配对"标记是否清干净 → 待设备（TC §9.4/§9.5）；云侧解绑**本轮无法到达**（`CLOUD_BLOCKED`） |
 | 清空全部数据 | `ProfileSettingsService.clearAllData` | **先**逐条清投影（`listPlansCarryingHandles` → 删日程/撤提醒）→ `purgeManagedCalendar()` 兜底清「同休日」那一本 → 取消周摘要提醒 → **再**清 8 张 RDB 表与全部设置（隐私同意标记刻意保留）；确认弹窗与结果 toast 都按实际剩余播报 | 口径**有**（`clearAllMessageOf`：没清掉的一律列出）；动作本身**无**——它删的是用户真机数据，不能放进自动化里跑一次 | 待设备（TC §20.1，含 20.1.3/20.1.4 的"真删了没有""删不动时有没有谎报"） |
 | 备份恢复后的降级 | `Db` 首启消费恢复标记 | 三条 UPDATE：日历投影（含 `MANAGED_WRITTEN`/`EXTERNAL_UNMANAGED`/`CLEANUP_PENDING`/`WRITTEN`/`PENDING` 五种取值）→`LOCAL_ONLY` 并清空来源设备的事件 id、提醒句柄→`-1`、云端声明→本地 | **有**（`DbMigrationTest` 12 条 + 插桩 7 条） | 待设备（TC §17.3） |
 
 **阶段 6R.1 已改**：`clearAllData()` 不再是"`DELETE FROM plan` 完事"——现在先清系统侧投影再删表，删不掉的按条数如实报；普通取消/改期也不再吞掉投影删除失败，句柄留着并可重试。修法与判据见独立验收 B0/B2。
-**这条门禁为什么还不算通过**：G5 要的是"可验证"，而以上每一条最终都要在设备上看见**系统日历里真的少了一条、提醒列表里真的没有残留**。本轮零设备证据（B6），所以 G5 的判定停在 **待设备**；`ProfileSettingsService` 是设备耦合源码（离线 runner 里被 skip），因此清空动作的离线断言只覆盖到播报口径这一半。
-**还缺的一条**：`deletePartner` 与 `unpair` 两类删除动作连口径断言都没有（表里"无"），补它们属阶段 3 门禁解除后的工作，本轮不扩大范围。
+**阶段 6R.2 补了半边证据**：`ProfileSettingsService` 不再是"离线 runner 里被 skip 的设备耦合源码"——`tools/test/run.mjs` 给它配了签名对齐的内存 `SettingsStore`/`ScheduleRepo` 替身与**总是成功**的 `AgcPairingClient` 替身（带 `calls` 计数），于是解除配对、取消等待、清空播报这几条动作本身第一次能在离线里跑通并被断言。
+**这条门禁为什么还不算通过**：G5 要的是"可验证"，而以上每一条最终都要在设备上看见**系统日历里真的少了一条、提醒列表里真的没有残留**。本轮零设备证据（B6），所以判定停在 **待设备**；替身能证的只有"本机这四个标记清没清"，证不了日历与提醒的真实现象。
+**还缺的一条**：`deletePartner` 仍然连口径断言都没有（表里"无"）——它删的是 `owner='PARTNER'` 的四张表行，替身已具备条件，但属阶段 3 门禁解除后的补测范围，本轮不扩大。
 
 ## 3. 发布矩阵（改造文档 Task 6.4 指定的 9 维）
 
 | 维度 | 本轮可判 | 待设备 / 阻断 | 指路 |
 |---|---|---|---|
 | 全新安装 / 升级安装 | 全新安装：`bm clean` 后首启链路（待设备）。**升级维度对首版是空集**——本应用从未上架，没有可升级的线上包；这一维现在只有离线夹具 12 条（`DbMigrationTest`）+ 插桩 7 条（编译通过、未执行）撑着 | 老包→新包的真实覆盖安装留给第二个版本 | TC §1、§17.1/§17.2 |
-| 单人 / 本机代录 / 云配对 | 单人、本机代录：离线用例 + 静态文案核对。云配对：**保持关闭**，且入口本身是 G2 的待修项 | 两形态的渲染与重算走查 | TC §2–§4、§9 |
-| 在线 / 离线 / 云停服 | **离线与在线同一份代码路径**（本机链路零网络调用）；"云停服"= 当前常态，降级为 toast + 停在未配对态 | 飞行模式下全量回归一次（证明没有隐藏依赖） | §2 G2/G3、TC §9.3 |
+| 单人 / 本机代录 / 云配对 | 单人、本机代录：离线用例 + 静态文案核对。云配对：**保持关闭**，且关闭态**不摆云入口**（阶段 6R.2 起连 `INTERNET` 权限都没有） | 两形态的渲染与重算走查 | TC §2–§4、§9 |
+| 在线 / 离线 / 云停服 | **离线与在线同一份代码路径**（本机链路无网络调用，且首发包不带 `INTERNET`）；"云停服"这个概念对当前构建不成立——云客户端永不被调用，所以既没有降级 toast 也没有等待态 | 飞行模式下全量回归一次（证明没有隐藏依赖） | §2 G2/G3、TC §9.3 |
 | 通知允许 / 拒绝 | 三档默认值与文案已在代码里定死（需行动开、精确提醒关、周摘要关） | 授权弹窗、去重、锁屏隐私、到点真响 | TC §12 |
 | 日历允许 / 取消 | 默认是**应用专属「同休日」日历的受管写入**（`addEvent`，不弹系统确认页）；拒绝授权 → `LOCAL_ONLY` + 「写入日历」/「导出到系统日历」两个出口；删不动 → `CLEANUP_PENDING` + 「重新清理」：这三处口径都有离线断言 | 权限弹窗、专属日历那一本真出现/真消失、`createCalendar` 是否真的建得出「同休日」、导出确认页、`CLEANUP_PENDING` 重新授权后真清得掉、回前台补扫真的跑 | TC §6、§18.2.2/§18.2.3 |
 | 扫码支持 / 不支持 | `scanPairing=false` + `canIUse(Scan)` 双前置 → 当前构建**不出现扫码按钮**（静态判定） | 两种设备各确认一次；真扫码闭环等门禁解除 | TC §10 |
@@ -131,8 +140,8 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 ## 5. 提审材料清单（全部人工，本轮未动）
 
-- [ ] 《隐私政策》全文成文并托管为可访问 URL（G4-1；须如实写：不接华为账号、当前无云端同步、`INTERNET` 的实际用途、数据删除方式=清空本机数据/卸载）
-- [ ] 权限用途说明与 G4 表逐条对齐（尤其 `INTERNET`、`PUBLISH_AGENT_REMINDER`）
+- [ ] 《隐私政策》全文成文并托管为可访问 URL（G4-1；须如实写：不接华为账号、当前无云端同步、**本包不带联网权限**、数据删除方式=清空本机数据/卸载）
+- [ ] 权限用途说明与 G4 表逐条对齐（现在只有 3 条：`READ_CALENDAR`/`WRITE_CALENDAR` 的 reason 文案要跟上阶段 6R.1 的"专属日历受管写入 + 导出"三态；`PUBLISH_AGENT_REMINDER` 待官方列表复核是否需要用途说明）
 - [ ] 应用截图（首页/共同时间/我的/班表/卡片）+ 一句话介绍 + 分类（生活或效率）+ Age rating + 版权/开发者信息
 - [ ] App 备案（docs/04 M0 第 5 项登记为"本周发起"，至今**无状态记录** → 需回填实际进度）
 - [ ] 签名配置（自动签名或正式证书）后重跑一次 release 出包，确认产物不再是 `-unsigned`
@@ -144,12 +153,12 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 |---|---|
 | 三个主入口与精简原型一致，旧四 Tab 不再存在 | 达成（Task 6.3 复验：无四 Tab 残留，`main_pages.json` 6 个入口全在用） |
 | 首页、窗口详情、计划、日历和卡片形成一条真实数据链路 | 代码与离线达成（阶段 6R.1 后这条链路是"窗口 → 本机计划 → 应用专属日历受管投影 → 卡片"，取消/改期/清空都跟着投影走）；**真机端到端待设备** |
-| 本地数据在无网、无云、无权限时仍可使用 | 达成（本机链路无网络调用；权限拒绝有降级分支，弹窗侧待设备） |
-| 配对数据端侧加密，长期密钥由 HUKS 托管 | **未达成**——Task 0.4 判 `CLOUD_BLOCKED`，HUKS 链路未验证；现状是"云端整体关闭"。按红线**不允许**用短码派生密钥充当（G2 那条待修代码正是这个反例） |
+| 本地数据在无网、无云、无权限时仍可使用 | 达成且**结构性达成**（阶段 6R.2 后本机链路既无网络调用、包内也没有 `INTERNET` 权限；权限拒绝有降级分支，弹窗侧待设备） |
+| 配对数据端侧加密，长期密钥由 HUKS 托管 | **未达成**——Task 0.4 判 `CLOUD_BLOCKED`，HUKS 链路未验证；现状是"云端整体关闭"。按红线**不允许**用短码派生密钥充当——那个反例（`deriveKeyHex` + `savePairKey`）已在阶段 6R.2 从源码删除，所以门禁解除前必须先补 HUKS，而不是把开关翻回来 |
 | 云工程位置和运维方式有实测结论 | 部分：`docs/05` + `operations-runbook` 是文档级结论，"实测"两字仍缺（无 AGC 账号操作记录） |
 | 360vp、深色、大字体、读屏和 Senior Mode 达标 | 代码口径达成，**达标与否待设备**（§3 第 7 行，含横屏缺口） |
 | 所有阶段构建、自动化测试与手工验收记录齐全 | 构建/自动化齐全（§1）；手工验收记录=空，全部待设备 |
 | 文档不再保留与实现相冲突的旧技术结论 | 达成（Task 6.3；本轮再更正 TC §9.3 的 BuildProfile 表述与 `docs/05` 一处路径） |
 
 **净结论**：8 条里 3 条达成（三主入口 / 本机数据自足 / 文档与实现不再冲突）、1 条按门禁承诺未达成（HUKS 托管长期密钥）、4 条卡在"证据只到代码与离线这一层"（真机端到端、云侧实测、五种显示形态、手工验收记录）。
-提审前最少要闭合：G2 的代码级云守卫（阶段 6R.2）、G4 的隐私政策成文 + 日历那句文案重写 + `INTERNET` 处置（阶段 6R.4）、D1 计划类型精简与 D2 锁竖屏（阶段 6R.4）、签名与备案材料（B5），以及设备接入后按 TC §1–§20 全量勾一遍（B6）——G1 与 G5 的判定都卡在这最后一项上：代码与离线口径已经改完，缺的是"系统日历里真的少了那条、提醒列表里真的没有残留"这类只有设备能给的证据。
+提审前最少要闭合：G4 的隐私政策成文 + 日历那句文案重写 + 共享等级那句处置（阶段 6R.4；`INTERNET` 的处置已随 6R.2 落地）、D1 计划类型精简与 D2 锁竖屏（阶段 6R.4）、签名与备案材料（B5），以及设备接入后按 TC §1–§20 全量勾一遍（B6）——G1 与 G5 的判定都卡在这最后一项上：代码与离线口径已经改完（含 G2 的云守卫），缺的是"系统日历里真的少了那条、提醒列表里真的没有残留"这类只有设备能给的证据。

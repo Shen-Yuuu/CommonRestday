@@ -27,11 +27,11 @@
 改造文档给的启用顺序是 `newShell → calendarFlow → cloudPairing → scanPairing → newCard → responsiveV2`。
 下表是 2026-09-23 的实际档位与"口径落在哪一行代码"。
 
-| # | 开关 | 当前档位 | 唯一读取方（口径落点） | 顺序上的前置 |
+| # | 开关 | 当前档位 | 口径落点（读这一档的代码） | 顺序上的前置 |
 |---|---|---|---|---|
 | 1 | ~~`newShell`~~ | **已删除**（本轮） | 无：旧四 Tab 壳层已退场，关不回任何链路 | — |
 | 2 | `calendarFlow` | `true` | `PlanUseCase` 的日历编排（`writeManaged`）+ `PlanFlow.canRetryCalendarSync` 与 `canExportToCalendar` | 无（本机链路） |
-| 3 | `cloudPairing` | `false` | `MeView`（文案）+ `PairingShareGateway.acceptOffer`（写库前拦截） | Task 0.4 门禁改写 |
+| 3 | `cloudPairing` | `false` | 阶段 6R.2 起共 5 个落点：`ProfileSettingsService.cloudBlocked()`（createInvite/joinByCode/markPaired 首句）+ `PairingShareGateway`（channels/offerFromScan/shareLink/offerIncoming/acceptOffer）+ `ScheduleUseCase`（快照推拉首句）+ `MeView`/`ScheduleHub`（入口与文案）；另 `module.json5` 首发不带 `INTERNET` | Task 0.4 门禁改写 |
 | 4 | `scanPairing` | `false` | `PairingShareGateway.channels`（且以 `cloudPairing` 为条件） | `cloudPairing = true` |
 | 5 | `newCard` | `true` | `FormAbility.onAddForm` + `FormAbility.refreshCard` | 无（只读本机） |
 | 6 | `responsiveV2` | `true` | `Breakpoints.ofWidth`（全站断点唯一入口） | 无（纯渲染） |
@@ -68,10 +68,10 @@
 
 | 项 | 口径 |
 |---|---|
-| 启用条件 | **尚未满足。**Task 0.4 结论 `CLOUD_BLOCKED`：HUKS 托管长期密钥的链路未验证。解除条件全部见 `docs/validation/clouddev-api26-spike.md` §4 五条门禁，一条不满足就不开。**不允许**退回"用邀请码派生长期密钥"（改造文档 §0.3 明文） |
+| 启用条件 | **尚未满足。**Task 0.4 结论 `CLOUD_BLOCKED`：HUKS 托管长期密钥的链路未验证。解除条件全部见 `docs/validation/clouddev-api26-spike.md` §4 五条门禁，一条不满足就不开。**不允许**退回"用邀请码派生长期密钥"（改造文档 §0.3 明文）——阶段 6R.2 已经把 `SnapshotCrypto.deriveKeyHex` 与 `SettingsStore.savePairKey` 从源码删掉，所以"翻开关就复活旧实现"这件事现在做不到：要开档必须先在 HUKS 那侧把密钥容器实现出来并补上单测<br>**加回 `ohos.permission.INTERNET` 的条件**（首发包刻意不带它）：同一批里 ①`cloudPairing=true`、②HUKS 托管密钥验证通过、③隐私政策全文与提审"权限用途说明"同步补上联网用途。三条不齐就不要动 `module.json5` |
 | 监控指标 | 门禁未过，无线上指标可看。云侧运维指标见 `docs/cloud/operations-runbook.md` §6 |
-| 关闭影响 | `acceptOffer()` 在写任何数据前返回 `PAIR_CLOUD_CLOSED`；「我的」页把只有本机标记的关系读成「已标记配对」而不是「已配对」，同步状态一律显示本机口径（`MeView` 三处分支）。对方日程继续靠本机代录，全部功能可用 |
-| 数据兼容性 | 本机数据零影响。关档不需要删云数据（`operations-runbook` §5：停服＝关开关）；`pair_state` / `pairId` 留在库里不丢，重新开档后继续用。**换机恢复会主动把配对抹成未配对**（Task 6.1：长期密钥不参与备份） |
+| 关闭影响 | **关闭态是一条真边界，不是"云恰好没配"**：`createInvite/joinByCode/markPaired` 在第一句就返回 `FeatureFlags.cloudClosedMessage`（不生成/读回 uid、不发云函数、不写 `pairId/pairKey/pair_state`），`acceptOffer()` 在写任何数据前返回同一句，扫码/分享/外来 want 三条入口在网关层各自先拒（不开相机、不开分享面板、不留待确认痕迹也不广播 `pairOfferCount`），快照推拉第一句停住，`MeView` 连生成/输码/扫码/二维码/分享/共享等级的控件一起不渲染。对方日程继续靠本机代录，全部功能可用。**两个退出通道刻意不受关闭态拒绝**：`unpair()` 与 `cancelWaiting()` 照常清本机标记（上一版原型可能留下 `PAIRED`/`WAITING`，藏了入口就不能再撤），只是不再发云侧解绑请求——「开关只关能力，不关数据」 |
+| 数据兼容性 | 本机数据零影响。关档不需要删云数据（`operations-runbook` §5：停服＝关开关）；`pair_state` / `pairId` 留在库里不丢，重新开档后继续用。**换机恢复会主动把配对抹成未配对**（Task 6.1：长期密钥不参与备份）；旧原型残留在 Preferences 里的 `pair_key` 由 `clearPairKey()` 清掉（该键已无任何写入方，读到也只当没钥匙）。「共享等级」`shareLevel` 的值在关档时仍照旧保存，只是当前没有可见效果——所以关档不重置它 |
 | 已知缺口 | `pair_state = PAIRED` 但密钥解不出时，没有运行时自愈路径把状态拉回未配对；现场只能靠「重新配对」入口。这一条记在 `docs/testing-checklist.md` §17.4，不因为本文档写"兼容"就当已解决 |
 
 ### 3.4 `scanPairing` —— 扫码配对
@@ -145,7 +145,7 @@ node tools/test/run.mjs
 **回退后必须复查的三件事**（真机条目在 `docs/testing-checklist.md` §18.2，接上设备一起做）：
 
 - [ ] 冷启动日志里 `CrdFlags` 一行确实是目标档位；
-- [ ] 该档的入口真的消失了（`calendarFlow`：计划卡无「写入日历」；`scanPairing`：「我的」页无扫码按钮；`newCard`：桌面卡片显示停用文案；`responsiveV2`：宽窗口回到单列）；
+- [ ] 该档的入口真的消失了（`calendarFlow`：计划卡无「写入日历」；`cloudPairing`：「我的」页无生成/输码/扫码/二维码/分享/共享等级，只剩本机代录与解除/取消两个退出按钮；`scanPairing`：「我的」页无扫码按钮；`newCard`：桌面卡片显示停用文案；`responsiveV2`：宽窗口回到单列）；
 - [ ] 本机数据仍完整：班次、课程、计划、冲突、已配对的本机档案一条不少（开关只关能力，规则 3）。
 
 **云侧不需要跟着回退**：`cloudPairing`/`scanPairing` 的关闭动作本身就是端侧出包，
@@ -155,14 +155,15 @@ node tools/test/run.mjs
 
 | 项 | 证据 | 状态 |
 |---|---|---|
-| 五个开关各有一处口径 | 全仓 `grep FeatureFlags` 结果记在 §2 表里；`newShell` 已删除 | 已核 |
+| 每个开关都有口径 | 全仓 `grep FeatureFlags` 结果记在 §2 表里；`newShell` 已删除；`cloudPairing` 自阶段 6R.2 起是 5 个落点（service / gateway / 快照推拉 / 两页文案与入口），不是一处 | 已核 |
 | 当前档位不出现装饰性开关 | 同上 | 已核（清单 §11.14 关闭） |
-| 当前档位的离线口径 | 阶段 6R.3 之后只有这一条算数：**0 type error / 182 passed / 0 failed / exit 0**（旧的"177 passed 但带 5 个类型错误却返回 0"已作废） | 已测（`node tools/test/run.mjs`） |
-| 当前档位编译 | clean 出包 `node tools/verify.mjs --steps=offline,debug,release,ohostest` → 三条全 BUILD SUCCESSFUL、0 ERROR；`ArkTS:WARN` debug **357** / release **357** / ohosTest **262**（基线由 361/361/266 收紧，见 `tools/verify-baseline.json`）；ohosTest **只编译、未执行** | 已测（日志 `../.crdtest/6r1-verify.log`） |
+| 当前档位的离线口径 | 阶段 6R.3 之后只有这一条算数：**0 type error / 190 passed / 0 failed / exit 0**（旧的"177 passed 但带 5 个类型错误却返回 0"已作废）；其中 6 条专证 `cloudPairing=false` 的关闭态（云客户端 0 次调用、`pairId/pairKey/pairState` 不变、解除与取消等待仍清本机标记） | 已测（`node tools/test/run.mjs`；变异验证：临时删掉 `createInvite` 首句守卫 → 只有那条守卫用例失败） |
+| 当前档位编译 | clean 出包 `node tools/verify.mjs --steps=offline,debug,release,ohostest` → 三条全 BUILD SUCCESSFUL、0 ERROR；`ArkTS:WARN` debug **352** / release **352** / ohosTest **260**（基线沿革 361/361/266 → 357/357/262 → 352/352/260，见 `tools/verify-baseline.json`）；ohosTest **只编译、未执行** | 已测（日志 `../.crdtest/verify-{debug,release,ohostest}.log`） |
+| 首发包不带 `INTERNET` | 静态事实：`entry/src/main/module.json5` 的 `requestPermissions` 只有 3 条（两条日历 + `PUBLISH_AGENT_REMINDER`）。**没有设备去核实"这个包确实发不出请求"** | 配置已核，现象待设备（清单 §9.3、TC §20.5） |
 | `calendarFlow = false` 分支 | 单独翻档后**离线套件按预期变红：169 passed / 13 failed**，失败项全是日历口径（`expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …`、`double_submit… expected 1 but got 0` = 一次日历调用都没发、清理后句柄没留下）+ 那条档位断言本身。阶段 6R.1 重写后又复测了一次，口径与阶段 6.2 一致 | 已测（日志 `../.crdtest/6r1-off-calendarflow.log`；6.2 的出包日志 `build-6-2-off-calendarFlow.log`） |
 | `newCard = false` 分支 | 阶段 6R.1 之后重跑：`entry@default` debug BUILD SUCCESSFUL / 0 ERROR / `ArkTS:WARN` 357；卡面表现**未看** | 编译已测（日志 `../.crdtest/6r1-off-newCard.log`），真机待验 |
 | `responsiveV2 = false` 分支 | 同上重跑：BUILD SUCCESSFUL / 0 ERROR / WARN 357；断点行为**未看** | 编译已测（日志 `../.crdtest/6r1-off-responsiveV2.log`），真机待验 |
-| 三档恢复后的合并状态 | 五档回到 §2 的发布档位（`calendarFlow=on cloudPairing=off scanPairing=off newCard=on responsiveV2=on`）后，上表的 offline/debug/release/ohostest 四步再全绿一次 | 已测（同一份 `6r1-verify.log`） |
+| 三档恢复后的合并状态 | 五档回到 §2 的发布档位（`calendarFlow=on cloudPairing=off scanPairing=off newCard=on responsiveV2=on`）后，上表的 offline/debug/release/ohostest 四步再全绿一次 | 已测（阶段 6R.2 复跑，`../.crdtest/verify-*.log`：190 passed / 352 / 352 / 260） |
 | `cloudPairing = true` / `scanPairing = true` 分支 | 不验证 | **故意不做**：门禁未过，验证会诱导"顺手开一下"。要开先改 `clouddev-api26-spike.md` 结论 |
 | 关档后的真机表现（停用卡面、单列回退、无补写入口） | 无设备 | **待设备**（清单 §18.2） |
 | 按用户分流的灰度、分阶段放量 | 未核对官方控制台 | 缺证据，见 §1 |

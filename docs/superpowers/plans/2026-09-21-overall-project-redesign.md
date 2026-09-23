@@ -863,10 +863,22 @@ git status --short
 
 ## Task 6R.2：纯本地安全与权限封口
 
-- [ ] `createInvite/joinByCode` 在任何副作用前检查 `cloudPairing`；
-- [ ] 关闭态隐藏云配对/扫码/分享等级入口；
-- [ ] 首发移除 `INTERNET`，保持 `cloudPairing=false / scanPairing=false`；
-- [ ] 测试断言关闭态云调用、pairId、pairKey、pairState 均不变化。
+- [x] `createInvite/joinByCode` 在任何副作用前检查 `cloudPairing`；
+- [x] 关闭态隐藏云配对/扫码/分享等级入口；
+- [x] 首发移除 `INTERNET`，保持 `cloudPairing=false / scanPairing=false`；
+- [x] 测试断言关闭态云调用、pairId、pairKey、pairState 均不变化。
+
+> 2026-09-23 四项全部落地（B1 的四条整改逐条对应，另加两条结构保险）：`ProfileSettingsService.cloudBlocked()` 成为
+> 唯一判据且写在三个方法的第一句；`SnapshotCrypto.deriveKeyHex` 与 `SettingsStore.savePairKey` **从源码删除**，
+> 所以"以后只翻开关就复活不安全实现"这条路径结构上不成立；`PairingShareGateway` 四处（channels/offerFromScan/
+> shareLink/offerIncoming）在网关层各自先拒，深链关闭态不留痕；`ScheduleUseCase` 快照推拉第一句看档位；
+> `MeView` 关闭态连共享等级控件一起收走，只留本机代录与「解除/取消配对」两个退出通道；`module.json5` 降到 3 条权限。
+> 证据：新增 `entry/src/test/ProfileSettingsGuardTest.ets`（8 条；替身的 `AgcPairingClient` **总是成功**，
+> 所以"0 次调用"只能由守卫给出）+ `tools/test/run.mjs` 为 `ProfileSettingsService` 补齐内存替身并把它放回编译名单；
+> 变异验证（去掉守卫 → 只有那条用例红）；`node tools/verify.mjs --steps=offline,debug,release,ohostest` →
+> **190 passed / 0 type error / exit 0**，三条出包 0 ERROR、`ArkTS:WARN` 352/352/260（基线随之收紧）。
+> **仍不判关闭**：`cloudPairing=true` 分支按门禁**故意不验证**；"这个包交出去可发布"的最终判据（无 INTERNET 后
+> 链路无差异、飞行模式回归、关闭态入口形态）仍是 B6 待设备，见 TC §9.1、§10.1–§10.3、§18.2.8、§20.5 与验收报告 §9.4。
 
 ## Task 6R.3：严格测试门禁
 
@@ -876,9 +888,10 @@ git status --short
 - [ ] 补取消、改期、清空、解除配对和删除伴侣的失败路径。
 
 > 2026-09-23 前三项完成（提交 `2656341`，`tools/test/tsconfig.json` + `run.mjs` + 统一入口 `tools/verify.mjs`）。
-> 第四项的前三条（取消 / 改期 / 清空的失败与残留口径）随 Task 6R.1 落地；**解除配对与删除伴侣仍无断言**——
-> 前者在 `CLOUD_BLOCKED` 下无法到达（只能经 G2 那条违规路径配对），后者属阶段 3 门禁解除后的补测，见
-> `docs/release/2026-api26-release-checklist.md` §2 G5 表最后两行。
+> 第四项的前三条（取消 / 改期 / 清空的失败与残留口径）随 Task 6R.1 落地；**解除配对**在 6R.2 拿到离线断言
+> （`unpair_still_clears_local_marks_without_a_cloud_call` + `cancel_waiting_needs_no_cloud`：关闭态本地四项清空、云客户端 0 次调用），
+> 但**云端成功路径**与**删除伴侣档案**仍无断言——前者在 `CLOUD_BLOCKED` 下无法到达（只能经 G2 那条违规路径配对，而该路径的实现已删除），
+> 后者属阶段 3 门禁解除后的补测，见 `docs/release/2026-api26-release-checklist.md` §2 G5 表最后两行。
 
 ## Task 6R.4：首发产品与合规收口
 

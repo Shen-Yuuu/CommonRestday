@@ -16,7 +16,8 @@
 | 文档 | 内容 |
 |------|------|
 | [总体改造方案](./superpowers/plans/2026-09-21-overall-project-redesign.md) | 阶段 0–6 的改造任务、门禁与不可擅自更改的决策 |
-| [全阶段独立验收](./validation/2026-09-23-full-redesign-acceptance.md) | 当前最高优先级口径：工程有条件通过、发布不通过，B0–B6 证据与阶段 6R 整改顺序 |
+| [最终验收](./validation/2026-09-23-final-redesign-acceptance.md) | 当前最高优先级口径：6R 主体整改有条件通过；R1/R2、账号材料与 API 26 真机证据关闭前仍不可提审 |
+| [全阶段独立验收](./validation/2026-09-23-full-redesign-acceptance.md) | 阶段 6R 前的独立审计：B0–B6 原始证据与整改顺序；历史判定由最终验收续写 |
 | [真机验收清单](./testing-checklist.md) | 五种证据口径（离线单测 / 离线预算 / 真机插桩 / 命令行出包 / 手工走查）与逐条验收项 |
 | [发布验收清单](./release/2026-api26-release-checklist.md) | 发布门禁五条、9 维矩阵和提审材料；原 4 类阻断已由独立验收扩充为 B0–B6 |
 | [灰度与回退](./release/rollout-and-rollback.md) | 功能开关档位、启用条件、关闭影响、数据兼容性、回退操作 |

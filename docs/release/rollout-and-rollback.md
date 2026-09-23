@@ -158,7 +158,7 @@ node tools/test/run.mjs
 |---|---|---|
 | 五个开关各有一处口径 | 全仓 `grep FeatureFlags` 结果记在 §2 表里；`newShell` 已删除 | 已核 |
 | 当前档位不出现装饰性开关 | 同上 | 已核（清单 §11.14 关闭） |
-| 当前档位的离线口径 | `node tools/test/run.mjs` → **177 passed / 0 failed** | 已测 |
+| 当前档位的离线口径 | 运行时 177 passed / 0 failed，但 typecheck 有 5 errors 且 runner 错误返回 0 | **门禁不通过**；见全阶段独立验收 B3 |
 | 当前档位编译 | `entry@default` debug：BUILD SUCCESSFUL、0 ERROR、`ArkTS:WARN` **361**（与阶段 5/6 基线一致）；`entry@ohosTest` 同样 0 ERROR | 已测 |
 | `calendarFlow = false` 分支 | 单独翻档后 `entry@default` BUILD SUCCESSFUL / 0 ERROR / WARN 361；**离线套件按预期变红：167 passed / 10 failed**，失败项全是日历口径（`… expected WRITTEN but got NOT_REQUESTED`、`direct_write… expected 2 but got 0` = 一次日历调用都没发）+ 那条档位断言 | 已测（日志 `../.crdtest/build-6-2-off-calendarFlow.log`） |
 | `newCard = false` 分支 | `entry@default` BUILD SUCCESSFUL / 0 ERROR / WARN 361（日志 `build-6-2-off-newCard.log`）；卡面表现**未看** | 编译已测，真机待验 |

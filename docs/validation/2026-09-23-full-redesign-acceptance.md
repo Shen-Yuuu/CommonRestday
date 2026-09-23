@@ -1,0 +1,300 @@
+# 全阶段改造独立验收与发布整改方案
+
+> 验收日期：2026-09-23  
+> 代码基线：`2e146fc`，当前工作树另有 `PaintMonth.ets`、`ScheduleEditor.ets` 两个用户 WIP  
+> 核验方式：提交与源码静态审计、本机 API 26 SDK 声明、clean release 构建、ohosTest 编译、离线测试与性能脚本  
+> 总结论：**工程实现有条件通过；发布验收不通过（NOT RELEASE READY）**
+
+## 1. 执行摘要
+
+阶段 0–2、4–6 的主要代码和文档骨架已经形成，重构不是失败项目，也没有必要推翻重来。精简三入口、答案优先首页、日程命令编排、计划读模型、玻璃视觉试点、响应式、无障碍、卡片、提醒、迁移和回退文档均有真实提交与实现支撑。
+
+但“所有阶段已完成”不能作为当前正式口径：
+
+- 阶段 3 受 `CLOUD_BLOCKED` 门禁约束，只有协议/运维文档完成，Task 3.2–3.5 明确未执行；
+- 阶段 4、5 的设备能力与视觉验收均未执行；
+- 阶段 6 的构建收口完成，但发布门禁没有通过；
+- 本轮新增发现默认系统日历生命周期在 API 权限模型上不成立，以及离线 runner 会带类型错误返回成功。
+
+因此下一步不是继续加功能，而是进入 **阶段 6R：发布阻断整改**。整改完成并通过设备冒烟前，不应制作提审包。
+
+## 2. 本轮独立证据
+
+### 2.1 当前工作树
+
+`git status --short` 只有：
+
+- `entry/src/main/ets/pages/PaintMonth.ets`
+- `entry/src/main/ets/pages/ScheduleEditor.ets`
+
+二者属于用户 WIP，本轮只读核验、未修改。以下构建结论针对“`2e146fc` + 这两个 WIP”的当前工作树。
+
+### 2.2 release 构建
+
+执行：
+
+```powershell
+hvigorw.bat clean --no-daemon
+hvigorw.bat assembleHap --mode module -p product=default `
+  -p module=entry@default -p buildMode=release --no-daemon
+```
+
+结果：`BUILD SUCCESSFUL in 25 s 283 ms`，产物：
+
+```text
+entry/build/default/outputs/default/entry-default-unsigned.hap
+size = 1,085,865 bytes
+```
+
+结论：源码可以生成 release HAP，但因 `signingConfigs` 为空，只是 unsigned 产物，不是可提审包。ArkTS 仍有大量“可能抛异常”、deprecated 和 syscap 警告，不能再表述为“只剩 showToast”。
+
+### 2.3 ohosTest
+
+执行 `entry@ohosTest` debug `assembleHap`，结果 `BUILD SUCCESSFUL in 18 s 698 ms`。这只证明插桩包可编译；`hdc list targets = [Empty]`，测试没有在设备上执行。
+
+### 2.4 离线测试
+
+`node tools/test/run.mjs` 最终打印 `177 passed / 0 failed`，但转译阶段先出现 5 个 TypeScript 错误：
+
+1. `CommonTimeQueryServiceTest` 将 `Window` 传给 `WindowSummary`；
+2. 字符串传给 `WindowTag`；
+3. `PlanUseCaseTest` 找不到 `AppStorage`；
+4. `ScheduleCommandServiceTest` 找不到 `AppStorage`；
+5. `ConflictTest` 引用已不存在的 `ConflictHint` 导出。
+
+runner 的 `noEmitOnError=false` 会继续执行已产出的 JS，并且最终只看用例进程状态，故本次返回码仍为 `0`。因此正确口径是：
+
+> 177 个运行时断言通过，但测试工程类型编译失败，测试门禁不通过。
+
+### 2.5 性能脚本
+
+`node tools/perf/budget.mjs` 返回 0。当前机器：
+
+- 120 天 paired 重算 P95：15.250ms；
+- 366 天 paired 重算 P95：78.178ms，超过 16ms，因此必须走既定 TaskPool 门槛；
+- 1000 窗口投影 P95：0.911ms。
+
+这是 Node/开发机下界，不替代设备 Profiler 证据。
+
+## 3. 各阶段验收
+
+| 阶段 | 判定 | 说明 |
+|---|---|---|
+| 阶段 0 基线与门禁 | 通过 | 领域基线、契约、迁移与设计令牌存在；云门禁明确为 `CLOUD_BLOCKED` |
+| 阶段 1 精简主框架 | 有条件通过 | 三 Tab、答案优先与入口收纳成立；视觉/返回栈仍待设备 |
+| 阶段 1R/1V | 有条件通过 | 时间口径、跨午夜、命令服务、玻璃基础设施已落地；仍有少量 UI 直读 SettingsStore/Repo 的边界债 |
+| 阶段 2 计划闭环 | **不通过发布验收** | 本地计划/冲突读模型成立；默认 `editEvent` 后续删除/改期的权限模型不成立，见 B0 |
+| 阶段 3 云配对 | **未执行，门禁阻断** | 仅 Task 3.1 文档完成；3.2–3.5 不得标“完成” |
+| 阶段 4 卡片/扫码/提醒 | 静态有条件通过 | 代码和离线投影存在；扫码随云端关闭，卡片/提醒未真机运行 |
+| 阶段 5 响应式/无障碍/性能 | 静态有条件通过 | 策略和组件存在；360vp、横屏、大字体、读屏、材质和 Profiler 待设备 |
+| 阶段 6 迁移/灰度/发布 | **发布不通过** | release/ohosTest 可编译，迁移与回退文档齐；安全、测试、合规、签名和设备证据未闭环 |
+
+## 4. 发布阻断项
+
+### B0：默认日历确认路径无法可靠执行后续删除/改期 — P0
+
+当前路径：
+
+1. `CalendarGateway.confirmEvent()` 调用 `CalendarManager.editEvent()`；
+2. 用户在系统日历创建页选择日历并保存，应用得到 event ID；
+3. 取消/改期时，`CalendarGateway.removeEvent()` 打开应用自建“同休日”日历，再调用 `Calendar.deleteEvent(id)`。
+
+本机 API 26 `@ohos.calendarManager.d.ts` 对 `editEvent` 明确说明：该 API 创建的事件可由系统日历管理；第三方应用要读取/修改，需要 `READ_WHOLE_CALENDAR` / `WRITE_WHOLE_CALENDAR`。本机权限定义又表明这两项为 `system_basic`，普通应用当前只具备 `READ_CALENDAR` / `WRITE_CALENDAR`。
+
+所以不能假设“在应用专属 Calendar 对象上凭 event ID 删除”能管理 `editEvent` 创建到其他日历的事件。当前取消/改期还会吞掉删除失败、继续把本地计划取消或覆盖 event ID，导致孤儿或重复日程无法重试。
+
+**必须整改：**
+
+- 默认受管路径改为：用户在应用内确认“同时写入系统日历”后，使用 `addEvent` 写入应用专属“同休日”日历；
+- `editEvent` 若保留，只能命名为“导出到系统日历（之后由系统日历管理）”，落库为新的 `EXTERNAL_UNMANAGED` 状态，不承诺自动删除/改期；
+- 删除、改期返回结构化结果，不得在删除失败时仍返回无条件成功；
+- 删除旧事件失败时不得覆盖唯一 event ID，可保留 cleanup tombstone 或失败队列；
+- 真机覆盖创建、权限拒绝、取消、改期、撤权后重试、事件被用户提前删除。
+
+### B1：云功能关闭不构成真正安全边界 — P0
+
+`ProfileSettingsService.createInvite()` / `joinByCode()` 没有读取 `FeatureFlags.cloudPairing`，会先发云请求；若 AGC 被误配置成功，随后执行 `savePairKey(deriveKeyHex(code))`，把由 6 位短码派生的长期密钥写入 Preferences。
+
+**必须整改：**
+
+- 两个 service 方法第一行先检查 `cloudPairing`，关闭时在任何 UID、网络和写库动作之前返回；
+- `MeView` 在关闭时隐藏生成邀请码、输码、扫码、分享等级，只保留本机代录与“云端未开放”说明；
+- 删除或隔离生产路径中的 `deriveKeyHex + KEY_PAIR_KEY`，避免以后只翻开关就复活不安全实现；
+- 增加“开关关闭时云客户端 0 次调用、pairId/key/state 均不变”的离线测试。
+
+阶段 3 门禁未解除前，不允许测试性打开 `cloudPairing`。
+
+### B2：计划删除与清空数据会遗留系统副作用 — P0
+
+问题不只在“清空全部数据”：
+
+- `cancelPlan` 的日历/提醒清理失败会被吞掉，仍把计划标记 `CANCELLED`；
+- `acceptAlternative` 删除旧事件失败后仍可能创建新事件，产生重复；
+- `clearAllData` 直接清空 plan 表，不处理每条 `my_event_id` 与 `reminder_id`；
+- 目前只取消周摘要 reminder，计划级 ReminderAgent 可能变成孤儿。
+
+**必须整改：**
+
+- 与 B0 一起建立统一 `PlanProjectionCleanupService`；
+- 取消/改期必须保留可重试清理信息并向 UI 报告“本机计划已处理，系统日历/提醒仍待清理”；
+- 全量清空前删除应用专属 Calendar 或批量清理受管 event IDs，并取消所有计划提醒和周摘要；
+- 用户坚持清空而外部清理失败时，给出失败数量与人工处理说明；不得静默声称“已清空全部数据”；
+- 增加取消、改期、删除伴侣、解除配对、全量清空的离线与真机断言。
+
+### B3：离线测试 runner 存在假绿 — P0
+
+**必须整改：**
+
+- `tsconfig.json` 使用 `noEmitOnError=true`；
+- `compile.status !== 0` 时立即返回非零，不再启动 `boot.cjs`；
+- 修复现有 5 个类型错误；
+- 日志分别打印 `typecheck` 与 `tests` 状态；
+- 发布文档只有在“0 type error + 0 failed + exit 0”时才能写“全绿”。
+
+### B4：隐私、权限与产品文案不完整 — P0
+
+- `AppConst.PRIVACY_POLICY_URL=''`，全文入口只显示“即将上线”；
+- `INTERNET` 在纯本地首发包中没有有效用途；
+- 云共享等级在云功能关闭时没有可见效果；
+- 日历承诺与 B0/B2 的实际清理能力不一致；
+- “清空全部数据”没有披露外部日历/提醒失败的处理口径。
+
+**本次决策：首发移除 `INTERNET`。** 云门禁解除、隐私政策更新并重新验收后再加回来。`PUBLISH_AGENT_REMINDER` 已由本机 SDK 26 权限定义确认是 `system_grant`、normal 权限，不需要运行时申请；仍应在隐私政策中说明提醒用途与关闭入口。
+
+隐私政策必须形成真实可访问 URL，首启摘要、我的页、权限用途说明和商店材料保持同一口径。
+
+### B5：签名、包身份与提审材料未定稿 — P0
+
+- `signingConfigs=[]`，release 包为 unsigned；
+- `AppScope/app.json5` 的 `vendor` 仍是 `example`；
+- `bundleName=com.huawei.commonrestday` 是否属于开发者主体尚未确认；
+- App 备案、截图、分类、年龄分级、版权/开发者信息无落地证据。
+
+这些必须在首个正式包前确定。bundleName 一旦正式使用不应再随意更换。
+
+### B6：没有设备证据 — P0 发布门禁
+
+当前没有真机或模拟器，所以无法判断：
+
+- 默认日历确认/受管日历是否真创建、真删除；
+- 权限允许/拒绝/撤回；
+- 卡片跨进程更新、路由回流和桌面移除；
+- ReminderAgent 是否按档位触发并正确取消；
+- 360vp、深色、2× 字体、读屏、Senior Mode、玻璃材质和动画；
+- 备份恢复、横屏及性能 Profiler。
+
+发布验收不能用“待设备”替代“通过”。
+
+## 5. 与改造方案不一致但不单独阻断首发
+
+### D1：计划类型仍为 8 项
+
+Task 2.2 要求精简类型，但 `PLAN_KINDS` 仍暴露 8 项。
+
+**本次决策：创建界面只显示“ 一起吃饭 / 其他 ”。** 保留 8 项 key→label 兼容表，用于展示历史数据；`其他` 使用现有 `custom` key 并要求填写标题。这样既符合精简原型，也不会破坏旧数据。不要改成含义过宽的“约会/其他”。
+
+### D2：横屏策略没有产品结论
+
+当前只声明 phone，却没有 orientation；手机横屏可能按宽度进入 medium/expanded，触发原为平板设计的双栏。
+
+**本次决策：首发暂时设置 EntryAbility `orientation: 'portrait'`。** 本机 API 26 schema 已确认 `portrait` 是合法值。完成横屏真机矩阵后再解除，而不是在无证据时默认接受。
+
+### D3：entry/feature 分层仍有残余
+
+- `MeView` 仍直接读三项 `SettingsStore` 通知偏好；
+- 老录入页仍直接查询 `ScheduleRepo`；
+- `ProfileSettingsService` 直接 import `reminderAgentManager`，没有完全走 integration 门面。
+
+这些不是首发 P0，但新整改不得继续扩大。B2 实施时应把 reminder 取消收进 Gateway/cleanup service；通知偏好补入 ProfileSettings 读模型。老页面的只读查询可在发布后单独偿债。
+
+### D4：警告基线过高
+
+当前 release 能构建，但警告不止 deprecated，还包含异常处理与 syscap。首发前至少做到：
+
+- 新整改不增加警告；
+- 对日历、加密、备份、数据库这些高风险路径逐项归类；
+- 云端关闭时的 SnapshotCrypto syscap 警告不得被误读为已验证能力；
+- 建立 warning 基线文件，数量上升使 CI 失败。
+
+## 6. 阶段 6R 整改执行计划
+
+### 6R.1 日历生命周期重构（最高优先级）
+
+**目标：** 本地计划、系统日历和提醒的状态可解释、可删除、可重试。
+
+1. 冻结新状态：`LOCAL_ONLY / MANAGED_WRITTEN / EXTERNAL_UNMANAGED / CLEANUP_PENDING / FAILED`；
+2. 默认创建改为应用专属 Calendar 的受管 `addEvent`；
+3. `editEvent` 降为显式“导出”动作，不能复用受管 eventId 语义；
+4. 重构取消、改期、补写与清空数据；
+5. 更新 `PlanSummary` 徽标、Privacy 文案和测试；
+6. API 26 真机跑完整生命周期。
+
+**退出条件：** 创建—改期—取消后系统日历零孤儿；撤权/系统侧已删除均能给出确定状态。
+
+### 6R.2 纯本地安全封口
+
+1. service 级 cloud flag 守卫；
+2. 关闭态隐藏云入口和分享等级；
+3. 首发移除 `INTERNET`；
+4. 增加零云调用断言；
+5. 保持 `cloudPairing=false / scanPairing=false`。
+
+### 6R.3 修复测试门禁
+
+1. 修复 5 个 TypeScript 错误；
+2. typecheck 失败立即非零退出；
+3. 补 B0–B2 的失败路径测试；
+4. release、ohosTest、离线测试与性能脚本组成统一验证命令。
+
+### 6R.4 合规与首发形态
+
+1. 创建并托管隐私政策；
+2. 同步首启摘要与“我的”页；
+3. 设置 `orientation: portrait`；
+4. 创建界面只留“一起吃饭/其他”；
+5. 确认 bundleName、vendor、版本号、签名和备案资料。
+
+### 6R.5 设备验收
+
+建议至少一台 API 26 真机；如能增加第二台，第二台用于不同尺寸/深色/大字体，不用于开启云配对。
+
+按以下顺序执行，任一 P0 失败立即停止：
+
+1. 全新安装、隐私拒绝/接受、无网启动；
+2. 单人录入与本机代录 → 三答案；
+3. 创建计划 → 受管日历 → 改期 → 取消 → 清空；
+4. 权限拒绝、撤权、事件被系统侧删除；
+5. 提醒允许/拒绝、精确提醒开关；
+6. 卡片添加/更新/点击/移除；
+7. 360vp、深色、2× 字体、读屏、Senior Mode、降低透明度；
+8. 备份恢复和性能采样。
+
+### 6R.6 最终出包
+
+- 签名 release clean build；
+- 严格测试 runner 0 type error / 0 failed；
+- ohosTest 在设备执行而非只编译；
+- 回填截图、日志、测试日期、设备型号和系统版本；
+- 所有 B0–B6 关闭后再把状态改为 `READY FOR SUBMISSION`。
+
+## 7. 交给后续 AI 的禁止事项
+
+- 不得把 `editEvent` 返回的 ID 当作普通权限下可管理的应用专属事件；
+- 不得为快速绿灯让 runner 忽略 TypeScript 错误；
+- 不得只在 UI 隐藏云入口而省略 service 级守卫；
+- 不得开启 cloud/scan 开关验证未通过的 HUKS 路径；
+- 不得把“清空本地表”描述成“已清除系统日历与提醒”；
+- 不得覆盖或顺手提交当前两个用户 WIP；
+- 不得在没有设备证据时勾选渲染、权限、卡片、提醒或备份恢复通过。
+
+## 8. 最终完成定义
+
+- [ ] B0–B6 全部关闭；
+- [ ] 阶段 3 保持明确的 `SKIPPED / CLOUD_BLOCKED`，而非伪装完成；
+- [ ] release 签名包生成且包身份材料确定；
+- [ ] 严格离线测试 0 type error / 0 failed / exit 0；
+- [ ] ohosTest 在 API 26 设备实际执行通过；
+- [ ] 日历、提醒和清空数据无孤儿副作用；
+- [ ] 隐私政策 URL 可访问且与实际权限/开关一致；
+- [ ] 真机可用性、无障碍、卡片、备份和性能证据已归档。
+

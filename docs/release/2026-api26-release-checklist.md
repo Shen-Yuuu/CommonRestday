@@ -3,11 +3,17 @@
 > 对应改造文档 Task 6.4。本文件只做一件事：**把"能不能提审"拆成可判定的条目，并写清每一条现在有什么证据**。
 > 逐屏操作口径不在这里重复，全部在 [真机验收清单](../testing-checklist.md)（下面记作 `TC §n`）。
 
+> **2026-09-23 独立复核补充：** 本文件的“不具备提审条件”结论继续成立，但阻断范围已扩大。复核发现：
+> ① `editEvent` 创建的系统日历事件在当前普通权限下不能按现有应用专属 Calendar 路径可靠删除/改期；
+> ② `node tools/test/run.mjs` 虽打印 177/177，却带 5 个 TypeScript 错误并错误返回 0；
+> ③ 清空数据还会遗留计划级 ReminderAgent，而不仅是系统日历事件。完整证据、修法与阶段 6R 顺序以
+> [全阶段独立验收](../validation/2026-09-23-full-redesign-acceptance.md) 为准。整改完成前，本文件任何旧的“全绿”措辞不得作为提审证据。
+
 ## 0. 判定口径（先读这一节）
 
 - **本轮没有接入任何真机或模拟器**。因此本清单里"通过"只有三种可能来源：离线套件、命令行构建、代码/配置的静态事实。渲染、权限弹窗、系统日历、通知栏、卡片、扫码、备份恢复一律标 **待设备**，不因离线通过而勾掉。
 - 发布门禁共五条（改造文档 Task 6.4）：**G1 P0 流程无阻断缺陷 / G2 功能开关关闭时纯本地版可发布 / G3 云数据库无敏感明文 / G4 隐私文案与实际权限一致 / G5 所有数据删除动作可验证**。逐条判定见 §2。
-- **本轮结论：不具备提审条件**。阻断项有 4 条，其中 1 条是代码（§2 G2）、3 条是合规材料/文案（§2 G4、§5）。设备接入后还要补 TC §1–§20 全量走查。
+- **本轮结论：不具备提审条件**。原验收登记的 4 类阻断继续成立；独立复核又增加了受管日历生命周期、测试假绿和计划级提醒残留，统一按上方独立验收 B0–B6 整改。设备接入后还要补 TC §1–§20 全量走查。
 
 ## 1. 构建与产物证据（本轮实测）
 
@@ -16,7 +22,7 @@
 | 清干净 | `hvigorw clean --no-daemon` | BUILD SUCCESSFUL（7 tasks） |
 | release 出包 | `hvigorw assembleHap --mode module -p product=default -p module=entry@default -p buildMode=release --no-daemon` | **首次运行失败**，修复后 BUILD SUCCESSFUL，产物 `entry/build/default/outputs/default/entry-default-unsigned.hap` |
 | 告警基线 | 同上 | `ArkTS:WARN` **361**（与 debug 基线一致，无新增）、0 error |
-| 离线套件 | `node tools/test/run.mjs` | **177 passed / 0 failed** |
+| 离线套件 | `node tools/test/run.mjs` | 运行时 **177 passed / 0 failed**，但先有 **5 个 TypeScript error** 且 runner 错误返回 0 → **门禁不通过** |
 | 插桩包 | `entry@ohosTest assembleHap`（debug） | 2026-09-23 复跑：编译通过、0 error，**未执行 → 待设备** |
 
 **修复的那条失败必须记下来**：`buildMode=release` 在 5 个 HAR（`commons/domain/data/cloud/feature`）上报
@@ -78,7 +84,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 | 4 | 弹窗第二句「日历事件：仅在你确认创建共同计划时写入系统日历」 | **文案落后于实现**：计划 Sheet 上有「直接写入系统日历」开关（TC §6.6，勾选后不再弹系统确认页），且 `calendarFlow=false` 关档时一次都不写。文案要覆盖这两种形态，或产品决定去掉直通开关 |
 | 5 | 弹窗末尾「你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）」 | **承诺了当前无可见效果的能力**：等级只参与快照生成，而快照链路关闭（docs/03 L14 已注明"等级只在有云时才有意义"）。要么在「我的」该卡上加一行"云端配对开放后才会影响 TA 看到的内容"，要么本轮先隐藏等级设置 |
 | 6 | OCR 页文案「照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图」 | **一致**：`pages/OcrCourse.ets` 走 `cameraPicker.pick` + `PhotoViewPicker.select`（系统 Picker，无需应用侧相机/相册权限），识别用端侧 `textRecognition`；全仓无图片上传代码 |
-| 7 | `AppScope/app.json5`：`bundleName: com.huawei.commonrestday`、`vendor: element`、`versionName 1.0.0 / versionCode 1000000` | **需核对（缺证据）**：包名前缀与开发者主体的一致性要求、`vendor` 显示名要求，本轮未核到官方条文。注意**包名在首个正式包之后不可更改**（改了就是另一个应用：卡片、深链 scheme `crdpair`、已授权权限全部重来），必须在这一版之前定 |
+| 7 | `AppScope/app.json5`：`bundleName: com.huawei.commonrestday`、`vendor: example`、`versionName 1.0.0 / versionCode 1000000` | **阻断/待定稿**：`vendor` 明显仍是模板值；包名前缀与开发者主体也必须在首个正式包前确认。包名正式使用后不可随意更换（改了就是另一个应用：卡片、深链 scheme `crdpair`、已授权权限全部重来） |
 
 ### G5 所有数据删除动作可验证 —— **部分不通过**
 
@@ -93,8 +99,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 | 清空全部数据 | `ProfileSettingsService.clearAllData` | 8 张 RDB 表全清 + 全部设置（隐私同意标记刻意保留）+ 取消周摘要提醒 | 无 | 待设备 |
 | 备份恢复后的降级 | `Db` 首启消费恢复标记 | 三条 UPDATE：日历投影→`LOCAL_ONLY`、提醒句柄→`-1`、云端声明→本地 | **有**（`DbMigrationTest` 12 条） | 待设备（TC §17.3） |
 
-**不通过的那一点**：`clearAllData()` **不会删除已写进系统日历的日程**（`ScheduleRepo.clearAllData` 直接 `DELETE FROM plan`，不读 `calendar_event_id`、不调日历端口）。用户按弹窗理解"删除本机全部…计划"之后，系统日历里仍留着几条指向已不存在计划的日程。
-这与首启弹窗「取消计划即同步移除」的承诺构成同一个心智模型的破口，也是 G5"删除动作可验证"里唯一一处删不干净的地方。
+**不通过的不止一处**：`clearAllData()` **不会删除已写进系统日历的日程，也不会取消计划级 ReminderAgent**（`ScheduleRepo.clearAllData` 直接 `DELETE FROM plan`，不读取 `my_event_id/reminder_id`）。此外普通取消/改期也会吞掉投影删除失败并失去重试句柄。完整修法见独立验收 B0/B2。
 **提审前必办**：`clearAllData` 先 `list` 出 `calendar_state='WRITTEN'` 的计划、逐条走与"取消计划"相同的删除投影（失败则保留行并说明哪几条没删掉），或在确认弹窗里明说「系统日历里的 N 条日程不会被删除，需要自行清理」并把条数显示出来。二者都行，但**不能像现在这样两者都不做**。
 **同时**：后 4 行"离线断言"应各补一条用例（尤其 `clearAllData` 之后 `plan`/`shift_type` 计数为 0、隐私标记仍在），这样 G5 才不必完全依赖真机。
 

@@ -840,6 +840,49 @@ git status --short
 
 ---
 
+# 阶段 6R：发布阻断整改
+
+> 2026-09-23 全阶段独立验收判定为 `NOT RELEASE READY`。详细证据和实现约束见
+> `docs/validation/2026-09-23-full-redesign-acceptance.md`。本阶段优先级高于任何新增功能。
+
+## Task 6R.1：重构受管日历生命周期
+
+- [ ] 默认路径不再把 `editEvent` 返回值当作普通权限下可管理的事件；
+- [ ] 应用专属 Calendar 负责受管 `add/update/delete`；`editEvent` 若保留则标记为不可自动同步的导出；
+- [ ] 取消/改期/清空时保留失败状态和可重试清理信息；
+- [ ] 同时清理计划级 ReminderAgent 与周摘要；
+- [ ] 更新状态模型、UI 徽标、隐私文案、离线测试与 API 26 真机测试。
+
+## Task 6R.2：纯本地安全与权限封口
+
+- [ ] `createInvite/joinByCode` 在任何副作用前检查 `cloudPairing`；
+- [ ] 关闭态隐藏云配对/扫码/分享等级入口；
+- [ ] 首发移除 `INTERNET`，保持 `cloudPairing=false / scanPairing=false`；
+- [ ] 测试断言关闭态云调用、pairId、pairKey、pairState 均不变化。
+
+## Task 6R.3：严格测试门禁
+
+- [ ] 修复离线 runner 当前 5 个 TypeScript 错误；
+- [ ] typecheck 失败立即非零退出，不执行部分产物；
+- [ ] 只有 `0 type error + 0 failed + exit 0` 才可称为全绿；
+- [ ] 补取消、改期、清空、解除配对和删除伴侣的失败路径。
+
+## Task 6R.4：首发产品与合规收口
+
+- [ ] 创建计划类型只展示“一起吃饭/其他”，保留旧 8 类标签映射用于兼容；
+- [ ] 首发锁竖屏，横屏设备矩阵通过后再解除；
+- [ ] 隐私政策全文托管并统一首启/我的/商店文案；
+- [ ] 确认 bundleName、vendor、签名、备案和提审材料。
+
+## Task 6R.5：真机验收与签名出包
+
+- [ ] API 26 真机执行 P0 主链、权限拒绝/撤回、日历、提醒、卡片、备份恢复；
+- [ ] 验证 360vp、深色、2× 字体、读屏、Senior Mode、降低透明度；
+- [ ] 生成签名 release 包并记录设备、系统版本、截图、日志与执行日期；
+- [ ] 独立验收 B0–B6 全关闭后才进入提审。
+
+---
+
 ## 跨阶段验收追踪表
 
 | 能力 | 首次交付 | 强制测试 | 降级 |

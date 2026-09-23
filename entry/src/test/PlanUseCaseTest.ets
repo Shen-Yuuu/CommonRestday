@@ -810,8 +810,14 @@ export default function planUseCaseTest() {
       const dirty = emptyCleanupReport();
       dirty.eventsPending = 1;
       dirty.remindersPending = 1;
-      expect(clearAllMessageOf(dirty, false)).assertEqual('已清空本机全部数据'
-        + '；2 项日历/提醒没清掉，可稍后重试；「同休日」日历没有清空，请到系统日历里检查');
+      const dirtyMsg = clearAllMessageOf(dirty, false);
+      expect(dirtyMsg).assertEqual('已清空本机全部数据'
+        + '；2 项系统日历/提醒可能仍在，本应用已无法再替你清理，请到系统日历/系统设置检查'
+        + '；「同休日」日历没有清空，请到系统日历里检查');
+      // 最终验收 R2：清库把句柄一起删了，"可稍后重试"在这条路径上承诺的是做不到的事。
+      expect(dirtyMsg.indexOf('稍后重试') < 0).assertTrue();
+      // 反过来钉住普通取消/改期：那条路径留着 tombstone，重试是真的可兑现，不许被顺手改掉。
+      expect(cleanupMessageOf(dirty).indexOf('稍后重试') >= 0).assertTrue();
       // 只有导出那种删不动的：说清"归系统日历管"，但不说日历没清空（专属那一本确实清了）
       const ext = emptyCleanupReport();
       ext.eventsExternal = 1;

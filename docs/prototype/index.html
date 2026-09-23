@@ -1486,7 +1486,7 @@ function scrMeLean(){
       : S.pairState === 'PAIRED' ? '我 & 对方' : '我（单人模式）') + '</div>'
     + '<div class="t12" style="opacity:.92">' + (S.pairState === 'PAIRED' ? '已配对 · 上次同步 ' + relTime(S.pairSyncedAt)
       : S.pairState === 'WAITING' ? '等待对方输码 · ' + esc(S.inviteCode)
-      : !S.agcOn ? '数据只存在这台手机 · 本机代录' : '本机代录，或配对后自动同步') + '</div></div>'
+      : !S.agcOn ? '本机代录 · 数据只写在本机的应用沙箱里' : '本机代录，或配对后自动同步') + '</div></div>'
     + '<span class="chip" style="background:#ffffff2e;color:#fff" data-act="go" data-s="cotime">共同时间</span></div></div>';
   html += '<div class="card col gap8"><div class="row between"><div class="t13 b5">伴侣' + srcTag('MeView.ets') + '</div>'
     + (pt.exists ? '<span class="t13 pink" data-act="editPartner">编辑</span>' : '<span class="t13 pink" data-act="addPartner">+ 添加</span>') + '</div>';
@@ -1807,13 +1807,15 @@ function sheetBody(){
   return '';
 }
 function privacyHtml(){
-  /* 与 entry/src/main/ets/component/PrivacyDialog.ets 的 privacyPoints() 同步（阶段 6R.4 重写）：
-     下面四条 d 就是 app.string.privacy_point_* 的原文，改动要两边一起改。 */
+  /* 与 entry/src/main/ets/component/PrivacyDialog.ets 的 privacyPoints() 同步（最终验收 R1 补第二条）：
+     下面五条 d 就是 app.string.privacy_point_* 的原文，改动要两边一起改。
+     仓库里的三份正式全文由 tools/test/copy-audit.mjs 逐字钉住；这份原型不参与该审计。 */
   var pts = [
-    { i:'📋', t:'只在本机', d:'班表/课表数据仅存储在本机数据库，不上传任何服务器' },
+    { i:'📋', t:'只在本机', d:'班表/课表只写进这台手机上的应用沙箱数据库，本应用不联网、不上传任何服务器' },
+    { i:'🔄', t:'系统备份', d:'系统备份、应用克隆或换机迁移会把这份数据带到你的其他设备——那条通道由系统管理，本应用不参与' },
     { i:'📅', t:'日历', d:'共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理' },
     { i:'📷', t:'照片', d:'照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图' },
-    { i:'🔐', t:'云端', d:'云端配对当前未开放，这个安装包也没有联网权限；你的班表不会离开这台手机' }
+    { i:'🔐', t:'云端', d:'云端配对当前未开放，这个安装包也没有联网权限；本应用自己不会把你的数据发出去' }
   ];
   return '<div class="col gap12" style="min-height:100%">'
     + '<div style="font-size:40px;text-align:center">🤝</div>'

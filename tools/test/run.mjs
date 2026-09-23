@@ -5,11 +5,12 @@
  *   node tools/test/run.mjs          # 仓库根目录执行
  *   CRD_ONLY=commonTimeQueryService node tools/test/run.mjs   # 只跑一个 describe
  *
- * 退出码：0 类型编译与用例**都**干净 / 1 有用例失败 / 2 环境不满足（缺 tsc）/ 3 类型编译失败。
- * 完整输出同时写在 tools/test/out/last-run.log。
+ * 退出码：0 类型编译、用例、文案口径审计**都**干净 / 1 有用例失败或文案口径冲突 /
+ * 2 环境不满足（缺 tsc）/ 3 类型编译失败。完整输出同时写在 tools/test/out/last-run.log。
  *
- * 只有 `typecheck: 0 errors` + `tests: passed` + 退出码 0 才可以写成"全绿"：转译有类型错误时
- * 不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），所以不存在"用例通过但工程编不过"的假绿。
+ * 只有 `typecheck: 0 errors` + `copy: PASS` + `tests: passed` + 退出码 0 才可以写成"全绿"：
+ * 转译有类型错误时不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），
+ * 所以不存在"用例通过但工程编不过"的假绿。`copy` 见 tools/test/copy-audit.mjs。
  *
  * 注意：这里证明的是"纯装配与计算逻辑"，不覆盖 @kit/RDB/Preferences/云调用与渲染；
  * 那些仍由 DevEco 的 ohosTest（真机 Instrument Test）负责。
@@ -18,6 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { auditPrivacyCopy } from './copy-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -527,6 +529,13 @@ function main() {
     console.log('\n日志：' + LOG.replace(/\\/g, '/'));
     process.exitCode = code;
   };
+  const copyViolations = auditPrivacyCopy(REPO);
+  say('copy: ' + (copyViolations.length === 0
+    ? 'PASS（隐私政策三处全文同源 + 摘要五条 + 全仓无绝对化表述 + 清空文案口径）'
+    : 'FAILED（' + copyViolations.length + ' 项口径冲突）'));
+  for (const v of copyViolations) {
+    say('  - ' + v);
+  }
   prepare();
   const tsc = findTsc();
   if (tsc === null) {
@@ -557,7 +566,10 @@ function main() {
   }
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
-  finish(testsPassed ? 0 : (run.status ?? 1));
+  if (testsPassed && copyViolations.length > 0) {
+    say('--- 用例全绿但文案口径审计未通过（退出码 1）---');
+  }
+  finish(testsPassed && copyViolations.length === 0 ? 0 : (testsPassed ? 1 : (run.status ?? 1)));
 }
 
 main();

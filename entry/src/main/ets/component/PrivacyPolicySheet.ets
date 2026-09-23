@@ -12,8 +12,11 @@ interface PolicySection {
  * 《隐私政策》全文（阶段 6R.4 / 发布清单 G4-1）。
  *
  * 首发包不申请联网权限，所以全文只能随包出厂、离线可读——"去浏览器打开托管页"
- * 在这个档位不成立。文本与 docs/legal/privacy-policy.md（商店与托管用的那一份）
- * 同一口径；首启弹窗与「我的」页共用本组件，两处不再各写一套说法。
+ * 在这个档位不成立。文本与 docs/legal/privacy-policy.md（商店与托管用的那一份）、
+ * docs/legal/privacy-policy.html、以及 string.json 的 `pp_*` 条目**逐字同源**，
+ * 增删一节必须四处同批改；漂移由 `node tools/test/run.mjs` 的文案口径审计拦下
+ * （`tools/test/copy-audit.mjs`），它会同时核对这里的**节序**。
+ * 首启弹窗与「我的」页共用本组件，两处不再各写一套说法。
  */
 @Component
 export struct PrivacyPolicySheet {
@@ -26,6 +29,7 @@ export struct PrivacyPolicySheet {
     const list: PolicySection[] = [
       { title: $r('app.string.pp_head_t'), body: $r('app.string.pp_head_b') },
       { title: $r('app.string.pp_data_t'), body: $r('app.string.pp_data_b') },
+      { title: $r('app.string.pp_backup_t'), body: $r('app.string.pp_backup_b') },
       { title: $r('app.string.pp_photo_t'), body: $r('app.string.pp_photo_b') },
       { title: $r('app.string.pp_perm_t'), body: $r('app.string.pp_perm_b') },
       { title: $r('app.string.pp_sys_t'), body: $r('app.string.pp_sys_b') },

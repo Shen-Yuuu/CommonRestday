@@ -201,12 +201,19 @@ export function cleanupMessageOf(report: CleanupReport): string {
  *
  * 本机表清空了是事实，但系统侧还剩的东西一句都不能漏——把"删了本地行"说成"系统日历与提醒
  * 也干净了"是这份验收报告点名的谎报（docs/validation/2026-09-23-full-redesign-acceptance.md）。
+ *
+ * 这里**不复用** `cleanupMessageOf`：那句"可稍后重试"靠的是计划行里留下的句柄，
+ * 而清空动作把计划行连同句柄一起删了，重试的凭据在这一步之后就不存在了。
+ * 剩下只能让人自己去系统侧检查（最终验收 R2）。
  */
 export function clearAllMessageOf(report: CleanupReport, calendarPurged: boolean): string {
   const parts: string[] = ['已清空本机全部数据'];
-  const note = cleanupMessageOf(report);
-  if (note !== '') {
-    parts.push(note);
+  const left = report.eventsPending + report.remindersPending;
+  if (left > 0) {
+    parts.push(left + ' 项系统日历/提醒可能仍在，本应用已无法再替你清理，请到系统日历/系统设置检查');
+  }
+  if (report.eventsExternal > 0) {
+    parts.push(report.eventsExternal + ' 条导出的日程由系统日历管理，请到系统日历里删除');
   }
   if (!calendarPurged) {
     parts.push('「同休日」日历没有清空，请到系统日历里检查');

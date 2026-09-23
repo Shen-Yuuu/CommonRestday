@@ -222,8 +222,10 @@ export default function profileSettingsGuardTest() {
 
       // 2 = 1 条日程 + 1 条计划级提醒；专属日历也没清掉，所以后半句要跟着出来
       expect(dirty.ok).assertTrue();
-      expect(dirty.message).assertEqual('已清空本机全部数据；2 项日历/提醒没清掉，可稍后重试；'
-        + '「同休日」日历没有清空，请到系统日历里检查');
+      expect(dirty.message).assertEqual('已清空本机全部数据；2 项系统日历/提醒可能仍在，'
+        + '本应用已无法再替你清理，请到系统日历/系统设置检查；「同休日」日历没有清空，请到系统日历里检查');
+      // 最终验收 R2：这条路径已经删掉了计划行与句柄，"可稍后重试"承诺的是做不到的动作。
+      expect(dirty.message.indexOf('稍后重试') < 0).assertTrue();
       expect(await activePlanCount()).assertEqual(0);
       expect(await carryCount()).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);

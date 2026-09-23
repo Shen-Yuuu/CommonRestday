@@ -10,17 +10,31 @@ node tools/test/run.mjs
 
 | 码 | 含义 |
 |---|---|
-| 0 | 类型编译 0 error **且**全部用例通过 |
-| 1 | 有失败用例（明细见输出与日志） |
+| 0 | 类型编译 0 error **且**全部用例通过 **且**文案口径审计通过 |
+| 1 | 有失败用例，或文案口径审计报出冲突（明细见输出与日志） |
 | 2 | 环境不满足（找不到 TypeScript 编译器） |
 | 3 | 类型编译未通过：不产出 JS、**不启动用例** |
 
-输出末尾给出日志路径：`tools/test/out/last-run.log`（`typecheck: N errors` + 每个用例 PASS/FAIL +
-汇总计数 + `tests: passed/FAILED`）。
+输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy: PASS/FAILED` + `typecheck: N errors` +
+每个用例 PASS/FAIL + 汇总计数 + `tests: passed/FAILED`）。
 
-**"全绿"的唯一口径是 `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
+**"全绿"的唯一口径是 `copy: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
 `tsconfig.json` 用 `noEmitOnError: true`，转译有类型错误时既没有产物也没有绿灯——曾经
 `noEmitOnError: false` 让 5 个类型错误照样跑出 "177 passed, exit 0"，那种数字不能写进任何验收文档。
+
+## 文案口径审计（`copy-audit.mjs`）
+
+《隐私政策》的全文同时存在于三处（应用内 `string.json` 的 `pp_*`、`docs/legal/privacy-policy.md`、
+`privacy-policy.html`，渲染顺序另由 `PrivacyPolicySheet.ets` / `PrivacyDialog.ets` 决定），首启摘要另有两处。
+这几份文字一旦各说各话，用户在一个地方读到的承诺在另一个地方就不成立——最终验收 R1 报的就是这一类问题，
+所以这里用纯 Node 逐字比对，而不是在文件头写一句"请两边同批改"然后指望人记得。
+
+禁令同时覆盖**所有随包源码**（`entry/feature/data/cloud/commons/domain` 的 `src/main`）：政策改口了，
+界面上那句"数据只存在这台手机"的口号还留在原地，用户读到的仍是同一句假话。`docs/` 不参与这一项检查，
+因为验收记录要**引用**旧措辞，那是记录不是承诺。
+
+审计的六条规则见 `copy-audit.mjs` 文件头。它不需要 `tsc`，也不参与转译，
+所以资源文件与文档都能被钉住；违反任何一条即退出码 1。
 
 ## 环境要求
 

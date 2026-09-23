@@ -47,6 +47,7 @@ export struct PrivacyDialog {
   privacyPoints(): PrivacyPoint[] {
     const pts: PrivacyPoint[] = [
       { icon: '📋', text: $r('app.string.privacy_point_local') },
+      { icon: '🔄', text: $r('app.string.privacy_point_backup') },
       { icon: '📅', text: $r('app.string.privacy_point_calendar') },
       { icon: '📷', text: $r('app.string.privacy_point_photo') },
       { icon: '🔐', text: $r('app.string.privacy_point_cloud') }

@@ -474,6 +474,23 @@ export class ScheduleUseCase {
     return dv;
   }
 
+  /**
+   * 一段时间内"我不能安排"的区间（真忙 + 收整 + 作息，已合并）：
+   * 与 detectAndWriteConflicts 归因用的 `sources.my` 同一份口径，所以按它排开的起点不会再被判冲突。
+   *
+   * 起草器用它把默认起点挪出自己的睡觉时间（D-25）：旅行通道只扣真忙、睡眠算在窗口里，
+   * 一段连续休息的窗口起点可以是 00:00，不查这一份就会把"选窗口 → 直接保存"的第一条计划排进被窝里。
+   * 天数按视界封住（与引擎同一上限口径），不随窗口长度无限放大。
+   */
+  static async myUnavailableOver(startEpochMin: number, endEpochMin: number): Promise<Interval[]> {
+    const params = SettingsStoreParams();
+    const firstDay = Math.floor(startEpochMin / MIN_PER_DAY);
+    const lastDay = Math.max(firstDay, Math.ceil(endEpochMin / MIN_PER_DAY) - 1);
+    const days = Math.max(1, Math.min(lastDay - firstDay + 1, params.horizonDays));
+    const my = await ScheduleUseCase.loadMySchedule(firstDay, params, OWNER_ME);
+    return buildAvailability(my, params, firstDay, days).notAvailable;
+  }
+
   // ---------- 学期与节次 ----------
 
   /** 默认节次模板：上午 1-4 节 8:00 起、下午 5-8 节 14:00 起、晚上 9-12 节 19:00 起，每节 45+10 分钟。 */

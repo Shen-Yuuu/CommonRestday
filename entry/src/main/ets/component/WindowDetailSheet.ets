@@ -1,9 +1,9 @@
 import { promptAction, Chip } from '@kit.ArkUI';
-import { MIN_PER_DAY } from 'domain';
-import { DateLabel } from 'commons';
+import { Interval, MIN_PER_DAY } from 'domain';
+import { DateLabel, Logger } from 'commons';
 import {
   CreatePlanOptions, isOnSystemCalendar, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, OTHER_PLAN_KIND_KEY,
-  PlanDraft, PlanKindOption, PLAN_KINDS, PlanUseCase, defaultDraft, planDraftError
+  PlanDraft, PlanKindOption, PLAN_KINDS, PlanUseCase, ScheduleUseCase, defaultDraft, planDraftError
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { GlassStrength } from '../theme/MaterialPolicy';
@@ -11,6 +11,7 @@ import { GlassSurface } from './GlassSurface';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const STEP_MIN = 15;
+const TAG = 'WindowDetailSheet';
 
 /**
  * 窗口详情半模态（US5 / FR-009）：
@@ -51,6 +52,8 @@ export struct WindowDetailSheet {
   /** 是否写进应用专属「同休日」日历（受管：改期与取消会自动跟着同步）。默认开。 */
   @State writeToCalendar: boolean = true;
   private titleTouched: boolean = false;
+  /** 用户是否手动调过起止：异步补来的"避开作息"起点不得覆盖他已经选好的时间。 */
+  private timeTouched: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
 
@@ -63,7 +66,35 @@ export struct WindowDetailSheet {
     const draft: PlanDraft = defaultDraft(this.winStart, this.winEnd, PLAN_KINDS[0].label, PLAN_KINDS[0].key);
     this.kindIdx = 0;
     this.titleTouched = false;
+    this.timeTouched = false;
     this.title = draft.title;
+    this.planStart = draft.start;
+    this.planEnd = draft.end;
+    this.arrangePastOwnRhythm();
+  }
+
+  /**
+   * 把默认起点挪到自己的作息之外（D-25）：旅行通道的窗口只扣真忙、不扣睡眠，
+   * 一段连续休息的窗口从 00:00 就开始，于是"点开窗口不改动任何参数直接保存"的第一条计划
+   * 必然收到一句"落在你的作息时段外"——那是本应用自己给的答案反驳自己。
+   *
+   * 不可用区间要读班表才算得出来，所以先按窗口起点同步给一版草稿、再异步纠正一次；
+   * 期间用户已经调过时间或换了窗口就丢掉这次结果，取数失败也维持原草稿（冲突解释链照旧会说）。
+   */
+  private async arrangePastOwnRhythm(): Promise<void> {
+    const winStart = this.winStart;
+    const winEnd = this.winEnd;
+    let unavailable: Interval[] = [];
+    try {
+      unavailable = await ScheduleUseCase.myUnavailableOver(winStart, winEnd);
+    } catch (e) {
+      Logger.warn(TAG, 'load my unavailable failed: ' + (e as Error).message);
+      return;
+    }
+    if (this.timeTouched || this.winStart !== winStart || this.winEnd !== winEnd) {
+      return;
+    }
+    const draft: PlanDraft = defaultDraft(winStart, winEnd, this.title, PLAN_KINDS[this.kindIdx].key, unavailable);
     this.planStart = draft.start;
     this.planEnd = draft.end;
   }
@@ -93,6 +124,7 @@ export struct WindowDetailSheet {
     if (delta > 0 && !this.canShiftStartLater()) {
       return;
     }
+    this.timeTouched = true;
     this.planStart = this.planStart + delta;
   }
 
@@ -103,6 +135,7 @@ export struct WindowDetailSheet {
     if (delta > 0 && !this.canShiftEndLater()) {
       return;
     }
+    this.timeTouched = true;
     this.planEnd = this.planEnd + delta;
   }
 

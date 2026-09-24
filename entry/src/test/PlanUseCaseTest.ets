@@ -3,11 +3,11 @@ import { PlanRow, ScheduleRepo } from 'data';
 import {
   CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE, CONFLICT_REASON_PARTNER_CHANGED,
   CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER, ConflictHint,
-  conflictSignature, decodeConflictHint, encodeConflictHint
+  conflictSignature, decodeConflictHint, encodeConflictHint, Interval
 } from 'domain';
 import {
   CalendarCapability, CalendarOutcome, CalendarState, CalendarWriteResult, CleanupReport,
-  CreatePlanOptions, CreatePlanResult, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, PlanCapabilities,
+  CreatePlanOptions, CreatePlanResult, DEFAULT_PLAN_MIN, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, PlanCapabilities,
   PlanUseCase, RECOMPUTE_COUNT_KEY, ReminderCapability, RemoveOutcome,
   addCleanupReport, calendarBadgeOf, calendarStateAfterCleanup, canExportToCalendar,
   canRetryCalendarSync, canRetryCleanup, clearAllMessageOf, cleanupMessageOf, defaultDraft, emptyCleanupReport,
@@ -420,6 +420,34 @@ export default function planUseCaseTest() {
         }
       }
       expect(pending).assertEqual(0);
+    });
+
+    it('default_draft_start_steps_out_of_my_own_rhythm', 0, () => {
+      const base = dayBase(9);
+      const we = base + 3 * DAY;
+      // 旅行通道口径：这三天没有班次，所以窗口从 00:00 就开始，但睡觉时间仍然不能安排
+      const sleep: Interval[] = [
+        { start: base, end: base + 420, tag: 'SLEEP' },
+        { start: base + 1350, end: base + DAY, tag: 'SLEEP' },
+        { start: base + DAY, end: base + DAY + 420, tag: 'SLEEP' },
+        { start: base + DAY + 1350, end: base + 2 * DAY, tag: 'SLEEP' },
+        { start: base + 2 * DAY, end: base + 2 * DAY + 420, tag: 'SLEEP' },
+        { start: base + 2 * DAY + 1350, end: we, tag: 'SLEEP' }
+      ];
+      const d = defaultDraft(base, we, '一起吃饭', 'meal', sleep);
+      // 起点落到起床时刻，而不是 00:00——否则"选窗口 → 不改动参数直接保存"必然自己跟自己冲突
+      expect(d.start).assertEqual(base + 420);
+      expect(d.end - d.start).assertEqual(DEFAULT_PLAN_MIN);
+      expect(planDraftError(d, base, we)).assertEqual('');
+      // 作息之外还压着一段已有计划时继续向后找，不是只避第一段
+      const withPlan: Interval[] = sleep.concat([{ start: base + 420, end: base + 480, tag: 'PLAN' }]);
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', withPlan).start).assertEqual(base + 480);
+      // 整段窗口都在作息里：退回窗口起点，交给既有的冲突解释链，不造一段窗口外的计划
+      const shortDraft = defaultDraft(base, base + 60, '一起吃饭', 'meal', sleep);
+      expect(shortDraft.start).assertEqual(base);
+      expect(shortDraft.end).assertEqual(base + 60);
+      // 拿不到不可用集（离线/取数失败）时口径与改动前完全一致
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', null).start).assertEqual(base);
     });
 
     it('calendar_gateway_exception_becomes_a_retryable_state', 0, async () => {

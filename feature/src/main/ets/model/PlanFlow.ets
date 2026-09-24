@@ -6,6 +6,7 @@
  * "取消/拒绝时保留哪一份事实"这类判断留在这里，离线单测（tools/test/run.mjs）直接跑本文件。
  * 唯一的例外是 FeatureFlags：它是编译期常量而不是运行时依赖，读它不引入设备能力。
  */
+import { Interval } from 'domain';
 import { FeatureFlags } from '../config/FeatureFlags';
 
 /** Calendar Kit 归一后的能力结果；PlanUseCase 不直接看系统错误码。 */
@@ -229,17 +230,56 @@ export interface PlanDraft {
   end: number;
 }
 
+/** 起点向后找空档的步数上限：正常只有一两步（跨过今晚的睡眠），触顶即按"排不开"处理。 */
+const START_SCAN_LIMIT = 512;
+
 /**
- * 打开窗口时的默认草稿：从窗口起点排 DEFAULT_PLAN_MIN 分钟，
+ * 从窗口起点向后找第一段排得下默认时长的空档（半开区间，边界相接不算撞）。
+ * 排不开时返回 winStart：宁可维持"起点就是窗口起点"的旧行为，交给冲突解释链说明白，
+ * 也不静默造出一段窗口外的计划。
+ */
+function firstArrangableStart(winStart: number, winEnd: number, unavailable: Interval[] | null): number {
+  if (unavailable == null || unavailable.length === 0) {
+    return winStart;
+  }
+  let start = winStart;
+  for (let step = 0; step < START_SCAN_LIMIT; step++) {
+    if (winEnd - start < MIN_PLAN_MIN) {
+      return winStart;
+    }
+    const end = Math.min(start + DEFAULT_PLAN_MIN, winEnd);
+    let clashEnd = -1;
+    for (let i = 0; i < unavailable.length; i++) {
+      const iv = unavailable[i];
+      if (start < iv.end && end > iv.start && iv.end > clashEnd) {
+        clashEnd = iv.end;
+      }
+    }
+    if (clashEnd < 0) {
+      return start;
+    }
+    start = clashEnd;
+  }
+  return winStart;
+}
+
+/**
+ * 打开窗口时的默认草稿：从窗口起点（或 unavailable 给出的第一个可安排时刻）排 DEFAULT_PLAN_MIN 分钟，
  * 超出窗口则收缩到窗口止点；整段窗口不足最短时长时按窗口原样给出，
  * 由 planDraftError 判非法——这样 sheet 恢复/换窗口重开都得到同一结果。
+ *
+ * unavailable 是"我不能安排"的区间（真忙 + 收整 + 作息，和冲突归因读的是同一份）。
+ * 传它的理由（D-25）：旅行通道的窗口只扣真忙、睡眠算在里面，一段 120 天的窗口起点就是 00:00，
+ * 于是「选窗口 → 不改动任何参数直接保存」得到的第一条计划必然落在睡觉时间里。
  */
-export function defaultDraft(winStart: number, winEnd: number, title: string, kind: string): PlanDraft {
-  let end = Math.min(winStart + DEFAULT_PLAN_MIN, winEnd);
-  if (end - winStart < MIN_PLAN_MIN) {
-    end = Math.min(winStart + MIN_PLAN_MIN, winEnd);
+export function defaultDraft(winStart: number, winEnd: number, title: string, kind: string,
+  unavailable: Interval[] | null = null): PlanDraft {
+  const start = firstArrangableStart(winStart, winEnd, unavailable);
+  let end = Math.min(start + DEFAULT_PLAN_MIN, winEnd);
+  if (end - start < MIN_PLAN_MIN) {
+    end = Math.min(start + MIN_PLAN_MIN, winEnd);
   }
-  return { title: title, kind: kind, start: winStart, end: end };
+  return { title: title, kind: kind, start: start, end: end };
 }
 
 /**

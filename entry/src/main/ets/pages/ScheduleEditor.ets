@@ -199,6 +199,10 @@ struct ScheduleEditor {
                   .fontSize(11).fontColor($r('app.color.text_tertiary'))
               }.alignItems(HorizontalAlign.Start)
               Blank()
+              // D-12：行内可见「删除」。左滑那条继续保留（与 CourseImport 并存），这里只补可发现性。
+              Text('删除').fontSize(13).fontColor($r('app.color.danger_red'))
+                .accessibilityText('删除班次：' + st.name)
+                .onClick(() => this.askDeleteRow(st))
             }
             .width('100%').padding(12).borderRadius(16)
             .backgroundColor($r('app.color.card_bg'))
@@ -281,6 +285,18 @@ struct ScheduleEditor {
             }
             .width('100%').padding(12).borderRadius(16).backgroundColor($r('app.color.fill_weakest'))
           }
+        }
+
+        // D-12 页脚。原型那句「跨天自动识别为夜班」与代码不符（判定看的是夜班窗口相交，见
+        // AvailabilityBuilder.isNightShift），所以这里念规则本身而不是抄文案。
+        ListItem() {
+          Column({ space: 4 }) {
+            Text('夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入。')
+              .fontSize(11).fontColor($r('app.color.text_hint'))
+            Text('恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。')
+              .fontSize(11).fontColor($r('app.color.text_hint'))
+          }
+          .alignItems(HorizontalAlign.Start).width('100%').padding({ top: 4 })
         }
       }
       .padding(12).width('100%').layoutWeight(1)

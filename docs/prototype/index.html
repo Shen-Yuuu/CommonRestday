@@ -1480,7 +1480,8 @@ function scrEditor(){
       + '<span class="t13 red" data-act="delShift" data-id="' + st.id + '">删除</span></div>';
   });
   if (S.editShift) { html += editorForm(S.editShift); }
-  html += '<div class="t11 ch">跨天（下班早于上班）自动识别为夜班并计入恢复时长；「强制夜班」锁定该行为。' + srcTag('ScheduleEditor.ets') + '</div>';
+  html += '<div class="t11 ch">夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入。</div>'
+    + '<div class="t11 ch">恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。' + srcTag('ScheduleEditor.ets') + '</div>';
   return html + '</div></div>';
 }
 function editorForm(e){

@@ -77,10 +77,15 @@ export struct PlansView {
     return $r('app.color.success_green');
   }
 
-  /** 列表键：状态/冲突解释/日历状态任一变化都要重绘卡片（改文案不改键，键只吃解释文本）。 */
+  /**
+   * 列表键：状态/冲突解释/日历状态任一变化都要重绘卡片（改文案不改键，键只吃解释文本）。
+   * 起止时间也在键里：改期成功时 status/conflictText/calendarState 可能一个字都没变
+   * （新时间仍然无冲突、或者重算那一拍还没跑完），少了 start/end 这张卡就冻在旧时间（D-30）。
+   */
   cardKey(p: PlanSummary): string {
     const kept = p.conflict != null && p.conflict.kept ? '1' : '0';
-    return p.id + '-' + p.status + '-' + p.conflictText + '-' + kept + '-' + p.calendarState;
+    return p.id + '-' + p.start + '-' + p.end + '-' + p.status + '-' + p.conflictText + '-' + kept
+      + '-' + p.calendarState;
   }
 
   subLabel(p: PlanSummary): string {

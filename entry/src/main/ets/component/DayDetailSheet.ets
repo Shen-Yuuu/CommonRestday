@@ -1,9 +1,10 @@
-import { Interval, MIN_PER_DAY, Window, WindowChannel } from 'domain';
+import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel } from 'domain';
 import { DateLabel } from 'commons';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { DayShiftSheet } from './DayShiftSheet';
 
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
 interface BarSeg {
@@ -12,18 +13,23 @@ interface BarSeg {
 }
 
 /**
- * 日详情半模态（周历点某一天进入）：
- * - 当日共同窗口列表（点击 → 交由父页打开 WindowDetailSheet 创建计划）；
+ * 日详情半模态（周历点某一天进入）：先看再改。
+ * - 页头右侧「改这天」切到 DayShiftSheet（单日覆盖），完成或返回即回到本页并重新取数；
+ * - 当日窗口列表（点击 → 交由父页打开 WindowDetailSheet 创建计划）；
  *   只列常规通道，旅行通道单列一行：两个通道在同一段时间各产出一个窗口，
  *   混在一起会把同一晚算成两段共同时间；
  * - 我的忙碌时间轴（比例条 + 明细行）；
  * - 对方忙碌时间轴：按来源与隐私等级差异化渲染——
  *   LOCAL 全量细节；SNAPSHOT L1 仅"忙"（30 分钟粒度）、L2 量化时段、L3 精确时段。
+ * 比例条画 myBusy/partnerBusy（含作息，语义是"这段时间不能安排"），
+ * 明细行只列真忙 myTrueBusy/partnerTrueBusy，否则睡眠会被念成忙碌（D-23）。
  * 标签压缩与文案口径由 CommonTimeQueryService.summaryOf 给出，页面不自行映射领域标签。
  */
 @Component
 export struct DayDetailSheet {
   @Prop day: number = 0;
+  /** 「改这天」写哪一侧的班表：共同时间页看的是"我"的排班，故默认我。 */
+  @Prop owner: string = OWNER_ME;
   /** 点击某个共同窗口：父页收回本 sheet 并打开创建计划 sheet。 */
   onPickWindow: (start: number, end: number, tags: string[]) => void = () => {
   };
@@ -31,6 +37,8 @@ export struct DayDetailSheet {
   };
   @State data: DayViewData | null = null;
   @State loading: boolean = true;
+  /** 二级态：true 时整页换成 DayShiftSheet，本组件的取数逻辑不动。 */
+  @State editing: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
 
@@ -148,19 +156,94 @@ export struct DayDetailSheet {
     return '来源：加密快照 · 对方共享完整时段';
   }
 
+  /** 单人态下这些窗口就是"我的空闲"，不该谎称共同（与页头口径一致，D-23 顺手收敛）。 */
+  private hasPartner(): boolean {
+    return this.data != null && this.data.partnerBusy != null;
+  }
+
+  /** 页头下方的摘要行：段数与空闲总时长只算当日常规通道，旅行窗口跨整天不掺进来。 */
+  private windowLead(): string {
+    const wins: WindowSummary[] = this.regularWindows();
+    const head = this.hasPartner() ? '当日共同窗口' : '当日我的空闲';
+    if (wins.length === 0) {
+      return head + ' 0 段';
+    }
+    return head + ' ' + wins.length + ' 段 · 空闲 ' + DateLabel.duration(this.totalMinOf(wins));
+  }
+
+  /** 忙碌区标题的括号部分：给出总时长，读的人不用自己加明细行。 */
+  private busyTitle(label: string, ivs: Interval[] | null): string {
+    const mins = this.clippedTotal(ivs);
+    return mins > 0 ? label + '（共 ' + DateLabel.duration(mins) + '）' : label;
+  }
+
+  private totalMinOf(wins: WindowSummary[]): number {
+    let m = 0;
+    for (let i = 0; i < wins.length; i++) {
+      m += wins[i].durationMin;
+    }
+    return m;
+  }
+
+  private clippedTotal(ivs: Interval[] | null): number {
+    const list = this.clipped(ivs);
+    let m = 0;
+    for (let i = 0; i < list.length; i++) {
+      m += list[i].end - list[i].start;
+    }
+    return m;
+  }
+
+  /** 从「改这天」返回概览：改班立刻重算共同时间，不重新取数会把刚改的这天念成旧样子。 */
+  private backToOverview(): void {
+    this.editing = false;
+    this.load();
+  }
+
   build() {
     Column({ space: 14 }) {
       Row() {
         Text(DateLabel.mdw(this.day)).fontSize(18).fontWeight(FontWeight.Bold)
         Blank()
+        if (this.editing) {
+          Text('返回概览').fontSize(14).fontColor($r('app.color.text_secondary'))
+            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+            .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
+            .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true)
+            .accessibilityText('返回当日概览')
+            .onClick(() => this.backToOverview())
+        } else {
+          Text('改这天').fontSize(14).fontColor($r('app.color.brand_pink'))
+            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+            .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
+            .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true)
+            .accessibilityText('改这天的班，只影响这一天')
+            .onClick(() => {
+              this.editing = true;
+            })
+        }
         Text('关闭').fontSize(14).fontColor($r('app.color.text_secondary'))
+          .margin({ left: 10 })
           .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
           .focusable(true)
           .accessibilityText('关闭当日明细')
           .onClick(() => this.onClose())
       }.width('100%')
 
-      if (this.loading) {
+      if (this.editing) {
+        Column() {
+          DayShiftSheet({
+            owner: this.owner,
+            epochDay: this.day,
+            onClose: () => {
+              this.backToOverview();
+            }
+          })
+        }
+        .width('100%').layoutWeight(1)
+      } else if (this.loading) {
         Column({ space: 8 }) {
           LoadingProgress().width(32).height(32).color($r('app.color.brand_pink'))
           Text('加载中…').fontSize(13).fontColor($r('app.color.text_tertiary'))
@@ -172,11 +255,14 @@ export struct DayDetailSheet {
       } else {
         Scroll() {
           Column({ space: 14 }) {
-            // ---------- 当日共同窗口 ----------
+            Text(this.windowLead())
+              .fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+
+            // ---------- 当日窗口 ----------
             Column({ space: 8 }) {
-              SubHeaderV2({ title: new SubHeaderV2Title({ primaryTitle: '当日共同窗口' }) })
               if (this.regularWindows().length === 0) {
-                Text('当天没有共同空闲窗口').fontSize(12).fontColor($r('app.color.text_tertiary'))
+                Text(this.hasPartner() ? '当天没有共同空闲窗口' : '当天没有可安排的空闲')
+                  .fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
                 ForEach(this.regularWindows(), (w: WindowSummary) => {
                   this.windowRow(w)
@@ -189,21 +275,27 @@ export struct DayDetailSheet {
 
             // ---------- 我的忙碌 ----------
             Column({ space: 8 }) {
-              SubHeaderV2({ title: new SubHeaderV2Title({ primaryTitle: '我的忙碌' }) })
+              SubHeaderV2({
+                title: new SubHeaderV2Title({ primaryTitle: this.busyTitle('我的忙碌', this.data.myTrueBusy) })
+              })
               this.busyBar(this.segmentsOf(this.clipped(this.data.myBusy)), $r('app.color.my_busy'))
-              this.busyList(this.clipped(this.data.myBusy))
+              this.busyList(this.clipped(this.data.myTrueBusy))
             }.width('100%')
 
             // ---------- TA 的忙碌 ----------
             Column({ space: 8 }) {
-              SubHeaderV2({ title: new SubHeaderV2Title({ primaryTitle: 'TA 的忙碌' }) })
+              SubHeaderV2({
+                title: new SubHeaderV2Title({
+                  primaryTitle: this.busyTitle('TA 的忙碌', this.data.partnerTrueBusy)
+                })
+              })
               if (this.data.partnerBusy == null) {
                 Text('暂无对方数据（当前为单人模式）')
                   .fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
                 Text(this.partnerNote()).fontSize(11).fontColor($r('app.color.text_hint'))
                 this.busyBar(this.segmentsOf(this.clipped(this.data.partnerBusy)), $r('app.color.partner_busy'))
-                this.busyList(this.clipped(this.data.partnerBusy))
+                this.busyList(this.clipped(this.data.partnerTrueBusy))
               }
             }.width('100%')
           }

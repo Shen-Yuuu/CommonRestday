@@ -96,5 +96,10 @@ export function busyTagLabel(tag: string): string {
   if (tag === 'BUSY') {
     return '忙碌';
   }
-  return tag === '' ? '忙碌' : tag;
+  // SLEEP 不在 BlockTag 枚举里，是 AvailabilityBuilder 直接写的字面量（作息不可安排，但不是"忙"）
+  if (tag === 'SLEEP') {
+    return '作息';
+  }
+  // 未映射的一律兜成中文，别把原始枚举念进正文（与 D-01/D-23 同一类缺陷）
+  return '忙碌';
 }

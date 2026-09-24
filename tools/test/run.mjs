@@ -20,6 +20,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { auditPrivacyCopy } from './copy-audit.mjs';
+import { auditAccessibility } from './a11y-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -526,6 +527,13 @@ function main() {
   for (const v of copyViolations) {
     say('  - ' + v);
   }
+  const a11yViolations = auditAccessibility(REPO);
+  say('a11y: ' + (a11yViolations.length === 0
+    ? 'PASS（no 只挂在叶子节点或无文字容器上，没有挂进带文字的容器）'
+    : 'FAILED（' + a11yViolations.length + ' 处失效挂点）'));
+  for (const v of a11yViolations) {
+    say('  - ' + v);
+  }
   prepare();
   const tsc = findTsc();
   if (tsc === null) {
@@ -556,10 +564,12 @@ function main() {
   }
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
-  if (testsPassed && copyViolations.length > 0) {
-    say('--- 用例全绿但文案口径审计未通过（退出码 1）---');
+  // 两条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
+  const auditViolations = copyViolations.length + a11yViolations.length;
+  if (testsPassed && auditViolations > 0) {
+    say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }
-  finish(testsPassed && copyViolations.length === 0 ? 0 : (testsPassed ? 1 : (run.status ?? 1)));
+  finish(testsPassed && auditViolations === 0 ? 0 : (testsPassed ? 1 : (run.status ?? 1)));
 }
 
 main();

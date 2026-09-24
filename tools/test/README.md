@@ -10,15 +10,15 @@ node tools/test/run.mjs
 
 | 码 | 含义 |
 |---|---|
-| 0 | 类型编译 0 error **且**全部用例通过 **且**文案口径审计通过 |
-| 1 | 有失败用例，或文案口径审计报出冲突（明细见输出与日志） |
+| 0 | 类型编译 0 error **且**全部用例通过 **且**两条离线口径审计（文案 / 读屏挂点）都通过 |
+| 1 | 有失败用例，或离线口径审计报出冲突（明细见输出与日志） |
 | 2 | 环境不满足（找不到 TypeScript 编译器） |
 | 3 | 类型编译未通过：不产出 JS、**不启动用例** |
 
-输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy: PASS/FAILED` + `typecheck: N errors` +
+输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy:` + `a11y:` + `typecheck: N errors` +
 每个用例 PASS/FAIL + 汇总计数 + `tests: passed/FAILED`）。
 
-**"全绿"的唯一口径是 `copy: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
+**"全绿"的唯一口径是 `copy: PASS` + `a11y: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
 `tsconfig.json` 用 `noEmitOnError: true`，转译有类型错误时既没有产物也没有绿灯——曾经
 `noEmitOnError: false` 让 5 个类型错误照样跑出 "177 passed, exit 0"，那种数字不能写进任何验收文档。
 
@@ -35,6 +35,15 @@ node tools/test/run.mjs
 
 审计的六条规则见 `copy-audit.mjs` 文件头。它不需要 `tsc`，也不参与转译，
 所以资源文件与文档都能被钉住；违反任何一条即退出码 1。
+
+## 读屏挂点审计（`a11y-audit.mjs`）
+
+`accessibilityLevel('no')` 摘掉的只是**它挂着的那个节点**：写在 `Column`/`Row` 上，里面的 `Text`
+各自成节点、照样朗读。差异文档 D-29 数出来的 3 处失效挂点旁边都配着一句"这列不朗读"的注释，
+注释与实况相反却看不出来，所以做成门禁而不是修完就算：规则只有一条——**带 `{}` 子块的节点上挂
+`no`，而子块里出现 `Text`/`SymbolGlyph`/`Image`/`Span`/`RichText` 即违规**。挂在叶子节点上
+（正确写法）、挂在没有文字子节点的容器上（装饰条、网格线）、子块里只调用别的 `@Builder`
+（静态看不见里面有没有字）都不报。扫描面与 `copy-audit` 的 `CLAIM_TREES` 同一批目录。
 
 ## 环境要求
 

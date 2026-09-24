@@ -240,7 +240,7 @@ struct CourseImport {
                 .height(120).fontSize(12).width('100%')
                 .onChange((v: string) => this.sectionText = v)
               Row({ space: 10 }) {
-                Button('保存节次').backgroundColor($r('app.color.info_blue')).height(34)
+                Button('保存节次').backgroundColor($r('app.color.brand_pink')).height(34)
                   .onClick(() => this.saveSections())
                 Button('恢复默认').backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary')).height(34)
                   .onClick(() => this.resetSections())
@@ -266,9 +266,9 @@ struct CourseImport {
               .height(88).fontSize(13).width('100%')
               .onChange((v: string) => this.pasteText = v)
             Row({ space: 10 }) {
-              Button('解析预览').backgroundColor($r('app.color.info_blue')).height(36).borderRadius(18)
+              Button('解析预览').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
                 .onClick(() => this.doParse())
-              Button('保存通过项').backgroundColor($r('app.color.success_green')).height(36).borderRadius(18)
+              Button('保存通过项').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
                 .onClick(() => this.saveParsed())
             }
             ForEach(this.parsed, (p: ParsedCourseLine) => {
@@ -304,8 +304,8 @@ struct CourseImport {
                 Text('周' + w).fontSize(12)
                   .padding({ left: 7, right: 7, top: 5, bottom: 5 })
                   .borderRadius(10)
-                  .fontColor(this.manualWd === i + 1 ? '#FFFFFF' : $r('app.color.text_secondary'))
-                  .backgroundColor(this.manualWd === i + 1 ? $r('app.color.info_blue') : $r('app.color.fill_weak'))
+                  .fontColor(this.manualWd === i + 1 ? $r('app.color.hero_fg') : $r('app.color.text_secondary'))
+                  .backgroundColor(this.manualWd === i + 1 ? $r('app.color.brand_pink') : $r('app.color.fill_weak'))
                   .onClick(() => this.manualWd = i + 1)
               }, (w: string) => w)
             }
@@ -324,7 +324,7 @@ struct CourseImport {
               TextInput({ text: this.manualWeekTo }).width(44).height(36)
                 .onChange((v: string) => this.manualWeekTo = v)
             }
-            Button('添加课程').width('100%').height(40).borderRadius(20).backgroundColor($r('app.color.info_blue'))
+            Button('添加课程').width('100%').height(40).borderRadius(20).backgroundColor($r('app.color.brand_pink'))
               .onClick(() => this.saveManual())
           }
           .alignItems(HorizontalAlign.Start)

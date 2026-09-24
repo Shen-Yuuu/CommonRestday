@@ -2,6 +2,13 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from './EditorialCard';
 
+/** @Builder 传两个及以上参数时不参与动态渲染（ArkUI 限制），所以整行合成一个对象字面量按引用传。 */
+interface BusyLineArg {
+  who: string;
+  text: string;
+  dot: Resource;
+}
+
 /**
  * 今日双方概览：我 / TA / 共同三行忙碌与空闲摘要，加两个下一步动作。
  * 三行文本全部来自读模型（含对方隐私等级造成的粗粒度表述），页面不重算、不改写。
@@ -23,19 +30,19 @@ export struct TodayOverview {
   @State private focusedPill: number = -1;
 
   @Builder
-  busyLine(who: string, text: string, dot: Resource) {
+  busyLine(row: BusyLineArg) {
     Row({ space: DesignTokens.space2 }) {
       Circle()
         .width(DesignTokens.space2)
         .height(DesignTokens.space2)
-        .fill(dot)
+        .fill(row.dot)
         // 我 / TA 已经在紧邻的文字里，圆点只是颜色分区，不再朗读一遍
         .accessibilityLevel('no')
-      Text(who)
+      Text(row.who)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textSecondary)
         .width(40)
-      Text(text)
+      Text(row.text)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textPrimary)
         .layoutWeight(1)
@@ -62,10 +69,13 @@ export struct TodayOverview {
       .width('100%')
       .alignItems(VerticalAlign.Center)
 
-      this.busyLine('我', this.myText, DesignTokens.busyMine)
+      this.busyLine({ who: '我', text: this.myText, dot: DesignTokens.busyMine })
       if (this.partnerVisible) {
-        this.busyLine(this.partnerName === '' ? 'TA' : this.partnerName,
-          this.partnerText, DesignTokens.busyPartner)
+        this.busyLine({
+          who: this.partnerName === '' ? 'TA' : this.partnerName,
+          text: this.partnerText,
+          dot: DesignTokens.busyPartner
+        })
       }
 
       Text(this.commonText)

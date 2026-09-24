@@ -2256,7 +2256,7 @@ var SCREENS = { home:scrHome, cotime:scrCoTime, hub:scrHub, cycle:scrCycle, mont
 var NAV = [
   ['home','同休（首页）','pages/Index.ets → view/HomeView.ets'],
   ['cotime','共同时间','view/CoTimeView.ets'],
-  ['hub','班表中心','view/ScheduleHubView.ets'],
+  ['hub','日程录入','view/ScheduleHubView.ets'],
   ['me','我的','view/MeView.ets'],
   ['cycle','循环模板','pages/CycleEditor.ets'],
   ['month','月历涂抹','pages/PaintMonth.ets'],
@@ -2401,7 +2401,7 @@ function buildPanel(){
   }).join('');
   document.getElementById('lean-note').innerHTML = S.lean
     ? '当前：<b>3 tab / 5 页</b>（+1 个改班 sheet）。已隐藏：拍照识别课表、独立涂抹页、旅行通道概念、11 项引擎参数、5 个窗口标签、6 种计划类型；配对压缩为「一条邀请码流程 + 两档可见范围」。'
-    : '当前：<b>3 tab + 1 个导航栈目的地</b>（班表中心已降级为 NavDestination），对应 <code>navigation/AppNavigator.ets</code> 与 <code>view/*</code>。';
+    : '当前：<b>3 tab + 1 个导航栈目的地</b>（日程录入已降级为 NavDestination），对应 <code>navigation/AppNavigator.ets</code> 与 <code>view/*</code>。';
   var cs = getComputedStyle(document.documentElement);
   document.getElementById('tok').innerHTML = TOKENS.map(function(t){
     return '<div><i style="background:var(--' + t + ')"></i>' + t + '</div>';

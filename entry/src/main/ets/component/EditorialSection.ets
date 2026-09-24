@@ -32,7 +32,7 @@ export struct EditorialSection {
 
   build() {
     Column() {
-      // 眉标（MAIN / EXTRA / 三个问题）是版式装饰，长辈模式下按 docs/06 §3.10 C 收起，
+      // 眉标（日程页 MAIN / 首页 三个问题）是版式装饰，长辈模式下按 docs/06 §3.10 C 收起，
       // 小标题本身已经把这一节是什么说清楚了
       if (hasLabel(this.eyebrow) && !this.senior) {
         Text(this.eyebrow)

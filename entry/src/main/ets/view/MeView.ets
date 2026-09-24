@@ -1097,7 +1097,7 @@ export struct MeView {
     .alignItems(HorizontalAlign.Start)
   }
 
-  /** 我的日程：班表中心（栈目的地）直达，我这侧与代录 TA 那侧分别落对应 owner。 */
+  /** 我的日程：日程录入页（栈目的地）直达，我这侧与代录 TA 那侧分别落对应 owner。 */
   @Builder
   scheduleCard() {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {

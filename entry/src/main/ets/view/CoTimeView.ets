@@ -333,6 +333,18 @@ export struct CoTimeView {
     this.presentWindow();
   }
 
+  /**
+   * 计划页头部行的出口：切回窗口分段，并把当前筛选下的第一段空闲直接开成建计划入口。
+   * 读模型按开始时间升序给行，所以第 0 行就是"下一个窗口"；一段都没有时只切分段，不假装有空档。
+   */
+  private gotoNextWindow(): void {
+    this.segment = COTIME_SEG_WINDOW;
+    const rows = this.rows();
+    if (rows.length > 0) {
+      this.openSummary(rows[0]);
+    }
+  }
+
   /** 周历点色块：只有起止（该窗口可能不在当前筛选结果里），标签向详情读模型要。 */
   private async openWindow(start: number, end: number): Promise<void> {
     if (start <= 0 || end <= start) {
@@ -694,6 +706,9 @@ export struct CoTimeView {
       PlansView({
         onGoWindow: () => {
           this.segment = COTIME_SEG_WINDOW;
+        },
+        onNextWindow: () => {
+          this.gotoNextWindow();
         }
       })
     }

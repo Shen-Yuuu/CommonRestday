@@ -13,7 +13,8 @@ function joinNote(main: string, note: string): string {
 
 /**
  * 计划列表（US5 / FR-010 / FR-012，阶段 2 Task 2.3）：
- * 共同时间页「共同计划」分段的内容，页头由宿主分段承担，条目一律走 feature 读模型。
+ * 共同时间页「共同计划」分段的内容；分段页头由宿主承担，本页只带一行条数与"下一个窗口"的出口，
+ * 条目一律走 feature 读模型。
  * - 冲突条目：原因（已按对方隐私等级降维）+ 受影响区间 + 替代窗口，给四个动作——
  *   采用替代时间 / 重新选择窗口 / 保留原计划 / 取消计划；
  * - "保留原计划"只是不再催改期，冲突事实与状态都留着，安排再变动会重新提示；
@@ -25,6 +26,9 @@ function joinNote(main: string, note: string): string {
 export struct PlansView {
   /** 宿主切换到"时间窗口"分段：分段归宿主，这里只提请求。 */
   onGoWindow: () => void = () => {
+  };
+  /** 头部行的「＋ 在下一个窗口计划」：宿主除了切分段，还要把视界内第一段空闲直接开成建计划入口。 */
+  onNextWindow: () => void = () => {
   };
   @State plans: PlanSummary[] = [];
   @State loading: boolean = true;
@@ -244,53 +248,86 @@ export struct PlansView {
   }
 
   build() {
-    List({ space: 12 }) {
-      if (this.loading) {
-        ListItem() {
-          Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
-        }
-      } else if (this.plans.length === 0) {
-        // 空态引导（US5：窗口 → 计划的转化出口）
-        ListItem() {
-          Column({ space: 12 }) {
-            SymbolGlyph($r('sys.symbol.heart'))
-              .fontSize(44)
-              .fontColor([$r('app.color.brand_pink_muted')])
-              .accessibilityLevel('no')
-            Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
-            Text($r('app.string.plans_empty_desc'))
-              .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
-            Button('去选一个窗口创建计划')
-              .backgroundColor($r('app.color.brand_pink'))
-              .borderRadius(22)
-              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-              .onClick(() => {
-                this.onGoWindow();
-              })
-          }
-          .alignItems(HorizontalAlign.Center)
-          .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(20)
-          .backgroundColor($r('app.color.brand_pink_bg'))
-        }
-      } else {
-        // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
-        Repeat<PlanSummary>(this.plans)
-          .key((p: PlanSummary) => this.cardKey(p))
-          .each((ri: RepeatItem<PlanSummary>) => {
-            ListItem() {
-              this.planCard(ri.item)
-            }
-            .swipeAction({
-              end: () => {
-                this.cancelSwipe(ri.item)
-              },
-              edgeEffect: SwipeEdgeEffect.Spring
-            })
-          })
+    Column() {
+      if (!this.loading && this.plans.length > 0) {
+        this.headerRow()
       }
+      List({ space: 12 }) {
+        if (this.loading) {
+          ListItem() {
+            Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
+          }
+        } else if (this.plans.length === 0) {
+          // 空态引导（US5：窗口 → 计划的转化出口）
+          ListItem() {
+            Column({ space: 12 }) {
+              SymbolGlyph($r('sys.symbol.heart'))
+                .fontSize(44)
+                .fontColor([$r('app.color.brand_pink_muted')])
+                .accessibilityLevel('no')
+              Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
+              Text($r('app.string.plans_empty_desc'))
+                .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
+              Button('去选一个窗口创建计划')
+                .backgroundColor($r('app.color.brand_pink'))
+                .borderRadius(22)
+                .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+                .onClick(() => {
+                  this.onGoWindow();
+                })
+            }
+            .alignItems(HorizontalAlign.Center)
+            .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(20)
+            .backgroundColor($r('app.color.brand_pink_bg'))
+          }
+        } else {
+          // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
+          Repeat<PlanSummary>(this.plans)
+            .key((p: PlanSummary) => this.cardKey(p))
+            .each((ri: RepeatItem<PlanSummary>) => {
+              ListItem() {
+                this.planCard(ri.item)
+              }
+              .swipeAction({
+                end: () => {
+                  this.cancelSwipe(ri.item)
+                },
+                edgeEffect: SwipeEdgeEffect.Spring
+              })
+            })
+        }
+      }
+      .padding(0)
+      .width('100%').layoutWeight(1)
     }
-    .padding(0)
     .width('100%').height('100%')
+  }
+
+  /**
+   * 头部行：条数 + "续到下一个窗口"的出口。空态不放——空态卡片自己就是那条出口，
+   * 两处同样一句话只会让第一次进来的人在两个按钮间犹豫。
+   */
+  @Builder
+  headerRow() {
+    Row() {
+      Text('共 ' + this.plans.length + ' 条')
+        .fontSize(12).fontColor($r('app.color.text_tertiary'))
+      Blank()
+      Text('＋ 在下一个窗口计划')
+        .fontSize(13).fontColor($r('app.color.brand_pink'))
+        .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+        .borderRadius(18)
+        .backgroundColor($r('app.color.brand_pink_bg'))
+        .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+        .focusable(true)
+        .accessibilityText('在下一个窗口创建计划')
+        .onClick(() => {
+          this.onNextWindow();
+        })
+    }
+    .width('100%')
+    .padding({ bottom: 10 })
+    .alignItems(VerticalAlign.Center)
   }
 
   /** 左滑露出的"取消计划"按钮（点击走原有二次确认弹窗）。 */

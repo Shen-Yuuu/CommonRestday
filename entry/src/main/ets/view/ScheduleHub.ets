@@ -18,10 +18,8 @@ import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 const PAGE_SHIFT = 'pages/ScheduleEditor';
 const PAGE_CYCLE = 'pages/CycleEditor';
 const PAGE_COURSE = 'pages/CourseImport';
-const PAGE_PAINT = 'pages/PaintMonth';
-const PAGE_OCR = 'pages/OcrCourse';
 
-/** 主入口 / 辅助录入条目。sheet=true 的条目开本页的 sheet，不跳页。 */
+/** 主入口条目。page 为空串的条目开本页的 sheet，不跳页。 */
 interface EntryItem {
   key: string;
   glyph: Resource;
@@ -49,22 +47,11 @@ const MAIN_ENTRIES: EntryItem[] = [
   }
 ];
 
-const AUX_ENTRIES: EntryItem[] = [
-  {
-    key: 'paint', glyph: $r('sys.symbol.brush_fill'), title: '月历涂抹',
-    desc: '整月连续涂班，适合刚拿到排班表时批量录入', page: PAGE_PAINT
-  },
-  {
-    key: 'ocr', glyph: $r('sys.symbol.camera'), title: '拍照识别课表',
-    desc: '本机 OCR 识别课表照片，识别结果可再编辑', page: PAGE_OCR
-  }
-];
-
 /**
  * 日程页（班表中心）：从底部 Tab 降级为「我的 · 我的日程」里的栈目的地。
  * - 默认展示"我"的日程摘要与周视图；只有本机代录了伴侣（有档案或 TA 的班表数据）才出现"TA"侧；
  * - 四个主入口：班次类型 / 循环模板 / 课程表 / 临时调整（单日改班 sheet）；
- * - 月历涂抹与拍照识别收进「辅助录入」，旧录入页全部保留可达；
+ * - 批量录入的二级入口首发不上线：`PaintMonth` / `OcrCourse` 两个旧录入页保留在路由表与 `main_pages.json` 里，只是这里不再给入口；
  * - 点周历日格 = 改这天的班，与主入口「临时调整」是同一条链路（临时调整默认今天）。
  */
 @Component
@@ -170,11 +157,11 @@ export struct ScheduleHub {
 
   /** 条目行：图标 + 主副文本 + 箭头，整行 44vp 以上热区。 */
   @Builder
-  entryRow(item: EntryItem, aux: boolean) {
+  entryRow(item: EntryItem) {
     Row({ space: DesignTokens.space3 }) {
       SymbolGlyph(item.glyph)
         .fontSize(20)
-        .fontColor([aux ? DesignTokens.textTertiary : DesignTokens.primary])
+        .fontColor([DesignTokens.primary])
         // 主副文案已经说清了这一条是干什么的，图标只是重复提示
         .accessibilityLevel('no')
       Column({ space: 2 }) {
@@ -329,24 +316,7 @@ export struct ScheduleHub {
               .width('100%')
             }
 
-            if (Breakpoints.isExpanded(this.bp)) {
-              Row({ space: DesignTokens.space4 }) {
-                Column() {
-                  this.mainEntriesCard()
-                }
-                .layoutWeight(1)
-
-                Column() {
-                  this.auxEntriesCard()
-                }
-                .layoutWeight(1)
-              }
-              .width('100%')
-              .alignItems(VerticalAlign.Top)
-            } else {
-              this.mainEntriesCard()
-              this.auxEntriesCard()
-            }
+            this.mainEntriesCard()
 
             // 云端档位关闭时不把用户指向一个已经收起来的入口（阶段 6R.2）
             Text(FeatureFlags.cloudPairing
@@ -381,18 +351,7 @@ export struct ScheduleHub {
     EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
       EditorialSection({ eyebrow: 'MAIN', title: '四个主入口' }) {
         ForEach(MAIN_ENTRIES, (item: EntryItem) => {
-          this.entryRow(item, false)
-        }, (item: EntryItem) => this.side + '-' + item.key)
-      }
-    }
-  }
-
-  @Builder
-  auxEntriesCard() {
-    EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-      EditorialSection({ eyebrow: 'EXTRA', title: '辅助录入' }) {
-        ForEach(AUX_ENTRIES, (item: EntryItem) => {
-          this.entryRow(item, true)
+          this.entryRow(item)
         }, (item: EntryItem) => this.side + '-' + item.key)
       }
     }

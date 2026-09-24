@@ -1276,7 +1276,8 @@ function scrCycle(){
     + '<div class="row w100" style="padding:12px;border-radius:10px;background:var(--fill_weakest);cursor:pointer" data-act="openAnchor" data-which="anchor">'
     + '<span class="t15 b5">' + mdw(t.anchor) + '</span><div class="lw"></div><span class="t13 pink">选择日期 ›</span></div></div>';
   html += '<button class="btn big w100" data-act="saveTpl">' + (t.seq.length ? '更新模板' : '保存并展开班表') + '</button>';
-  html += '<div class="t11 ch">保存后自动展开未来 ' + S.params.horizonDays + ' 天；临时换班到「月历涂抹」覆盖单日。</div>';
+  html += '<div class="t11 ch">保存后自动展开未来 ' + S.params.horizonDays + ' 天；'
+    + (S.lean ? '临时换班点周历里的某一天。' : '临时换班到「月历涂抹」覆盖单日。') + '</div>';
   return html + '</div></div>';
 }
 

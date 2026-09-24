@@ -7,7 +7,7 @@ import {
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
-import { ownerFromParams, OwnerRouteParam } from '../model/RouteParams';
+import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
 
 /**
@@ -211,11 +211,6 @@ struct CourseImport {
         Blank()
         Text(this.owner === OWNER_ME ? '课程表导入' : 'TA 的课程表导入').fontSize(17).fontWeight(FontWeight.Bold)
         Blank()
-        Text('拍照识别').fontSize(14).fontColor($r('app.color.info_blue'))
-          .onClick(() => {
-            const p: OwnerRouteParam = { owner: this.owner };
-            router.pushUrl({ url: 'pages/OcrCourse', params: p });
-          })
       }.width('100%').padding(12)
 
       List({ space: 12 }) {

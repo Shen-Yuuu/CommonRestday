@@ -215,7 +215,7 @@ struct CycleEditor {
           Button(this.hasTemplate ? '更新模板' : '保存并展开班表')
             .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink')).onClick(() => this.save())
 
-          Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班到「月历涂抹」覆盖单日。')
+          Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班点周历里的某一天。')
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .padding(12).width('100%')

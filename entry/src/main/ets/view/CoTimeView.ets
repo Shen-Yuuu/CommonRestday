@@ -125,6 +125,8 @@ export struct CoTimeView {
           activatedFontColor: DesignTokens.chipTextOn()
         }),
         activated: this.filterKey === f.key,
+        // ChipV2 的 allowClose 默认 true，会在标签右侧画一颗 ✕；筛选档没有"清除这一档"的语义，必须显式关掉
+        allowClose: false,
         backgroundColor: DesignTokens.chipBg(),
         activatedBackgroundColor: DesignTokens.chipBgOn(),
         borderRadius: DesignTokens.chipRadius(),
@@ -590,7 +592,8 @@ export struct CoTimeView {
           ChipV2({ chipV2Options: this.chips[idx] })
         }, (f: FilterChip) => f.key.toString())
       }
-      .padding({ left: 2, right: 2 })
+      // 尾部留白：Scroll 贴屏幕边铺满，不留 padding 时末颗 chip 会永远缺一角
+      .padding({ left: DesignTokens.space4, right: DesignTokens.space4 })
     }
     .width('100%')
     .scrollable(ScrollDirection.Horizontal)

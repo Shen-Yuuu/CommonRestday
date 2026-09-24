@@ -15,10 +15,10 @@ function joinNote(main: string, note: string): string {
  * 计划列表（US5 / FR-010 / FR-012，阶段 2 Task 2.3）：
  * 共同时间页「共同计划」分段的内容；分段页头由宿主承担，本页只带一行条数与"下一个窗口"的出口，
  * 条目一律走 feature 读模型。
- * - 冲突条目：原因（已按对方隐私等级降维）+ 受影响区间 + 替代窗口，给四个动作——
- *   采用替代时间 / 重新选择窗口 / 保留原计划 / 取消计划；
+ * - 冲突条目：原因（已按对方隐私等级降维）+ 受影响区间 + 替代窗口，框内给改期主操作与
+ *   "重新选窗口 / 保留原计划"次操作；取消计划不分冲突与否都在页脚；
  * - "保留原计划"只是不再催改期，冲突事实与状态都留着，安排再变动会重新提示；
- * - 日历徽标按"归谁管"分说法：应用受管的写成/待清理、editEvent 导出的由系统日历管理、
+ * - 日历徽标按"归谁管"分说法（写在页脚那颗 chip 上）：应用受管的写成/待清理、editEvent 导出的由系统日历管理、
  *   没写成的常驻"仅保存在应用内"，并各自给出可用出口（补写 / 导出 / 重新清理）；
  * - 监听 recomputeCount 刷新（创建/取消/课表变更自动重算后状态同步）。
  */
@@ -84,8 +84,24 @@ export struct PlansView {
   }
 
   subLabel(p: PlanSummary): string {
-    return planKindLabel(p.kind) + ' · ' + DateLabel.mdw(Math.floor(p.start / 1440)) + ' '
-      + DateLabel.endLabel(p.start, p.end) + ' · ' + DateLabel.duration(p.end - p.start);
+    return DateLabel.mdw(Math.floor(p.start / 1440)) + ' ' + DateLabel.endLabel(p.start, p.end) + ' · '
+      + DateLabel.duration(p.end - p.start);
+  }
+
+  private kindName(p: PlanSummary): string {
+    return planKindLabel(p.kind);
+  }
+
+  /** 页脚徽标：冲突与否 ＋ 日历归属，合成原型那颗「重叠 · 启用中」位上的两句实话。 */
+  private footerBadge(p: PlanSummary): string {
+    const badge = calendarBadgeOf(p.calendarState);
+    const head = p.conflict != null ? '重叠' : '无冲突';
+    return badge === '' ? head : head + ' · ' + badge;
+  }
+
+  private hasCalendarAction(p: PlanSummary): boolean {
+    return canRetryCleanup(p.calendarState) || canRetryCalendarSync(p.calendarState)
+      || canExportToCalendar(p.calendarState);
   }
 
   private say(msg: string): void {
@@ -346,51 +362,30 @@ export struct PlansView {
     .onClick(() => this.confirmCancel(p))
   }
 
-  /** 计划卡片：状态竖条 + 标题/类型/时间 + 冲突解释与四个动作 + 日历徽标。 */
+  /** 计划卡片：通高状态条 + 标题行 + 时间行 + 冲突框（说明与改期） + 页脚（徽标与取消）。 */
   @Builder
   planCard(p: PlanSummary) {
     Row({ space: 12 }) {
-      Column().width(4).height(40).borderRadius(2)
-        .backgroundColor(p.status === 'CONFLICT'
-          ? $r('app.color.danger_red')
-          : (p.status === 'CANCELLED' ? $r('app.color.text_hint') : $r('app.color.brand_pink')))
+      Column().width(4).borderRadius(2)
+        .backgroundColor(this.statusColor(p.status))
+        .alignSelf(ItemAlign.Stretch)
         // 状态另有文字标注（冲突/已取消/已确认），色条只是重复信息
         .accessibilityLevel('no')
       Column({ space: 6 }) {
-        Row() {
-          Text(p.title).fontSize(15).fontWeight(FontWeight.Medium).layoutWeight(1)
-          Row({ space: 4 }) {
-            if (p.status === 'CONFLICT') {
-              Circle().width(8).height(8).fill($r('app.color.danger_red'))
-                .accessibilityLevel('no')
-            }
-            Text(this.statusLabel(p.status)).fontSize(12)
-              .fontColor(this.statusColor(p.status))
-          }
-        }
-        .width('100%')
-        // 标题和状态各念一遍会打断，合成一句更省事
-        .accessibilityGroup(true)
-        .accessibilityText(p.title + '，' + this.statusLabel(p.status))
+        this.cardHead(p)
 
         Text(this.subLabel(p))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
         if (p.conflict != null) {
           this.conflictBlock(p, p.conflict)
-        } else {
-          // 整卡可点，但读屏用户滑不动也"点整张卡"没有朗读名：
-          // 这条提示就是取消动作的无障碍出口，被打包时也不影响朗读（卡片文案里带着同一句话）
-          Text('点击可取消计划').fontSize(11).fontColor($r('app.color.text_hint'))
-            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .focusable(true)
-            .accessibilityText('查看这条计划的取消选项：' + p.title)
-            .onClick(() => this.onPlanTap(p))
         }
 
-        if (calendarBadgeOf(p.calendarState) !== '') {
-          this.calendarBlock(p, calendarBadgeOf(p.calendarState))
+        if (this.hasCalendarAction(p)) {
+          this.calendarActions(p)
         }
+
+        this.planFooter(p)
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
@@ -400,7 +395,55 @@ export struct PlansView {
     .onClick(() => this.onPlanTap(p))
   }
 
-  /** 冲突解释 + 四个动作（Task 2.3）。 */
+  /** 标题行：标题与状态 chip 靠左，类型名只在和标题不一样时补在右边。 */
+  @Builder
+  cardHead(p: PlanSummary) {
+    Row({ space: 6 }) {
+      Text(p.title)
+        .fontSize(15).fontWeight(FontWeight.Medium)
+        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .flexShrink(1)
+      Text(this.statusLabel(p.status))
+        .fontSize(11).fontColor($r('app.color.hero_fg'))
+        .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(6)
+        .backgroundColor(this.statusColor(p.status))
+      Blank()
+      if (this.kindName(p) !== p.title) {
+        Text(this.kindName(p)).fontSize(11).fontColor($r('app.color.text_tertiary'))
+      }
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    // 标题、状态、类型各念一遍会打断，合成一句
+    .accessibilityGroup(true)
+    .accessibilityText(p.title + '，' + this.statusLabel(p.status)
+      + (this.kindName(p) !== p.title ? '，类型' + this.kindName(p) : ''))
+  }
+
+  /** 页脚：徽标 chip 说"重叠与否 · 日历上归谁管"，右边那颗才是取消计划的正式出口。 */
+  @Builder
+  planFooter(p: PlanSummary) {
+    Row({ space: 8 }) {
+      Text(this.footerBadge(p))
+        .fontSize(11).fontColor($r('app.color.text_secondary'))
+        .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+        .borderRadius(6)
+        .backgroundColor($r('app.color.fill_weak'))
+      Blank()
+      Text('取消计划')
+        .fontSize(12).fontColor($r('app.color.danger_red'))
+        .padding({ left: 4, right: 4, top: DesignTokens.space1, bottom: DesignTokens.space1 })
+        .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+        .focusable(true)
+        .accessibilityText('取消计划：' + p.title)
+        .onClick(() => this.confirmCancel(p))
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /** 冲突解释 + 改期主操作 + 一个次操作（Task 2.3）；取消计划归页脚，不挤在这里。 */
   @Builder
   conflictBlock(p: PlanSummary, c: PlanConflictView) {
     Column({ space: 6 }) {
@@ -413,15 +456,17 @@ export struct PlansView {
           .fontSize(11).fontColor($r('app.color.text_hint'))
       } else if (c.altText !== '') {
         Text(c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
-        Button('改到替代时间').fontSize(12)
-          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-          .backgroundColor($r('app.color.brand_pink'))
-          .onClick(() => this.askAcceptAlternative(p))
       } else {
         Text('未来暂无合适的替代窗口，可以保留原计划或另找时间')
           .fontSize(11).fontColor($r('app.color.text_hint'))
       }
-      Flex({ wrap: FlexWrap.Wrap }) {
+      Row({ space: 10 }) {
+        if (!c.kept && c.altStart > 0) {
+          Button('改到替代时间').fontSize(12)
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .backgroundColor($r('app.color.brand_pink'))
+            .onClick(() => this.askAcceptAlternative(p))
+        }
         this.linkAction('重新选窗口', p.title, $r('app.color.info_blue'), () => {
           this.onGoWindow();
         })
@@ -430,9 +475,9 @@ export struct PlansView {
         } else if (!c.kept) {
           this.linkAction('保留原计划', p.title, $r('app.color.info_blue'), () => this.doKeepOriginal(p))
         }
-        this.linkAction('取消计划', p.title, $r('app.color.danger_red'), () => this.confirmCancel(p))
       }
       .width('100%')
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .padding({ top: 6, bottom: 6, left: 10, right: 10 })
@@ -442,13 +487,12 @@ export struct PlansView {
   }
 
   /**
-   * 日历徽标 + 与状态相配的出口：没写成的给「写入日历」（受管）与「导出到系统日历」，
-   * 待清理的只给「重新清理」——这时日历上还挂着旧日程，补写就是同一天两条。
+   * 日历出口：没写成的给「写入日历」（受管）与「导出到系统日历」，待清理的只给「重新清理」——
+   * 这时日历上还挂着旧日程，补写就是同一天两条。归属本身已经写在页脚徽标里，这里只留动作。
    */
   @Builder
-  calendarBlock(p: PlanSummary, badge: string) {
-    Row({ space: 8 }) {
-      Text(badge).fontSize(11).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+  calendarActions(p: PlanSummary) {
+    Flex({ wrap: FlexWrap.Wrap }) {
       if (canRetryCleanup(p.calendarState)) {
         this.linkAction('重新清理', p.title, $r('app.color.info_blue'), () => this.doRetryCleanup(p))
       }
@@ -460,7 +504,6 @@ export struct PlansView {
       }
     }
     .width('100%')
-    .alignItems(VerticalAlign.Center)
   }
 
   /**

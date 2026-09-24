@@ -16,21 +16,6 @@ const NIGHT_MODE_OPTIONS: SelectOption[] = [
   { value: '强制夜班' }
 ];
 
-/** 班次类型选项：kind 持久化到 shift_type.kind（统计与展示用）。 */
-interface ShiftKindOption {
-  key: string;
-  label: string;
-}
-
-const SHIFT_KINDS: ShiftKindOption[] = [
-  { key: 'WORK', label: '工作班' },
-  { key: 'DUTY', label: '值班' },
-  { key: 'STUDY', label: '学习' }
-];
-
-const SHIFT_KIND_OPTIONS: SelectOption[] =
-  SHIFT_KINDS.map((k: ShiftKindOption): SelectOption => ({ value: k.label }));
-
 /** 班次类型管理：列表 + 编辑表单（owner 双侧复用，班次类型按 owner 隔离）。 */
 @Entry
 @Component
@@ -50,8 +35,6 @@ struct ScheduleEditor {
   @State color: string = COLORS[0];
   // 自定义取色 sheet（HdsColorPicker，API 26）
   @State colorSheetVisible: boolean = false;
-  @State allowActivity: boolean = false;
-  @State kindIdx: number = 0;
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -79,8 +62,6 @@ struct ScheduleEditor {
     this.recovery = '' + st.recoveryMin;
     this.nightIdx = st.nightMode === 1 ? 1 : 0;
     this.color = st.color;
-    this.allowActivity = st.allowActivity;
-    this.kindIdx = this.kindIndexOf(st.kind);
   }
 
   /** id 是否已存在于列表（区分"编辑已保存班次"与"新增未保存"）。 */
@@ -91,15 +72,6 @@ struct ScheduleEditor {
       }
     }
     return false;
-  }
-
-  kindIndexOf(kind: string): number {
-    for (let i = 0; i < SHIFT_KINDS.length; i++) {
-      if (SHIFT_KINDS[i].key === kind) {
-        return i;
-      }
-    }
-    return 0;
   }
 
   newOne(): void {
@@ -183,8 +155,8 @@ struct ScheduleEditor {
       commuteOutMin: this.toInt(this.commuteOut, 0),
       recoveryMin: this.toInt(this.recovery, 0),
       nightMode: this.nightIdx === 1 ? 1 : 0,
-      allowActivity: this.allowActivity,
-      kind: SHIFT_KINDS[this.kindIdx].key
+      allowActivity: false,
+      kind: 'WORK'
     };
     const r = await ScheduleCommandService.saveShiftType(st, this.owner);
     if (r.changed) {
@@ -280,27 +252,6 @@ struct ScheduleEditor {
                 Text('强制夜班：无论时段，下班后始终计入恢复时长')
                   .fontSize(10).fontColor($r('app.color.text_tertiary')).layoutWeight(1)
               }.width('100%')
-              Row({ space: 8 }) {
-                Text('班次类型').fontSize(13)
-                Select(SHIFT_KIND_OPTIONS)
-                  .selected(this.kindIdx)
-                  .value(SHIFT_KINDS[this.kindIdx].label)
-                  .fontColor($r('app.color.text_primary'))
-                  .font({ size: 13 })
-                  .onSelect((idx: number, text: string) => {
-                    this.kindIdx = idx;
-                  })
-                Text('允许班内安排活动')
-                  .fontSize(12).fontColor($r('app.color.text_secondary'))
-                Toggle({ type: ToggleType.Switch, isOn: this.allowActivity })
-                  .onChange((on: boolean) => {
-                    this.allowActivity = on;
-                  })
-              }.width('100%')
-              if (this.allowActivity) {
-                Text('值班类班次：预留能力，暂不参与空闲计算')
-                  .fontSize(10).fontColor($r('app.color.text_tertiary')).width('100%')
-              }
               Row({ space: 10 }) {
                 ForEach(COLORS, (c: string) => {
                   Circle().width(26).height(26).fill(c)

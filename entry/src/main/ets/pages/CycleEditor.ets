@@ -221,6 +221,8 @@ struct CycleEditor {
         .padding(12).width('100%')
       }
       .layoutWeight(1)
+      // D-09：Scroll 内容短于视口时按默认对齐摆放，首屏会空出上半部；显式顶对齐。
+      .align(Alignment.TopStart)
     }
     .width('100%').height('100%').backgroundColor($r('app.color.page_bg_warm'))
     .bindSheet($$this.anchorSheetVisible, this.anchorSheet(), {

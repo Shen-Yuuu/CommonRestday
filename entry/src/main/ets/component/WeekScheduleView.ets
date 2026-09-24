@@ -393,6 +393,11 @@ export struct WeekScheduleView {
   build() {
     Column({ space: 8 }) {
       this.weekNav()
+      // 那一排是为纵轴说明而存在的，「本周」只是搭在同一排；日程模式是整 24 小时网格、
+      // 左侧刻度自己就把轴讲清楚了，没有说明可放，所以「本周」留在上面的周导航行里。
+      if (this.isCommon()) {
+        this.axisLine()
+      }
 
       if (this.loading) {
         Text('加载中…').fontSize(12).fontColor($r('app.color.text_tertiary'))
@@ -439,16 +444,37 @@ export struct WeekScheduleView {
         .focusable(true)
         .accessibilityText('查看下一周')
         .onClick(() => this.nextWeek())
-      Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-        .borderRadius(10)
-        .backgroundColor($r('app.color.brand_pink_bg'))
-        // 纯文字当按钮用：热区、焦点、朗读名都得自己补，缺一项读屏用户就找不到回到本周的入口
-        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
-        .focusable(true)
-        .accessibilityText('回到本周')
-        .onClick(() => this.goCurrentWeek())
+      if (!this.isCommon()) {
+        this.currentWeekChip()
+      }
     }.width('100%')
+  }
+
+  /**
+   * 网格右上那一排（原型同位置）：纵轴说明 + 回到本周。
+   * 不塞进星期行：那 7 列要和下方网格的列宽逐列对齐，挤进两颗就把对齐弄丢了。
+   */
+  @Builder
+  axisLine() {
+    Row({ space: 8 }) {
+      Blank()
+      Text('纵轴 ' + pad2(this.axisStart) + '–24')
+        .fontSize(8).fontColor(DesignTokens.textHint)
+      this.currentWeekChip()
+    }.width('100%')
+  }
+
+  @Builder
+  currentWeekChip() {
+    Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
+      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+      .borderRadius(10)
+      .backgroundColor($r('app.color.brand_pink_bg'))
+      // 纯文字当按钮用：热区、焦点、朗读名都得自己补，缺一项读屏用户就找不到回到本周的入口
+      .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
+      .focusable(true)
+      .accessibilityText('回到本周')
+      .onClick(() => this.goCurrentWeek())
   }
 
   // ---------- 日程模式 ----------
@@ -554,15 +580,8 @@ export struct WeekScheduleView {
   @Builder
   commonHead() {
     Row() {
-      Column() {
-        Text('纵轴')
-          .fontSize(8).fontColor(DesignTokens.textHint)
-        Text(pad2(this.axisStart) + '–24')
-          .fontSize(8).fontColor(DesignTokens.textHint)
-      }
-      .width(LABEL_W)
-      .alignItems(HorizontalAlign.Center)
-      .accessibilityLevel('no')
+      // 只留一格占位，让 7 列和下方网格逐列对齐；纵轴说明已挪到网格右上（见 axisLine）
+      Column().width(LABEL_W).accessibilityLevel('no')
 
       ForEach(this.weekDays(), (ed: number, idx: number) => {
         Column({ space: 1 }) {

@@ -249,6 +249,28 @@ body.lean-mode .arow::before{content:"";position:absolute;left:0;top:18px;width:
 body.lean-mode .arow:hover{transform:translateX(3px)}
 body.lean-mode .arow+.arow{border-top:1px solid color-mix(in srgb,var(--divider) 72%,transparent)}
 body.lean-mode .answer-value{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:17px;font-weight:500;letter-spacing:-.025em}
+/* N-01：App 的 EditorialSection 版式（component/EditorialSection.ets）——眉标 + 衬线小标题 + 右侧动作。
+   眉标在 App 长辈模式下收起，所以只算装饰，正文含义全在小标题里。 */
+body.lean-mode .sect-head{padding:15px 2px 0}
+body.lean-mode .answer-card .sect-head{padding-left:10px}
+body.lean-mode .sect-eyebrow{color:var(--brand_pink);font-size:13px;line-height:1.1;letter-spacing:.08em;margin-bottom:5px}
+body.lean-mode .sect-row{display:flex;align-items:center;gap:8px}
+body.lean-mode .sect-title{flex:1;font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:21px;font-weight:500;
+letter-spacing:-.035em;line-height:1.15;color:var(--text_primary)}
+body.lean-mode .sect-act{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--brand_pink);cursor:pointer;padding:8px 2px}
+/* D-19：App 的 EditorialCard 卡头（MeView.cardHead）是 16fp 衬线 + 右侧 13fp 品牌色动作 */
+body.lean-mode .cd-head{display:flex;align-items:center;gap:8px}
+body.lean-mode .cd-title{flex:1;font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:16px;font-weight:500;
+letter-spacing:-.02em;color:var(--text_primary)}
+body.lean-mode .cd-act{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--brand_pink);cursor:pointer;padding:8px 2px}
+/* D-19：三个主参数常驻为只读格，视界与最短共同时段收进「高级设置」折叠 */
+body.lean-mode .stat-row{display:flex;gap:8px}
+body.lean-mode .stat{flex:1;display:flex;flex-direction:column;gap:2px}
+body.lean-mode .stat b{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:16px;font-weight:500;
+letter-spacing:-.02em;line-height:1.2;color:var(--brand_pink)}
+body.lean-mode .stat span{font-size:13px;color:var(--text_tertiary)}
+body.lean-mode .adv-head{display:flex;align-items:center;gap:5px;min-height:44px;font-size:13px;color:var(--text_secondary);cursor:pointer}
+body.lean-mode .adv-head .cw{flex:0 0 auto;color:var(--text_tertiary)}
 body.lean-mode .chip{
 min-height:28px;border-radius:9px;padding:5px 10px;background:color-mix(in srgb,var(--fill_weak) 82%,transparent);
 font-size:11px;transition:transform 550ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)
@@ -256,6 +278,8 @@ font-size:11px;transition:transform 550ms cubic-bezier(.22,1,.36,1),opacity 350m
 body.lean-mode .chip:hover{transform:translateY(-1px)}
 body.lean-mode .chip:active,body.lean-mode .btn:active{transform:scale(.98)}
 body.lean-mode .chip.on{background:var(--brand_pink);color:#fff}
+/* D-16：回到本周的那颗——品牌色淡底 + 品牌色字，12fp / radius 10（同 WeekScheduleView.currentWeekChip） */
+body.lean-mode .chip.soft{background:var(--brand_pink_bg);color:var(--brand_pink);font-weight:600;font-size:12px;border-radius:10px;padding:4px 8px}
 body.lean-mode .chip.blue-on{background:var(--brand_pink);color:#fff}
 body.lean-mode .tag{border-radius:5px;padding:4px 7px;font-size:9px;letter-spacing:.02em}
 body.lean-mode .btn{
@@ -492,6 +516,8 @@ function seedState(){
     seg:'window', view:'list', filter:'ALL',
     calY:dayParts(TODAY).y, calM:dayParts(TODAY).m, weekStart:TODAY - (weekdayOf(TODAY) - 1),
     sheet:null, sheetWin:null, dayOpen:null, anchorWhich:'anchor',
+    // D-19：作息卡默认只读，「编辑」态与「高级设置」折叠各自独立于全局参数
+    meEdit:false, meDraft:null, advOpen:false,
     dlg:null, privacy:false,
     params:defaultParams(),
     partner:{ nick:'阿明', wakeMin:420, bedMin:1320, windDownMin:20, exists:true },
@@ -788,7 +814,7 @@ seedPlans();
 compute();
 /* ========== 4. 图标（SymbolGlyph 替身） ========== */
 var PATHS = {
-  chevL:'M15 4l-8 8 8 8', chevR:'M9 4l8 8-8 8',
+  chevL:'M15 4l-8 8 8 8', chevR:'M9 4l8 8-8 8', chevU:'M6 14l6-6 6 6', chevD:'M6 10l6 6 6-6',
   house:'M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5',
   heart:'M12 20s-7-4.6-7-9.5A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.5C19 15.4 12 20 12 20z',
   calendar:'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
@@ -878,7 +904,19 @@ function answerRow(label, value, sub, act, data){
     + '<div class="answer-value">' + value + '</div>' + (sub ? '<div class="t11 c3">' + sub + '</div>' : '') + '</div>'
     + '<span style="color:var(--text_disabled)">' + ic('chevR', 16) + '</span></div>';
 }
-/* 精简版首页：一屏只回答三个问题——今晚能吃饭吗 / 下个完整同休日 / 最近能不能出行 */
+/** EditorialSection 的镜像：眉标 + 衬线小标题 + 可选右侧动作；内容紧接其后自行拼接。 */
+function sectHead(eyebrow, title, actHtml){
+  return '<div class="sect-head"><div class="sect-eyebrow">' + eyebrow + '</div>'
+    + '<div class="sect-row"><div class="sect-title">' + title + '</div>' + (actHtml || '') + '</div></div>';
+}
+/** EditorialCard 的卡头镜像（MeView.cardHead）：卡内标题比小节标题小一档，右侧是纯文字动作。 */
+function cdHead(title, src, actHtml){
+  return '<div class="cd-head"><div class="cd-title">' + title + srcTag(src) + '</div>' + (actHtml || '') + '</div>';
+}
+/** 与 feature/…/model/RhythmRules.ets 的 horizonLabel / minSlotLabel 同一口径。 */
+function horizonLabel(d){ var m = Math.round(d / 30); return m < 1 ? '未来 ' + d + ' 天' : '未来 ' + m + ' 个月'; }
+function minSlotLabel(v){ return '≥ ' + (v % 60 === 0 ? (v / 60) + ' 小时' : v + ' 分钟'); }
+/* 精简版首页：一屏只回答三个问题——今晚能一起吗 / 下个完整同休日 / 最近能出行吗（措辞同 D-14 定稿后的 App） */
 function leanDaysTxt(w){
   var fd = Math.floor(w.start / MIN), ld = Math.floor((w.end - 1) / MIN);
   return ld > fd ? (ld - fd + 1) + ' 天（跨夜）' : duration(w.end - w.start);
@@ -926,13 +964,14 @@ function scrHomeLean(){
       + (cc.alt ? '<span class="chip" data-act="reschedule" data-id="' + cp.id + '">改到 ' + hm(cc.alt.start) + '</span>' : '') + '</div>';
   }
   html += '<div class="card answer-card mt12">'
-    + answerRow('今晚 / 明晚能一起吃饭吗', meal
+    + sectHead('三个问题', '先看结论', '<span class="sect-act" data-act="refresh">刷新</span>')
+    + answerRow(pt.exists ? '今晚能一起吗' : '今晚我有空吗', meal
       ? (Math.floor(meal.start / MIN) === TODAY ? '今晚' : '明晚') + ' ' + hm(Math.max(meal.start, Math.floor(meal.start / MIN) * MIN + 1050)) + ' 之后有空'
       : '这两天没有晚饭时段', meal ? endLabel(meal.start, meal.end) : '换个筛选看看更早的窗口',
       'openWin', meal ? 'data-w="' + meal.start + '" data-e="' + meal.end + '"' : (w ? 'data-w="' + w.start + '" data-e="' + w.end + '"' : 'data-w="0"'))
     + answerRow('下个完整同休日', full ? mdw(Math.floor(full.start / MIN)) : '视界内暂无',
       full ? leanDaysTxt(full) + ' · 双方零排班' : '', 'filter', 'data-f="FULL_DAY"')
-    + answerRow('最近能不能出行', trip ? mdw(Math.floor(trip.start / MIN)) + ' 起' : '暂无 ≥24 小时段',
+    + answerRow('最近能出行吗', trip ? mdw(Math.floor(trip.start / MIN)) + ' 起' : '暂无 ≥24 小时段',
       trip ? '连着 ' + leanDaysTxt(trip) : '', 'filter', 'data-f="GTE24H"')
     + '</div>';
   var free = 0;
@@ -1007,8 +1046,8 @@ function windowMiniRow(w){
 function scrCoTime(){
   var html = '<div class="page"><div class="hd" style="padding-bottom:6px"><div class="col lw" style="gap:2px">'
     + '<div class="t17 b7">共同时间' + srcTag('CoTimeView.ets') + '</div>'
-    + '<div class="t11 c3">' + (S.partner.exists ? esc(S.partner.nick) + ' · 未来 '
-      + (S.lean ? Math.round(S.params.horizonDays / 30) + ' 个月' : S.params.horizonDays + ' 天') : '单人模式 · 仅我的空闲') + '</div></div>'
+    + '<div class="t11 ' + (S.partner.exists ? 'pink' : 'c3') + '">'
+    + (S.partner.exists ? esc(S.partner.nick) : '单人模式') + ' · ' + horizonLabel(S.params.horizonDays) + '</div></div>'
     + '</div><div class="body">'
     + '<div class="seg" style="margin-bottom:8px"><button class="' + (S.seg === 'window' ? 'on' : '') + '" data-act="seg" data-v="window">窗口</button>'
     + '<button class="' + (S.seg === 'plan' ? 'on' : '') + '" data-act="seg" data-v="plan">计划</button></div>';
@@ -1140,9 +1179,12 @@ function coWeekGrid(){
     : '点某一天看当日明细、临时改班。';
   return '<div class="card"><div class="row between" style="margin-bottom:6px">'
     + '<span class="chip" data-act="weekNav" data-k="-1">' + ic('chevL', 12) + '</span>'
-    + '<span class="t13 b5" data-act="weekToday" style="cursor:pointer">' + md(ws) + ' – ' + md(ws + 6) + (ws === curWeek ? '' : ' · 回本周') + srcTag('CoTimeView.ets') + '</span>'
+    + '<span class="t13 b5" data-act="weekToday" style="cursor:pointer">' + md(ws) + ' – ' + md(ws + 6) + srcTag('CoTimeView.ets') + '</span>'
     + '<span class="chip" data-act="weekNav" data-k="1">' + ic('chevR', 12) + '</span></div>'
-    + '<div class="t10" style="color:var(--text_hint);text-align:right;margin-bottom:2px">纵轴 ' + pad2(h0) + ':00–' + (h1 >= 24 ? '24' : pad2(h1)) + ':00</div>'
+    /* D-16 已落地的形状：纵轴说明与「本周」同排右对齐，压在星期行之上，不挤进那 7 列 */
+    + '<div class="row gap8" style="justify-content:flex-end;align-items:center;margin-bottom:2px">'
+    + '<span class="t10" style="color:var(--text_hint)">纵轴 ' + pad2(h0) + '–' + (h1 >= 24 ? '24' : pad2(h1)) + '</span>'
+    + '<span class="chip soft" data-act="weekToday">本周</span></div>'
     + '<div class="row" style="margin-bottom:4px"><div style="width:26px;flex:0 0 26px"></div><div class="whead">' + head + '</div></div>'
     + '<div style="display:flex;--hh:' + HOUR_H + 'px;--gh:' + GH + 'px"><div class="clabels">' + labels + '</div><div class="ccols">' + cols + '</div></div>'
     + '<div class="row wrapf gap8 mt8" style="font-size:10px;color:var(--text_hint)">'
@@ -1212,15 +1254,34 @@ function scrHub(){
     { s:'editor', i:'gear', t:'班次类型', d:'时段、通勤、夜班恢复、颜色' },
     { s:'ocr', i:'camera', t:'拍照识别课表', d:'Core Vision Kit 本地 OCR' }
   ];
-  if (S.lean) {
-    entries = entries.filter(function(x){ return x.s !== 'month' && x.s !== 'ocr' && x.s !== 'card'; });
-    entries[0].d = '序列 + 锚点，一次配置自动铺开';
-  }
-  html += entries.map(function(x){
-    return '<div class="li mt10" data-act="go" data-s="' + x.s + '"><div style="color:var(--brand_pink)">' + ic(x.i, 20) + '</div>'
+  var liRow = function(x, first){
+    return '<div class="li' + (first ? ' mt10' : '') + '" ' + (x.nav || 'data-act="go" data-s="' + x.s + '"')
+      + '><div style="color:var(--brand_pink)">' + ic(x.i, 20) + '</div>'
       + '<div class="col lw gap2" style="text-align:left"><div class="t14 b5">' + x.t + srcTag('pages/' + x.s + '.ets') + '</div>'
       + '<div class="t11 c3">' + x.d + '</div></div><div style="color:var(--text_disabled)">' + ic('chevR', 16) + '</div></div>';
-  }).join('');
+  };
+  if (S.lean) {
+    /* 精简版按 App 的 MAIN_ENTRIES 同序同名：班次类型 / 循环模板 / 课程表 / 临时调整。
+       App 的第四条是日详情改班（点某一天），不是整月涂抹页，所以这里连跳转一起换。 */
+    var byKey = {};
+    entries.forEach(function(x){ byKey[x.s] = x; });
+    /* 四条的标题/副文案/图标逐字照抄 ScheduleHub.ets 的 MAIN_ENTRIES，
+       副文案里不掺动态参数：App 那句本身就是静态的「未来视界」。 */
+    byKey.editor.d = '定义上下班时刻、通勤与夜班恢复';
+    byKey.cycle.d = '白白夜夜休休等序列 + 锚点，自动铺开未来视界内的每一天';
+    byKey.course.t = '课程表';
+    byKey.course.i = 'pencil';
+    byKey.course.d = '学生场景：粘贴课表文本或手动添加每周固定课程';
+    byKey.month.t = '临时调整';
+    byKey.month.d = '给某一天单独改班或请假，优先于循环模板';
+    byKey.month.nav = 'data-act="openDay" data-d="' + TODAY + '"';
+    entries = [byKey.editor, byKey.cycle, byKey.course, byKey.month];
+    /* N-01：App 把这四条收进一张卡，卡头是 EditorialSection 的「MAIN / 四个主入口」。 */
+    html += '<div class="card mt12">' + sectHead('MAIN', '四个主入口')
+      + entries.map(function(x, i){ return liRow(x, i === 0); }).join('') + '</div>';
+    return html + '</div></div>';
+  }
+  html += entries.map(function(x){ return liRow(x, true); }).join('');
   return html + '</div></div>';
 }
 /* WeekScheduleView 移植：HOUR_H=34 / 24 格 / LABEL_W=26 */
@@ -1489,8 +1550,8 @@ function scrMeLean(){
       : S.pairState === 'WAITING' ? '等待对方输码 · ' + esc(S.inviteCode)
       : !S.agcOn ? '本机代录 · 数据只写在本机的应用沙箱里' : '本机代录，或配对后自动同步') + '</div></div>'
     + '<span class="chip" style="background:#ffffff2e;color:#fff" data-act="go" data-s="cotime">共同时间</span></div></div>';
-  html += '<div class="card col gap8"><div class="row between"><div class="t13 b5">伴侣' + srcTag('MeView.ets') + '</div>'
-    + (pt.exists ? '<span class="t13 pink" data-act="editPartner">编辑</span>' : '<span class="t13 pink" data-act="addPartner">+ 添加</span>') + '</div>';
+  html += '<div class="card col gap8">' + cdHead('伴侣', 'MeView.ets',
+    pt.exists ? '<span class="cd-act" data-act="editPartner">编辑</span>' : '<span class="cd-act" data-act="addPartner">+ 添加</span>');
   if (pt.exists) {
     html += '<div class="row gap8"><span class="t14 b5">' + esc(pt.nick) + '</span><div class="lw"></div>'
       + '<span class="t12 c3">起床 ' + hm(pt.wakeMin) + ' · 就寝 ' + hm(pt.bedMin) + '</span></div>'
@@ -1502,8 +1563,8 @@ function scrMeLean(){
   }
   html += '</div>';
   /* 配对：一条流程 + 两档可见范围。AGC 未开通时按 MeView.ets 的真实行为——按钮照常，点下去 toast 降级 */
-  html += '<div class="card col gap8"><div class="row between"><div class="t13 b5">配对同步' + srcTag('MeView.ets') + '</div>'
-    + (S.pairState === 'PAIRED' ? '<span class="chip" data-act="syncNow">立即同步</span>' : '') + '</div>';
+  html += '<div class="card col gap8">' + cdHead('配对同步', 'MeView.ets',
+    S.pairState === 'PAIRED' ? '<span class="chip" data-act="syncNow">立即同步</span>' : '');
   if (S.pairState === 'PAIRED') {
     html += '<div class="row gap8"><span class="tag" style="background:var(--success_green)">已配对</span>'
       + '<span class="t14 b5 lw">' + (S.partner.exists ? esc(S.partner.nick) : '对方') + '</span></div>'
@@ -1535,21 +1596,44 @@ function scrMeLean(){
     + '<div class="col lw gap2" style="text-align:left"><div class="t14 b5">班表与班次</div>'
     + '<div class="t11 c3">循环模板 · 单日改班 · 课程 · 班次时段与通勤</div></div>'
     + '<span style="color:var(--text_disabled)">' + ic('chevR', 16) + '</span></div></div>';
-  html += '<div class="card col gap10"><div class="row between"><div class="t13 b5">作息' + srcTag('MeView.ets') + '</div>'
-    + '<span class="t13 pink" data-act="saveParams">保存</span></div>'
-    + '<div class="row gap8"><span class="t13 c2" style="flex:0 0 60px">我起床</span><input class="inp" id="f-wake" value="' + hm(p.wakeMin) + '" style="width:80px">'
-    + '<span class="t13 c2">就寝</span><input class="inp" id="f-bed" value="' + hm(p.bedMin) + '" style="width:80px"></div>'
-    + '<div class="hr-line" style="margin:0"></div>'
-    + '<div class="t12 c2">最短共同时段</div><div class="row gap6">'
-    + [[60, '≥1 小时'], [120, '≥2 小时'], [240, '≥4 小时']].map(function(x){
-      return '<span class="chip' + (p.minSlotMin === x[0] ? ' on' : '') + '" data-act="minSlot" data-v="' + x[0] + '">' + x[1] + '</span>';
-    }).join('') + '</div>'
-    + '<div class="t12 c2 mt4">计算视界</div><div class="row gap6">'
-    + [[30, '1 个月'], [90, '3 个月'], [180, '6 个月']].map(function(x){
-      return '<span class="chip' + (p.horizonDays === x[0] ? ' on' : '') + '" data-act="horizon" data-v="' + x[0] + '">' + x[1] + '</span>';
-    }).join('') + '</div>'
-    + '<div class="t11 ch">其余阈值（收整缓冲、半天/整日/自习判定）用引擎默认值，不占用界面。</div></div>';
-  html += '<div class="card col gap10"><div class="t13 b5">数据' + srcTag('MeView.ets') + '</div>'
+  /* D-19：与 App 的 MeView.rhythmCard 同构——三个主参数只读常驻，视界与最短共同时段收进
+     「高级设置」折叠，点卡头「编辑」才换成输入框。原型原来是整卡内联可编辑＋常驻「保存」，
+     比 App 多一层常态噪声，而且收整缓冲被写在"其余阈值"里，与 App 的三主参数口径矛盾。 */
+  var e = S.meEdit, dft = S.meDraft || {};
+  var val = function(k, dv){ return dft[k] !== undefined ? dft[k] : dv; };
+  var msel = +val('minSlotMin', p.minSlotMin);
+  var adv = '<div class="adv-head" data-act="toggleAdv"><span class="lw">高级设置（视界 / 最短时段）</span>'
+    + '<span class="cw">' + ic(S.advOpen ? 'chevU' : 'chevD', 14) + '</span></div>';
+  html += '<div class="card col gap10">' + cdHead('作息', 'MeView.ets', e ? '' : '<span class="cd-act" data-act="editParams">编辑</span>');
+  if (e) {
+    html += '<div class="row gap8 wrapf">'
+      + '<span class="row gap6"><span class="t13 c2">起床</span><input class="inp" id="f-wake" value="' + val('wake', hm(p.wakeMin)) + '" style="width:80px"></span>'
+      + '<span class="row gap6"><span class="t13 c2">就寝</span><input class="inp" id="f-bed" value="' + val('bed', hm(p.bedMin)) + '" style="width:80px"></span>'
+      + '<span class="row gap6"><span class="t13 c2">收整(分)</span><input class="inp" id="f-wind" value="' + val('wind', String(p.windDownMin)) + '" style="width:64px"></span></div>' + adv;
+    if (S.advOpen) {
+      html += '<div class="row gap8"><span class="t13 c2" style="flex:0 0 84px">计算视界(天)</span>'
+        + '<input class="inp" id="f-horizon" value="' + val('horizon', String(p.horizonDays)) + '" style="width:80px">'
+        + '<span class="t11 ch lw">未来多少天参与计算（7–366）</span></div>'
+        + '<div class="row gap6">' + [60, 120, 240].map(function(v){
+          return '<span class="chip' + (msel === v ? ' on' : '') + '" data-act="minSlot" data-v="' + v + '">' + minSlotLabel(v) + '</span>';
+        }).join('') + '</div>'
+        + '<div class="t11 ch">短于此段的共同空闲会被直接丢掉，不算成一个窗口。</div>';
+    }
+    html += '<div class="row gap10 w100"><button class="btn lw" data-act="saveParams">保存</button>'
+      + '<button class="btn ghost lw" data-act="cancelParams">取消</button></div>';
+  } else {
+    html += '<div class="stat-row"><div class="stat"><b>' + hm(p.wakeMin) + '</b><span>起床</span></div>'
+      + '<div class="stat"><b>' + hm(p.bedMin) + '</b><span>就寝</span></div>'
+      + '<div class="stat"><b>' + p.windDownMin + '分</b><span>收整</span></div></div>'
+      + (p.bedMin < p.wakeMin ? '<div class="t12 c2">就寝已过零点，按次日凌晨计入</div>' : '')
+      + '<div class="t12 ch">决定你的睡眠与收整如何参与计算，改完立刻重算共同时间。</div>' + adv;
+    if (S.advOpen) {
+      html += '<div class="t12 c2">视界 ' + p.horizonDays + ' 天 · 最短共同时段 ' + minSlotLabel(p.minSlotMin) + '</div>'
+        + '<div class="t11 ch">其余阈值（夜班窗口、半天/整日/可出行判定）用引擎默认值。</div>';
+    }
+  }
+  html += '</div>';
+  html += '<div class="card col gap10">' + cdHead('数据与隐私', 'MeView.ets')
     + '<div class="row gap8" data-act="privacy" style="cursor:pointer"><div style="color:var(--success_green)">' + ic('shield', 18) + '</div>'
     + '<span class="t14 lw">隐私政策</span><span style="color:var(--text_disabled)">' + ic('chevR', 15) + '</span></div>'
     + '<div class="hr-line" style="margin:0"></div>'
@@ -1909,8 +1993,17 @@ var ACT = {
   go:function(el){ S.screen = el.dataset.s; S.sheet = null; if (tabOf()[S.screen] !== undefined) { S.tab = tabOf()[S.screen]; } render(); },
   tab:function(el){ S.screen = el.dataset.s; S.tab = +el.dataset.i; render(); },
   viewPlans:function(){ S.screen = 'cotime'; S.seg = 'plan'; S.tab = 1; render(); },
-  minSlot:function(el){ S.params.minSlotMin = +el.dataset.v; syncSliders(); recompute(); render(); toast('最短共同时段 ' + duration(S.params.minSlotMin)); },
-  horizon:function(el){ S.params.horizonDays = +el.dataset.v; syncSliders(); recompute(); render(); toast('计算视界 ' + Math.round(S.params.horizonDays / 30) + ' 个月'); },
+  /* D-19：档位芯片只活在「编辑 · 高级设置」里，所以先写草稿，保存才落全局并重算 */
+  minSlot:function(el){ if (S.meDraft) { S.meDraft.minSlotMin = +el.dataset.v; render(); } },
+  editParams:function(){
+    var p = S.params;
+    S.meDraft = { wake:hm(p.wakeMin), bed:hm(p.bedMin), wind:String(p.windDownMin),
+      horizon:String(p.horizonDays), minSlotMin:p.minSlotMin };
+    S.meEdit = true; render();
+  },
+  cancelParams:function(){ S.meEdit = false; S.meDraft = null; render(); },
+  toggleAdv:function(){ S.advOpen = !S.advOpen; render(); },
+  refresh:function(){ recompute(); render(); toast('已重算未来 ' + S.params.horizonDays + ' 天'); },
   filter:function(el){ S.filter = el.dataset.f; S.seg = 'window'; S.screen = 'cotime'; S.view = 'list'; render(); },
   seg:function(el){ S.seg = el.dataset.v; render(); },
   setView:function(el){ S.view = el.dataset.v; render(); },
@@ -2089,6 +2182,8 @@ var ACT = {
     if (wind < 0) { toast('收整时长不能为负'); return; }
     if (hz < 7 || hz > 366) { toast('计算视界需在 7–366 天之间'); return; }
     S.params.wakeMin = w; S.params.bedMin = b; S.params.windDownMin = wind; S.params.horizonDays = hz;
+    if (S.meDraft) { S.params.minSlotMin = S.meDraft.minSlotMin; }
+    S.meEdit = false; S.meDraft = null;
     syncSliders();
     recompute(); render(); toast('作息参数已保存');
   },
@@ -2321,7 +2416,12 @@ function syncSliders(){
 }
 document.addEventListener('input', function(e){
   var el = e.target;
-  if (!el.dataset || el.dataset.k === undefined || el.type !== 'range') { return; }
+  if (!el.dataset || el.dataset.k === undefined || el.type !== 'range') {
+    /* D-19：展开/收起高级设置会整段重画，手改过的输入框要先存进草稿，否则一折叠就回到旧值 */
+    var mk = { 'f-wake':'wake', 'f-bed':'bed', 'f-wind':'wind', 'f-horizon':'horizon' }[el.id];
+    if (mk && S.meEdit && S.meDraft) { S.meDraft[mk] = el.value; }
+    return;
+  }
   S.params[el.dataset.k] = +el.value;
   el.nextElementSibling.textContent = (SLIDERS.filter(function(x){ return x[0] === el.dataset.k; })[0] || [,,,'',,function(v){ return v; }])[5](+el.value);
   recompute();

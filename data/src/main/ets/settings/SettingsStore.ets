@@ -29,7 +29,6 @@ const KEY_NOTIFY_WEEKLY = 'notify_weekly_summary';
 const KEY_NOTIFY_ACTION = 'notify_action_alerts';
 const KEY_NOTIFIED_CONFLICT_SIGS = 'notified_conflict_sigs';
 const KEY_NOTIFIED_REPAIR = 'notified_repair';
-const KEY_REDUCE_TRANSPARENCY = 'a11y_reduce_transparency';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
@@ -284,19 +283,6 @@ export class SettingsStore {
 
   static async setActionAlertsOn(on: boolean): Promise<void> {
     await SettingsStore.p().put(KEY_NOTIFY_ACTION, on);
-    await SettingsStore.p().flush();
-  }
-
-  /**
-   * 降低透明度（阶段 5 Task 5.3）：系统侧没有可读的透明度/材质开关，只能由应用自己的无障碍设置承载。
-   * 默认关闭——玻璃层是既有视觉基线，实色回退要用户明确要。
-   */
-  static isReduceTransparencyOn(): boolean {
-    return SettingsStore.p().getSync(KEY_REDUCE_TRANSPARENCY, false) === true;
-  }
-
-  static async setReduceTransparencyOn(on: boolean): Promise<void> {
-    await SettingsStore.p().put(KEY_REDUCE_TRANSPARENCY, on);
     await SettingsStore.p().flush();
   }
 

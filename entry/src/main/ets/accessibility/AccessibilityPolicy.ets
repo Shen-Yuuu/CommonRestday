@@ -1,7 +1,6 @@
 import { accessibility } from '@kit.AccessibilityKit';
-import { SettingsStore } from 'data';
 import { Logger } from 'commons';
-import { MOTION_REDUCE_KEY, TRANSPARENCY_REDUCE_KEY, DesignTokens } from '../theme/DesignTokens';
+import { MOTION_REDUCE_KEY, DesignTokens } from '../theme/DesignTokens';
 
 const TAG = 'AccessibilityPolicy';
 
@@ -33,12 +32,7 @@ function onAnimationReduceChange(enabled: boolean): void {
 /**
  * 系统无障碍状态的唯一读取方：把长辈模式、屏幕朗读、减少动态效果三件事写进 AppStorage，
  * 页面与组件只订阅结果，不各自调系统接口（也避免每个组件都注册一次监听）。
- *
- * 三件事的系统侧可读性不一样：
- * - 长辈模式 / 屏幕朗读 / 减少动态效果都有现成接口（26.0.0 / 18 / 23），本文件注册监听并即时同步；
- * - **降低透明度没有系统开关**（本 SDK 的 uiAppearance 只有深色模式、字号、字重，
- *   settings.display 里的动画倍量自 21 起全部 deprecated 且无替代），所以它只能由
- *   「我的 · 无障碍」里的应用侧开关写入，本文件负责在启动时把持久值恢复到 AppStorage。
+ * 三件事都有现成系统接口（26.0.0 / 18 / 23），本文件注册监听并即时同步。
  */
 export class AccessibilityPolicy {
   private static listening: boolean = false;
@@ -60,7 +54,6 @@ export class AccessibilityPolicy {
     }).catch((e: Error) => {
       Logger.warn(TAG, 'senior mode unavailable: ' + e.message);
     });
-    AccessibilityPolicy.restoreTransparency();
 
     if (AccessibilityPolicy.listening) {
       return;
@@ -93,26 +86,5 @@ export class AccessibilityPolicy {
   /** 主操作热区：长辈模式 48vp，其余沿用 44vp 令牌。 */
   static minHit(senior: boolean): Length {
     return senior ? SENIOR_HIT_VP : DesignTokens.hitMin;
-  }
-
-  /**
-   * 「我的 · 无障碍」开关写入：先让界面立刻生效，再落 Preferences。
-   * resolve 的是"有没有写住"，页面据此决定要不要把开关读回真值，不静默假装保存成功。
-   */
-  static setReduceTransparency(on: boolean): Promise<boolean> {
-    AppStorage.setOrCreate<boolean>(TRANSPARENCY_REDUCE_KEY, on);
-    return SettingsStore.setReduceTransparencyOn(on).then((): boolean => true).catch((e: Error): boolean => {
-      Logger.warn(TAG, 'persist transparency failed: ' + e.message);
-      return false;
-    });
-  }
-
-  /** 恢复持久值。SettingsStore 可能还没初始化完（EntryAbility 与本页面并发），失败就等用户进「我的」再取。 */
-  private static restoreTransparency(): void {
-    try {
-      AppStorage.setOrCreate<boolean>(TRANSPARENCY_REDUCE_KEY, SettingsStore.isReduceTransparencyOn());
-    } catch (e) {
-      Logger.warn(TAG, 'transparency pref not ready: ' + (e as Error).message);
-    }
   }
 }

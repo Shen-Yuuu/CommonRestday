@@ -23,8 +23,6 @@ export struct EditorialCard {
   onTapCard: () => void = () => {};
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
-  // 装饰器实参必须是字面量，取值与 TRANSPARENCY_REDUCE_KEY 保持一致。
-  @StorageProp('crd_reduce_transparency') reduceTransparency: boolean = false;
   @BuilderParam content: () => void = this.placeholder;
   @State private isPressed: boolean = false;
   @State private hasFocus: boolean = false;
@@ -41,7 +39,7 @@ export struct EditorialCard {
     if (!this.glass) {
       return this.hero ? DesignTokens.hero : DesignTokens.card;
     }
-    return GlassStyle.fill(DesignTokens.hero, this.reduceTransparency);
+    return GlassStyle.fill(DesignTokens.hero);
   }
 
   /** 焦点环优先级高于表面描边：键盘用户任何时候都要能看出这张卡被选中。 */
@@ -49,7 +47,7 @@ export struct EditorialCard {
     if (this.hasFocus) {
       return 2;
     }
-    return this.glass ? GlassStyle.borderWidth(this.reduceTransparency) : 0;
+    return this.glass ? GlassStyle.borderWidth() : 0;
   }
 
   private surfaceBorderColor(): ResourceColor {
@@ -68,7 +66,7 @@ export struct EditorialCard {
         offsetY: this.hero ? 18 : 13
       };
     }
-    return GlassStyle.shadow(this.reduceTransparency);
+    return GlassStyle.shadow();
   }
 
   private press(down: boolean): void {
@@ -101,7 +99,7 @@ export struct EditorialCard {
     .width('100%')
     .clip(true)
     .systemMaterial(this.glass
-      ? GlassStyle.material(GlassStrength.SOFT, this.reduceTransparency)
+      ? GlassStyle.material(GlassStrength.SOFT)
       : undefined)
     .backgroundColor(this.surfaceFill())
     .borderRadius(DesignTokens.cardRadius(this.cutTopLeft))

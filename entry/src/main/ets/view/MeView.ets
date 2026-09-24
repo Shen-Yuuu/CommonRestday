@@ -26,7 +26,7 @@ interface ParamStatArg {
 }
 
 /**
- * 我的页：六段收纳——伴侣与同步、我的日程、作息、提醒与通知、无障碍、数据与隐私。
+ * 我的页：五段收纳——伴侣与同步、我的日程、作息、提醒与通知、数据与隐私。
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
  * - 班表录入不再是底部 Tab，这里给直达入口（我这侧 / 代录 TA 那侧）；
  * - 提醒与通知按低打扰排布：默认只有需行动的一类会响，其余都要用户主动开；
@@ -77,15 +77,8 @@ export struct MeView {
   @State private notifyOn: boolean = false;
   /** 本页容器宽度档位：expanded 把卡片区并成两列，其余档位与改造前一致。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
-  /**
-   * 降低透明度：系统侧没有可读的透明度开关（见 AccessibilityPolicy 的说明），
-   * 只有这一项由本应用自己记，值直接和 GlassSurface 订阅的同一份 AppStorage。
-   */
-  // 装饰器实参必须是字面量，取值与 TRANSPARENCY_REDUCE_KEY 保持一致。
-  @StorageProp('crd_reduce_transparency') reduceTransparencyOn: boolean = false;
-  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY / MOTION_REDUCE_KEY 保持一致。
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
-  @StorageProp('crd_reduce_motion') motionReduce: boolean = false;
   // 保存动作 → 重算广播：伴侣侧数据或参数变了，摘要文案要跟着走
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   // 一次性配对请求到达（扫到的或从配对链接拉起本机的）：确认页在这页弹
@@ -250,21 +243,6 @@ export struct MeView {
       }
       if (on && !this.notifyOn) {
         promptAction.showToast({ message: '通知还没开启，开启后会补上这条周提醒' });
-      }
-    });
-  }
-
-  /**
-   * 降低透明度：界面立刻生效（AppStorage 驱动 GlassSurface），再落 Preferences。
-   * 没写住时不假装成功——本次仍然有效，但要说清下次打开会回到原样。
-   */
-  pickTransparency(on: boolean): void {
-    if (on === this.reduceTransparencyOn) {
-      return;
-    }
-    AccessibilityPolicy.setReduceTransparency(on).then((saved: boolean) => {
-      if (!saved) {
-        promptAction.showToast({ message: '这次已生效，但没记住，下次打开会回到原设置' });
       }
     });
   }
@@ -634,7 +612,7 @@ export struct MeView {
     ResponsiveContainer({ breakpoint: this.bp }) {
       Scroll() {
         if (Breakpoints.isExpanded(this.bp)) {
-          // 宽屏两列：伴侣/日程一列，作息/通知/无障碍/数据一列，读屏顺序仍是先左后右自上而下
+          // 宽屏两列：伴侣/日程一列，作息/通知/数据一列，读屏顺序仍是先左后右自上而下
           Row({ space: DesignTokens.space4 }) {
             Column({ space: DesignTokens.space3 }) {
               this.identityCard()
@@ -647,7 +625,6 @@ export struct MeView {
             Column({ space: DesignTokens.space3 }) {
               this.rhythmCard()
               this.notifyCard()
-              this.accessibilityCard()
               this.dataCard()
             }
             .layoutWeight(1)
@@ -664,7 +641,6 @@ export struct MeView {
             this.scheduleCard()
             this.rhythmCard()
             this.notifyCard()
-            this.accessibilityCard()
             this.dataCard()
           }
           .width('100%')
@@ -1485,73 +1461,6 @@ export struct MeView {
     .padding(DesignTokens.space2)
     .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .alignItems(VerticalAlign.Center)
-  }
-
-  /** 只读状态行：值与说明合成一句，读屏一遍念完（长辈模式/减少动效都跟随系统，本页只能显示）。 */
-  @Builder
-  infoRow(title: string, desc: string, key: string) {
-    Row({ space: DesignTokens.space3 }) {
-      Column({ space: 2 }) {
-        Text(title)
-          .fontSize(DesignTokens.fontBody)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(DesignTokens.textPrimary)
-        Text(desc)
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textTertiary)
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      Text(this.infoValue(key))
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.textSecondary)
-    }
-    .width('100%')
-    .padding(DesignTokens.space2)
-    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-    .alignItems(VerticalAlign.Center)
-    .accessibilityGroup(true)
-    .accessibilityText(title + '：' + this.infoValue(key) + '。' + desc)
-  }
-
-  /**
-   * 状态值在 builder 体内读，不走 @Builder 的按值入参：按值参数不随状态变量刷新，
-   * 用户去系统设置开完长辈模式再回来，行里就会留着过期文案。
-   */
-  infoValue(key: string): string {
-    if (key === 'senior') {
-      return this.senior ? '已开启' : '未开启';
-    }
-    return this.motionReduce ? '已开启' : '未开启';
-  }
-
-  /**
-   * 无障碍（Task 5.3）：三件事里只有"降低透明度"系统没有可读开关，
-   * 所以长辈模式与减少动态效果只报当前状态（跟随系统），透明度这条才是本应用的开关。
-   */
-  @Builder
-  accessibilityCard() {
-    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-      Column({ space: DesignTokens.space2 }) {
-        this.cardHead('无障碍', '', () => {
-        })
-
-        this.infoRow('系统长辈模式', '开启后主操作热区加到约 48vp，共同时间默认用列表视图', 'senior')
-
-        this.divider()
-
-        this.infoRow('减少动态效果', '开启后页面切换与展开直接到位，不再走动画', 'motion')
-
-        this.divider()
-
-        this.switchRow('降低透明度',
-          '悬浮底栏和半模态改用近实色底，不再依赖背景模糊。系统没有这项开关，只能在这里选',
-          this.reduceTransparencyOn, (on: boolean) => this.pickTransparency(on))
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-    }
   }
 
   @Builder

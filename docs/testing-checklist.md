@@ -164,7 +164,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 8.5 点击热区实测 ≥ **44vp**（设计令牌 `hit_min = 44vp`）；底栏浮岛单项声明"热区不小于 48vp"（视觉胶囊 74×50vp，不等于热区大小）——两项都用屏幕坐标实测。长辈模式下的 48vp 档见 §15.2
 - [ ] 8.6 焦点顺序与视觉顺序一致；Sheet 打开时读屏进入 Sheet、关闭后回到触发元素
 
-> **§8 的写入方现状（Task 5.3 之后更新）**：`crd_reduce_motion` 现在由 `accessibility/AccessibilityPolicy.ets` 在壳层挂载时从系统读一次（`isAnimationReduceEnabledSync`，API 23）并注册变更监听；`crd_reduce_transparency` 由「我的 · 无障碍」里的应用侧开关写入并落 Preferences（系统侧没有可读的降低透明度开关）。`crd_senior_mode` / `crd_screen_reader` 同源。逐条验收口径与实测限制见 §15，本轮之前"没有写入方"的判定已不成立。
+> **§8 的写入方现状（Task 5.3 之后更新，D-21 删卡后再修正）**：`crd_reduce_motion` / `crd_senior_mode` / `crd_screen_reader` 由 `accessibility/AccessibilityPolicy.ets` 在壳层挂载时从系统读一次（减少动效是 `isAnimationReduceEnabledSync`，API 23）并注册变更监听，所以"没有写入方"的判定已不成立。**App 内不再有任何无障碍开关**：D-21 删掉了「我的 · 无障碍」卡，切档只在系统设置里做。降低透明度既没有系统可读开关、也没有应用侧开关——玻璃表面走材质还是近实色，只由设备能力决定。逐条验收口径与实测限制见 §15。
 
 ## 9. 云端入口降级（保持关闭，不是待办）
 
@@ -291,7 +291,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 14.4 **热区存疑（Task 5.3 没有关掉这条）**：自制 Chip 时每颗用 `constraintSize({ minHeight: hitMin })` 兜到 44vp，ChipV2 的高度仍由组件自己定、本页没给尺寸。5.3 只补了语义（`accessibilitySelectedType: SELECTED` + `accessibilityDescription`，见 §15.3），**没有**设 `ChipV2Options.size`（本机 SDK 里该字段是 `ChipV2Size | SizeT<LengthMetrics>`，注释只写 "Chip size"，没说明钉死尺寸会不会连带关掉系统适老化调节，**缺证据**）。拇指与读屏实测仍不足 44vp 时，按 §15.2 记现象，再决定是给 `size` 传 `SizeT` 还是回退自制 Chip
 - [ ] 14.5 本页未设置 `backgroundSystemMaterial`。若真机上筛选 Chip 带出材质/描边/阴影（规范 §5.5：系统材质只给 Sheet/浮层），说明组件默认值含材质，回退做法是恢复自制 Chip（本轮提交前的 `filterRow` 实现）
 - [ ] 14.6 **减少动效这一轮只做审计，没有新增动画**：现有 `.transition(` 只有五处（ConflictNotice / EditorialCard / EditorialSection / NoticeBar / StatePanel），全部走 `reduceMotion ? TransitionEffect.IDENTITY : 淡入(+14vp 位移)`，即位移已在开关下关闭；`DesignTokens.stagger / offset` 至今**没有调用方**，说明页面里没有错峰可关。可 `rg` 复核，不必上设备
-- [ ] 14.7 **缺口已由 Task 5.3 补上（本条转为复测项）**：`crd_reduce_motion` 现在由 `AccessibilityPolicy.attach()` 从系统读一次并注册 `onAnimationReduceStateChange` 监听；`crd_reduce_transparency` 由「我的 · 无障碍」的应用侧开关写入 + 落 Preferences（系统侧确无降低透明度开关）。所以 14.6 的"减少动效"形态本轮起可以在真机上进入了，按 §15.1.4 / §15.1.5 走
+- [ ] 14.7 **缺口已由 Task 5.3 补上（本条转为复测项）**：`crd_reduce_motion` 由 `AccessibilityPolicy.attach()` 从系统读一次并注册 `onAnimationReduceStateChange` 监听，App 内没有写入口。所以 14.6 的"减少动效"形态本轮起可以在真机上进入了：到系统「设置 → 辅助功能 → 减少动态效果」开一次再回来，按 §15.1.4 走
 - [ ] 14.8 ChipV2 的选中迁移由组件内部驱动、`ChipV2Options` 没有时长入参，因此**不受**应用侧开关控制。自制 Chip 时期没有这段动画，属于渐进增强的代价；真机若观察到明显位移或过长动效，记现象并回到 14.5 的回退口径
 - [ ] 14.9 学期起点 sheet：三列滚轮（年/月/日），范围 2024-01-01 至 2032-12-31；滑到某天 → 取消 → 重开仍显示已保存值；确定后首页与班表按新学期起点重算
 - [ ] 14.10 **行为变化（本轮刻意）**：未设置学期起点时点「确定」，现在会真的写入滚轮当前显示的那一天；改造前 `termPick` 停在 `-1`，确定等于没反应但界面显示着日期。验收时确认这是想要的口径
@@ -301,19 +301,18 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ## 15. 无障碍与 Senior Mode（阶段 5 Task 5.3 出口）
 
-**代码口径**：系统无障碍状态只有一个读取方 `entry/src/main/ets/accessibility/AccessibilityPolicy.ets`，由 `pages/Index.ets` 的 `aboutToAppear/aboutToDisappear` 挂载与卸载；页面和组件只订阅 AppStorage 的结果，不各自调系统接口。组件侧全部 `@StorageProp` 的键名写成字面量（装饰器入参不收常量），值与 `SENIOR_MODE_KEY / SCREEN_READER_KEY / MOTION_REDUCE_KEY / TRANSPARENCY_REDUCE_KEY` 一致。除清单列出的 `component/` `view/` 外，本轮另改了 `navigation/AppNavigator.ets`（底栏三项是全局导航，读屏扫不到就等于没有出口）。
+**代码口径**：系统无障碍状态只有一个读取方 `entry/src/main/ets/accessibility/AccessibilityPolicy.ets`，由 `pages/Index.ets` 的 `aboutToAppear/aboutToDisappear` 挂载与卸载；页面和组件只订阅 AppStorage 的结果，不各自调系统接口。组件侧全部 `@StorageProp` 的键名写成字面量（装饰器入参不收常量），值与 `SENIOR_MODE_KEY / SCREEN_READER_KEY / MOTION_REDUCE_KEY` 一致。**D-21 起 App 内没有无障碍设置项**：三个键只有系统这一个来源，`TRANSPARENCY_REDUCE_KEY` 与它落 Preferences 用的 `a11y_reduce_transparency` 一并删除。除清单列出的 `component/` `view/` 外，本轮另改了 `navigation/AppNavigator.ets`（底栏三项是全局导航，读屏扫不到就等于没有出口）。
 
-**API 事实**（本机 SDK `26.0.0`，全部免权限）：长辈模式 `accessibility.isSeniorModeEnabled()` + `onSeniorModeStateChange()` 是 **26.0.0**；屏幕朗读 `isScreenReaderOpenSync()` + `on('screenReaderStateChange')` 是 **18**；减少动态效果 `isAnimationReduceEnabledSync()` + `onAnimationReduceStateChange()` 是 **23**。**降低透明度没有系统开关**（`uiAppearance` 只有深色/字号/字重，`settings.display` 的动画倍量自 API 21 起 deprecated 且无替代），所以它只能是本应用自己的设置项。
+**API 事实**（本机 SDK `26.0.0`，全部免权限）：长辈模式 `accessibility.isSeniorModeEnabled()` + `onSeniorModeStateChange()` 是 **26.0.0**；屏幕朗读 `isScreenReaderOpenSync()` + `on('screenReaderStateChange')` 是 **18**；减少动态效果 `isAnimationReduceEnabledSync()` + `onAnimationReduceStateChange()` 是 **23**。**降低透明度没有系统开关**（`uiAppearance` 只有深色/字号/字重，`settings.display` 的动画倍量自 API 21 起 deprecated 且无替代），而应用侧也不再自己造一个：走材质还是近实色由 `theme/MaterialPolicy.ets` 的一次能力探测决定（`uiMaterial.isImmersiveMaterialSupported()` + 系统材质状态 + 算力档位），不可用时回退 92%–96% 暖白实底。
 
 下面除注明"可静态核对"的，全部**待设备**。
 
 ### 15.1 系统状态读取链路
 
-- [ ] 15.1.1 系统「设置 → 辅助功能 → 长辈模式」打开后进应用：「我的 · 无障碍」第一行显示 `已开启`（异步 `isSeniorModeEnabled()` 的落值；启动时探测失败只降级为未开启并写 warn 日志 `senior mode unavailable`，不崩）
+- [ ] 15.1.1 系统「设置 → 辅助功能 → 长辈模式」打开后进应用：主操作热区加到 ≈48vp（量法见 §15.2.2）。**D-21 删卡后本页不再显示这行的当前状态**，所以这条只能靠实测尺寸判定，不能再靠读文案。异步 `isSeniorModeEnabled()` 的落值；启动时探测失败只降级为未开启并写 warn 日志 `senior mode unavailable`，不崩
 - [ ] 15.1.2 应用在前台时切换长辈模式开关，无需重进页面即变更（`onSeniorModeStateChange` 监听生效）。**注意**：SDK 在 `on*` 的 NOTE 里点名必须用**具名函数**注册、对象销毁前 `off`，本文件用三个模块级具名函数，`detach()` 与 `attach()` 一一配对——可静态核对
 - [ ] 15.1.3 屏幕朗读：开启读屏后 `crd_screen_reader` 置真（当前应用侧只有这一份状态，页面暂未据此改变布局；登记为"已读到、未使用"，不要当作已实现某种读屏专属形态）
-- [ ] 15.1.4 减少动态效果：系统开关联动到 §14.6 那五处 `.transition()`，开→关动画直接到位；「我的 · 无障碍」第二行同步显示 `已开启`
-- [ ] 15.1.5 降低透明度（应用侧）：关掉再开「我的 · 无障碍」第三行 → 悬浮底栏与两个 Sheet 的近实色/材质切换立刻生效，且**杀进程重开仍是上次值**（`SettingsStore` 键 `a11y_reduce_transparency`）。写入失败时 toast `这次已生效，但没记住，下次打开会回到原设置`，页面不回滚开关——`AccessibilityPolicy.setReduceTransparency` 的 Promise 只报"有没有写住"
+- [ ] 15.1.4 减少动态效果：系统开关联动到 §14.6 那五处 `.transition()`，开→关动画直接到位。删卡后应用内没有这行的显示文案，判据只能是动画本身——`AccessibilityPolicy` 只在探测失败时写 warn，成功落值不打日志
 
 ### 15.2 热区（44vp 普通 / 48vp 长辈）
 

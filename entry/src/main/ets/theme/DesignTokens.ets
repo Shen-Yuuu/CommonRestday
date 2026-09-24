@@ -2,11 +2,6 @@ import { ColorMetrics, LengthMetrics } from '@kit.ArkUI';
 
 /** 减少动效开关的 AppStorage 键：系统「减少动态效果」由 AccessibilityPolicy 写入，组件用 @StorageProp 订阅。 */
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
-/**
- * 降低透明度开关的 AppStorage 键：系统侧没有对应可读设置（本 SDK 只在 settings 里暴露
- * 字体缩放与动画倍率），所以由应用自己的无障碍开关写入，组件用 @StorageProp 订阅。
- */
-export const TRANSPARENCY_REDUCE_KEY: string = 'crd_reduce_transparency';
 
 /**
  * 温暖编辑感（视觉方向 01）设计令牌。
@@ -41,7 +36,7 @@ export class DesignTokens {
   static readonly glassSoft: Resource = $r('app.color.glass_soft');
   static readonly glassBorder: Resource = $r('app.color.glass_border');
   static readonly glassHighlight: Resource = $r('app.color.glass_highlight');
-  /** 实色回退底：系统材质不可用、算力不足或降低透明度时的近实色（92%–96% 暖白）。 */
+  /** 实色回退底：系统材质不可用或算力不足时的近实色（92%–96% 暖白）。 */
   static readonly glassFallback: Resource = $r('app.color.glass_fallback');
   static readonly glassShadow: Resource = $r('app.color.glass_shadow');
 

@@ -52,17 +52,17 @@ export class MaterialPolicy {
     return mode;
   }
 
-  /** 降低透明度优先于一切能力：打开它就是实色界面，而不是「去掉 blur 剩下的透明底」。 */
-  static mode(reduceTransparency: boolean): GlassMode {
-    return reduceTransparency ? GlassMode.SOLID : MaterialPolicy.capability();
+  /** 走哪条路径的唯一出口：设备能力决定，应用侧没有可写的覆盖开关。 */
+  static mode(): GlassMode {
+    return MaterialPolicy.capability();
   }
 
   /**
    * 材质对象按强度缓存：配置不可变，避免每次重建节点时重新分配。
    * 实色路径返回 undefined，属性传 undefined 即回到无材质效果。
    */
-  static material(strength: GlassStrength, reduceTransparency: boolean): uiMaterial.ImmersiveMaterial | undefined {
-    if (MaterialPolicy.mode(reduceTransparency) !== GlassMode.SYSTEM) {
+  static material(strength: GlassStrength): uiMaterial.ImmersiveMaterial | undefined {
+    if (MaterialPolicy.mode() !== GlassMode.SYSTEM) {
       return undefined;
     }
     if (strength === GlassStrength.STRONG) {

@@ -260,7 +260,8 @@ export struct HomeView {
   }
 
   private fullDayQuestion(): string {
-    return this.isSolo() ? '下个完整休息日' : '下个完整同休日';
+    // D-14：单人态不另起一个名字——窗口标签（WindowTagUtil）在同一屏就念「完整同休日」。
+    return '下个完整同休日';
   }
 
   // ---------- 交互 ----------

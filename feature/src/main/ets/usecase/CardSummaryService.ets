@@ -71,9 +71,8 @@ export class CardRoutes {
 /** 卡片只有约 150×150vp，问句要一行读得完；答案文字仍原样取自首页读模型。 */
 const QUESTION_TONIGHT = '今晚能一起吗';
 const QUESTION_FULL_REST = '下个完整同休';
-/** 单人形态的问句：没有"一起"可言，同休也就不是"同"休。 */
+/** 单人形态只退主语：没有"一起"可言。但"整天不用上班"这件事全产品只有一个名字。 */
 const QUESTION_TONIGHT_SOLO = '今晚有空吗';
-const QUESTION_FULL_REST_SOLO = '下个完整休息';
 
 export class CardSummaryService {
   /** 投影：状态优先级 缺口(未录日程) → 缺口(待同步) → 过期 → 今晚 → 下个完整同休 → 暂无结果。 */
@@ -121,8 +120,8 @@ function answers(state: CardState, main: QuickAnswer, other: QuickAnswer, comput
   solo: boolean): CardModel {
   const tonight = state === CardState.TONIGHT;
   let question = tonight ? QUESTION_TONIGHT : QUESTION_FULL_REST;
-  if (solo) {
-    question = tonight ? QUESTION_TONIGHT_SOLO : QUESTION_FULL_REST_SOLO;
+  if (solo && tonight) {
+    question = QUESTION_TONIGHT_SOLO;
   }
   const note = tonight
     ? '共 ' + DateLabel.duration(main.windowEnd - main.windowStart) + ' 可安排'

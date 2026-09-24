@@ -120,6 +120,11 @@ export default function cardSummaryServiceTest() {
       const empty = cardOf(homeOf(ExperienceMode.SOLO, [], dayOf('NONE', 0), FRESH, ''), true);
       expect(empty.question).assertEqual('我的时间');
       expect(empty.hero).assertEqual('视界内暂无空闲');
+      // 主语可以退，名词不能另起一个：单人态的完整休息日与已配对念同一个词
+      const soloFull = cardOf(homeOf(ExperienceMode.SOLO, [FULL_W], dayOf('NONE', 0), FRESH, ''), true);
+      expect(soloFull.state).assertEqual(CardState.NEXT_FULL_REST);
+      expect(soloFull.question).assertEqual('下个完整同休');
+      expect(soloFull.hero.indexOf('完整同休日') >= 0).assertTrue();
     });
 
     it('unrecorded_schedule_precedes_every_answer', 0, () => {

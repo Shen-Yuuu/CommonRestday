@@ -462,7 +462,7 @@ export class CommonTimeQueryService {
     const fullRestDay = !partnerKnown
       ? CommonTimeQueryService.unknownAnswer(AnswerKind.FULL_REST_DAY, '完整同休日')
       : CommonTimeQueryService.fullRestDayAnswer(
-        CommonTimeQueryService.pickFullRestDay(input.windows, input.nowEpochMin), input.mode, stale);
+        CommonTimeQueryService.pickFullRestDay(input.windows, input.nowEpochMin), stale);
     const trip = !partnerKnown
       ? CommonTimeQueryService.unknownAnswer(AnswerKind.TRIP, '出行窗口')
       : CommonTimeQueryService.tripAnswer(
@@ -806,8 +806,9 @@ export class CommonTimeQueryService {
     return answer;
   }
 
-  static fullRestDayAnswer(w: Window | null, mode: ExperienceMode, stale: boolean): QuickAnswer {
-    const noun = mode === ExperienceMode.SOLO ? '完整休息日' : '完整同休日';
+  static fullRestDayAnswer(w: Window | null, stale: boolean): QuickAnswer {
+    // 同一概念只有一个名字：单人态也念「完整同休日」，与窗口标签、首页那一问一致（D-14）。
+    const noun = '完整同休日';
     if (w == null) {
       return CommonTimeQueryService.absentAnswer(AnswerKind.FULL_REST_DAY, noun, stale,
         '近期没有' + noun, '放宽起床/就寝时间，或看更长的窗口');

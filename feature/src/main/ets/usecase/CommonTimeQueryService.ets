@@ -172,8 +172,9 @@ function matchesFilter(w: Window, key: WindowFilterKey): boolean {
  * 收敛口径与 matchesFilter 完全一致，因此"卡片上出现某个标签"与"该窗口能通过对应筛选档"
  * 始终是同一件事——用户按标签筛出来的结果，不会与卡片上看到的标签矛盾。
  * 餐叙/自习/半天不进卡片：它们只在答案与筛选里出现。
+ * 导出给渲染侧复用：窗口详情半模态与卡片必须收敛到同一组标签，否则同一份数据两处口径。
  */
-function toDisplayTags(tags: string[]): string[] {
+export function toDisplayTags(tags: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < DISPLAY_TAG_ORDER.length; i++) {
     const key = DISPLAY_TAG_ORDER[i];

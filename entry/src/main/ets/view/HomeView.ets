@@ -12,6 +12,7 @@ import {
 } from 'feature';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
+import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
@@ -328,7 +329,7 @@ export struct HomeView {
     let tags = '';
     try {
       const detail = await CommonTimeQueryService.getWindowDetail(start, end);
-      tags = detail.window.tags.join('|');
+      tags = displayTagLine(detail.window.tags);
     } catch (e) {
       // 详情读不到不阻断建计划：标签只用于展示
       Logger.warn(TAG, 'window detail unavailable, open sheet without tags');

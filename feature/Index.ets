@@ -37,7 +37,7 @@ export {
   ScheduleOverviewQueryService, ScheduleOverview, WeekSchedule, WeekBlock, DayShiftState
 } from './src/main/ets/usecase/ScheduleOverviewQueryService';
 export {
-  CommonTimeQueryService, DayBusy, HomeInput, PageInput, DetailInput
+  CommonTimeQueryService, DayBusy, HomeInput, PageInput, DetailInput, toDisplayTags
 } from './src/main/ets/usecase/CommonTimeQueryService';
 export {
   CardSummaryService, CardState, CardModel, CardInput, CardRoutes

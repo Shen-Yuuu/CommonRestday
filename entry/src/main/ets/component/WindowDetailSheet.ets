@@ -28,7 +28,11 @@ export struct WindowDetailSheet {
   /** 窗口起止（@Watch：复用同一 sheet 实例打开不同窗口时重置草稿，防止上次窗口的残留）。 */
   @Prop @Watch('resetDraft') winStart: number = 0;
   @Prop @Watch('resetDraft') winEnd: number = 0;
-  /** 窗口标签（'|' 分隔，仅展示）。 */
+  /**
+   * 窗口标签展示串：传入方必须已经过 `WindowTagUtil.displayTagLine()` 收敛，
+   * 即"完整同休日|周末|可出行"这一档中文，最多三项。这里不再查文案表，
+   * 也不接受原始枚举串——卡片与 sheet 说同一份数据是 D-01 的验收判据。
+   */
   @Prop winTags: string = '';
   /**
    * 嵌入模式（Task 5.1 宽屏「列表—详情」双栏）：同一套表单不弹半模态，而是常驻详情栏。

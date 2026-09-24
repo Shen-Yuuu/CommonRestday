@@ -1,4 +1,5 @@
 import { WindowTag } from 'domain';
+import { toDisplayTags } from 'feature';
 
 /** 窗口标签中文短词（CoTimeView / DayDetailSheet 共用）。 */
 export function tagLabel(t: string): string {
@@ -62,6 +63,20 @@ export function displayTagLabel(t: string): string {
     return '可出行';
   }
   return tagLabel(t);
+}
+
+/**
+ * 领域标签 → 一行展示串（窗口详情半模态与读屏共用）。
+ * 收敛用 feature 的 toDisplayTags，与卡片、筛选档同一份口径：卡片上标了「可出行」的窗口，
+ * 点进 sheet 也只能看到「可出行」，不会多出一串原始枚举。
+ */
+export function displayTagLine(tags: string[]): string {
+  const out: string[] = [];
+  const keys = toDisplayTags(tags);
+  for (let i = 0; i < keys.length; i++) {
+    out.push(displayTagLabel(keys[i]));
+  }
+  return out.join('|');
 }
 
 /** 忙碌区间标签（AvailabilityBuilder/快照的 BlockTag）中文短词。 */

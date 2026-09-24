@@ -10,6 +10,7 @@ import {
 } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
+import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
@@ -326,7 +327,7 @@ export struct CoTimeView {
   private openSummary(w: WindowSummary): void {
     this.sheetStart = w.start;
     this.sheetEnd = w.end;
-    this.sheetTags = w.tags.join('|');
+    this.sheetTags = displayTagLine(w.tags);
     this.presentWindow();
   }
 
@@ -338,7 +339,7 @@ export struct CoTimeView {
     let tags = '';
     try {
       const detail = await CommonTimeQueryService.getWindowDetail(start, end);
-      tags = detail.window.tags.join('|');
+      tags = displayTagLine(detail.window.tags);
     } catch (e) {
       // 详情读不到不阻断建计划：标签只用于展示
       Logger.warn(TAG, 'window detail unavailable, open sheet without tags');
@@ -366,12 +367,12 @@ export struct CoTimeView {
     this.dayVisible = true;
   }
 
-  /** 日详情里点某个共同窗口 → 收回日详情，转开创建计划详情。 */
+  /** 日详情里点某个共同窗口 → 收回日详情，转开创建计划详情。回调给的是全量领域标签，这里收敛。 */
   private pickWindow(start: number, end: number, tags: string[]): void {
     this.dayVisible = false;
     this.sheetStart = start;
     this.sheetEnd = end;
-    this.sheetTags = tags.join('|');
+    this.sheetTags = displayTagLine(tags);
     setTimeout(() => {
       this.presentWindow();
     }, SHEET_HANDOFF_MS);

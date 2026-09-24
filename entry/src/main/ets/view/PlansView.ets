@@ -180,8 +180,10 @@ export struct PlansView {
   /** 采用替代时间（冲突动作一）：二次确认后级联改期（受管日程同步迁移）。 */
   askAcceptAlternative(p: PlanSummary): void {
     const c = p.conflict;
-    const when = c != null && c.altStart > 0
-      ? DateLabel.mdw(Math.floor(c.altStart / 1440)) + ' ' + DateLabel.endLabel(c.altStart, c.altEnd)
+    // 框念的是计划落地的起止，不是整段替代空档（后者是卡片上「可改到 …」那句的口径）：
+    // 空档比计划长时两个数不一样，把空档当"新时间"就是承诺一个不会发生的时间（D-32）。
+    const when = c != null && c.landedStart > 0
+      ? DateLabel.mdw(Math.floor(c.landedStart / 1440)) + ' ' + DateLabel.endLabel(c.landedStart, c.landedEnd)
       : '';
     this.getUIContext().showAlertDialog({
       title: '改到替代时间',

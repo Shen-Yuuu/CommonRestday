@@ -120,7 +120,8 @@ export default function presentationModelsTest() {
     it('page_and_detail_readmodels_are_self_contained', 0, () => {
       const conflict: PlanConflictView = {
         reasonCode: 'PARTNER_CHANGED', sourceLevel: 'PARTNER', reasonText: '对方时间发生变化',
-        affectedText: '冲突时段 9月16日 周三 19:30–20:00', altStart: 0, altEnd: 0, altText: '', kept: false
+        affectedText: '冲突时段 9月16日 周三 19:30–20:00', altStart: 0, altEnd: 0, altText: '',
+        landedStart: 0, landedEnd: 0, kept: false
       };
       const plan: PlanSummary = {
         id: 'p1', title: '一起吃饭', kind: 'MEAL', start: 29823480, end: 29823570,

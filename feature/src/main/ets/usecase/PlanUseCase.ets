@@ -7,7 +7,8 @@ import { FeatureFlags } from '../config/FeatureFlags';
 import { PlanCapabilities } from '../integration/PlanCapabilities';
 import {
   CalendarOutcome, CalendarState, CalendarWriteResult, CleanupReport, MIN_PLAN_MIN, PlanDraft,
-  PlanOpResult, SubmitLatch, addCleanupReport, canExportToCalendar, calendarStateAfterCleanup,
+  PlanOpResult, SubmitLatch, addCleanupReport, altLandedEnd, canExportToCalendar,
+  calendarStateAfterCleanup,
   calendarStateOf, cleanupMessageOf, emptyCleanupReport, hasCleanupLeft, isOnSystemCalendar,
   newPlanId, planDraftError
 } from '../model/PlanFlow';
@@ -182,7 +183,7 @@ export class PlanUseCase {
       };
     }
     const newStart = hint.altStartMin;
-    const newEnd = Math.min(newStart + (row.end - row.start), hint.altEndMin);
+    const newEnd = altLandedEnd(newStart, hint.altEndMin, row.start, row.end);
     if (newEnd - newStart < MIN_PLAN_MIN) {
       return {
         ok: false, calendarState: CalendarState.NOT_REQUESTED,

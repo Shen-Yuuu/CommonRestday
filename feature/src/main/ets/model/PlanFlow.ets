@@ -91,6 +91,15 @@ export const MIN_PLAN_MIN = 15;
 export const DEFAULT_PLAN_MIN = 120;
 
 /**
+ * 采用替代空档后的落地结束时刻：起点对齐空档开头、时长不变，空档装不下则截到空档末尾。
+ * 改期执行与二次确认框念的「新时间」共用这一个式子（D-32）——分头写就会出现
+ * 框承诺整段空档（19:40–22:30）、计划却落在 19:40–21:40 那种说一个不会发生的时间。
+ */
+export function altLandedEnd(altStart: number, altEnd: number, start: number, end: number): number {
+  return Math.min(altStart + (end - start), altEnd);
+}
+
+/**
  * 计划主键：毫秒时间戳 + 随机尾巴，本地单用户场景够用。
  * 不用 util.generateRandomUUID() 是因为那要引 @kit.ArkTS，会把编排逻辑锁死在真机上。
  */

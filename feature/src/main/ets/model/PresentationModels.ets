@@ -117,8 +117,11 @@ export interface PlanConflictView {
   affectedText: string;
   altStart: number;
   altEnd: number;
-  /** 替代窗口文案；'' = 暂无替代时段。 */
+  /** 替代窗口文案；'' = 暂无替代时段。说的是空档本身，不是计划落地的时间。 */
   altText: string;
+  /** 改期真正落地的起止：起点对齐 altStart、时长不变，空档不够长则截到 altEnd；无替代窗口为 0。 */
+  landedStart: number;
+  landedEnd: number;
   /** 用户已选"保留原计划"：红点留着，但不再催改期。 */
   kept: boolean;
 }

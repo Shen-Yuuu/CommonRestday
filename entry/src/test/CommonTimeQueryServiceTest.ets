@@ -468,6 +468,16 @@ export default function commonTimeQueryServiceTest() {
       expect(mv.affectedText.indexOf('冲突时段') >= 0).assertTrue();
       expect(mv.altText.indexOf('可改到') >= 0).assertTrue();
       expect(mv.altStart).assertEqual(DAY_START + 1380);
+      // 「可改到」念的是空档，改期落地只占空档开头那一段（D-32）：两个数必须分开给
+      expect(mv.landedStart).assertEqual(mv.altStart);
+      expect(mv.landedEnd).assertEqual(DAY_START + 1470);
+      expect(mv.landedEnd < mv.altEnd).assertTrue();
+      // 空档比计划还短：兜底截到空档末尾，计划被缩短而不是越界占用
+      const tightWindow = plan('p1b', 'CONFLICT',
+        hintOf(CONFLICT_REASON_MY_COURSE, CONFLICT_SOURCE_MINE, 1140, 1200, 1380, 1440, false),
+        1200, 1290);
+      const tight = CommonTimeQueryService.planSummaries([tightWindow], NOW)[0].conflict as PlanConflictView;
+      expect(tight.landedEnd).assertEqual(tight.altEnd);
       expect(sums[0].conflictText.indexOf(mv.reasonText) >= 0).assertTrue();
       expect(mv.kept).assertFalse();
 

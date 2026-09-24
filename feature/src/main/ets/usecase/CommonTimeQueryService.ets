@@ -7,7 +7,7 @@ import {
 } from 'domain';
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
-import { normalizeCalendarState } from '../model/PlanFlow';
+import { normalizeCalendarState, altLandedEnd } from '../model/PlanFlow';
 import { DayViewData, ScheduleUseCase, SettingsStoreParams } from './ScheduleUseCase';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, HomeSummary,
@@ -209,6 +209,8 @@ function conflictViewOf(row: PlanRow): PlanConflictView | null {
     altStart: altOk ? h.altStartMin : 0,
     altEnd: altOk ? h.altEndMin : 0,
     altText: altOk ? '可改到 ' + timeSpanText(h.altStartMin, h.altEndMin) : '',
+    landedStart: altOk ? h.altStartMin : 0,
+    landedEnd: altOk ? altLandedEnd(h.altStartMin, h.altEndMin, row.start, row.end) : 0,
     kept: h != null && h.kept
   };
   return view;

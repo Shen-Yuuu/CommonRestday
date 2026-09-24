@@ -1,6 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
 import { FeatureFlags, ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
+import { Logger } from 'commons';
 import { DesignTokens } from '../theme/DesignTokens';
 import { ownerFromParams, ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
@@ -18,6 +19,17 @@ import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 const PAGE_SHIFT = 'pages/ScheduleEditor';
 const PAGE_CYCLE = 'pages/CycleEditor';
 const PAGE_COURSE = 'pages/CourseImport';
+
+const TAG = 'ScheduleHub';
+
+/** 读失败时的占位：0 是"确实没有"，破折号才是"不知道"，两者不能混用（D-22）。 */
+const STAT_UNKNOWN = '—';
+
+/** 读模型摘要项。@Builder 传两个及以上参数时不参与动态渲染，所以四项合成一个对象字面量按引用传。 */
+interface StatCell {
+  value: string;
+  label: string;
+}
 
 /** 主入口条目。page 为空串的条目开本页的 sheet，不跳页。 */
 interface EntryItem {
@@ -67,6 +79,8 @@ export struct ScheduleHub {
   @State private courses: number = 0;
   /** 读模型给的视界天数：文案与统计区间都用它；首帧先用引擎默认，读模型回来即替换。 */
   @State private horizon: number = defaultParams().horizonDays;
+  /** 摘要读失败态：读失败与"真的没数据"必须分开画，否则会把已录入的人引去重复录入（D-22）。 */
+  @State private statusFailed: boolean = false;
   // 单日改班 sheet（临时调整 / 点日格）
   @State private sheetOpen: boolean = false;
   @State private sheetDay: number = 0;
@@ -96,11 +110,11 @@ export struct ScheduleHub {
       this.courses = ov.courses;
       this.horizon = ov.horizonDays;
       this.partnerLocal = ov.partnerLocal;
+      this.statusFailed = false;
     } catch (e) {
-      this.types = 0;
-      this.tplSet = false;
-      this.ovs = 0;
-      this.courses = 0;
+      // 保留上一次读到的值，只把这一态标出来：静默归零等于对着有数据的用户说"没数据"（D-22）
+      Logger.warn(TAG, 'overview read failed: ' + (e as Error).name + ': ' + (e as Error).message);
+      this.statusFailed = true;
     }
   }
 
@@ -208,7 +222,10 @@ export struct ScheduleHub {
             .fontColor(DesignTokens.textPrimary)
             .letterSpacing(-0.7)
             .layoutWeight(1)
-          if (this.isConfigured()) {
+          if (this.statusFailed) {
+            Text('读取失败').fontSize(DesignTokens.fontCaption)
+              .fontColor(DesignTokens.warn)
+          } else if (this.isConfigured()) {
             Text('已录入').fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.success)
           } else {
@@ -219,12 +236,19 @@ export struct ScheduleHub {
         .width('100%')
 
         Row() {
-          this.stat(this.types + '', '班次')
-          this.stat(this.tplSet ? '已设' : '未设', '循环模板')
-          this.stat(this.ovs + '', '临时调整')
-          this.stat(this.courses + '', '课程')
+          this.stat({ value: this.statOf(this.types + ''), label: '班次' })
+          this.stat({ value: this.statOf(this.tplSet ? '已设' : '未设'), label: '循环模板' })
+          this.stat({ value: this.statOf(this.ovs + ''), label: '临时调整' })
+          this.stat({ value: this.statOf(this.courses + ''), label: '课程' })
         }
         .width('100%')
+
+        if (this.statusFailed) {
+          Text('统计暂时读不到，已录入的班表没有受影响；退出这一页重进即可重试。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textTertiary)
+            .width('100%')
+        }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
@@ -232,14 +256,14 @@ export struct ScheduleHub {
   }
 
   @Builder
-  stat(value: string, label: string) {
+  stat(cell: StatCell) {
     Column({ space: 2 }) {
-      Text(value)
+      Text(cell.value)
         .fontSize(DesignTokens.fontBody)
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
-      Text(label)
+      Text(cell.label)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
     }
@@ -247,11 +271,16 @@ export struct ScheduleHub {
     .alignItems(HorizontalAlign.Start)
     // 数字和标签合成一句，否则四个格子会念成"3、班次、true、循环模板…"
     .accessibilityGroup(true)
-    .accessibilityText(label + ' ' + value)
+    .accessibilityText(cell.label + ' ' + (cell.value === STAT_UNKNOWN ? '读取失败' : cell.value))
   }
 
   private isConfigured(): boolean {
     return this.types > 0 && this.tplSet;
+  }
+
+  /** 读失败时四项一律退化成占位：catch 里保留的是上一次的旧值，把旧值当现状念出来同样是说谎。 */
+  private statOf(value: string): string {
+    return this.statusFailed ? STAT_UNKNOWN : value;
   }
 
   build() {

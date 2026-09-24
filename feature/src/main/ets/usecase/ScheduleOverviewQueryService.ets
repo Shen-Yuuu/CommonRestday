@@ -3,7 +3,10 @@ import {
   expandCycle, shiftToBlocks, termWeekOf, todayEpochDay, weekdayOf
 } from 'domain';
 import { PlanRow, ScheduleRepo } from 'data';
+import { Logger } from 'commons';
 import { ScheduleUseCase, SettingsStoreParams } from './ScheduleUseCase';
+
+const TAG = 'ScheduleOverviewQueryService';
 
 /** 周日程块配色：班次用班次自带色，其余三类是数据语义色，集中在这里避免页面散落常量。 */
 const COURSE_COLOR = '#3AA6E8';
@@ -84,6 +87,13 @@ export class ScheduleOverviewQueryService {
     const tpl = await ScheduleRepo.getTemplate(owner);
     const ovs = await ScheduleRepo.listOverrides(today, today + horizon - 1, owner);
     const courses = await ScheduleRepo.listCourses(owner);
+    let partnerLocal = false;
+    try {
+      partnerLocal = await ScheduleUseCase.hasPartnerContext();
+    } catch (e) {
+      // 伴侣侧只影响「我 / TA」分段要不要出现，读失败不能把已经读到的四项一起抹成 0（D-22）
+      Logger.warn(TAG, 'partner context degraded: ' + (e as Error).message);
+    }
     const overview: ScheduleOverview = {
       owner: owner,
       shiftTypes: types.length,
@@ -91,7 +101,7 @@ export class ScheduleOverviewQueryService {
       overrides: ovs.length,
       courses: courses.length,
       horizonDays: horizon,
-      partnerLocal: await ScheduleUseCase.hasPartnerContext()
+      partnerLocal: partnerLocal
     };
     return overview;
   }

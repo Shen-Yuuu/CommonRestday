@@ -114,7 +114,7 @@ declare const AppStorage: {
  * ——按设备侧同名键累加 recomputeCount，用例据此断言一次保存只重算一次。
  */
 const STUB_SCHEDULE_USECASE = `
-import { Interval, SectionTime, Window } from '../../../../main/ets/model/Types';
+import { defaultParams, EngineParams, Interval, SectionTime, Window } from '../../../../main/ets/model/Types';
 
 export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
 
@@ -152,6 +152,11 @@ export class ScheduleUseCase {
     };
     return dv;
   }
+}
+
+/** 参数读取壳：离线不接 Preferences，任何调用方拿到的都是出厂默认值。 */
+export function SettingsStoreParams(): EngineParams {
+  return defaultParams();
 }
 `;
 

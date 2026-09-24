@@ -1,8 +1,8 @@
 import { MIN_PER_DAY, todayEpochDay } from 'domain';
-import { DateLabel, Logger } from 'commons';
+import { AppConst, DateLabel, Logger } from 'commons';
 import {
-  CommonTimePageData, CommonTimeQueryService, ExperienceMode, ScheduleUseCase,
-  WindowFilter, WindowFilterKey, WindowSummary
+  CommonTimePageData, CommonTimeQueryService, ExperienceMode, ScheduleUseCase, WindowFilter,
+  WindowFilterKey, WindowSummary, horizonLabel
 } from 'feature';
 import {
   CapsuleSegmentButtonV2, ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options,
@@ -247,12 +247,15 @@ export struct CoTimeView {
     return p != null && p.stale;
   }
 
-  private subtitle(): Resource {
+  private subtitle(): string {
     const p = this.page;
+    let who = '单人模式';
     if (p != null && p.mode !== ExperienceMode.SOLO) {
-      return $r('app.string.cotime_subtitle_partner');
+      // 主体必须和下面列表的真实口径一致：配对了却没拿到 TA 的数据时，这些只是我的一侧。
+      // 那件事页内那条 NoticeBar 已经在解释，副标题只换主体，不再重复整句。
+      who = p.partnerKnown ? (p.partnerName === '' ? '伴侣' : p.partnerName) : '我的空闲';
     }
-    return $r('app.string.cotime_subtitle_single');
+    return who + ' · ' + horizonLabel(p == null ? AppConst.HORIZON_DAYS : p.horizonDays);
   }
 
   private subtitleColor(): Resource {

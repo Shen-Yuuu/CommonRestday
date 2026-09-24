@@ -8,7 +8,7 @@ import {
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
 import { normalizeCalendarState } from '../model/PlanFlow';
-import { DayViewData, ScheduleUseCase } from './ScheduleUseCase';
+import { DayViewData, ScheduleUseCase, SettingsStoreParams } from './ScheduleUseCase';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, ExperienceMode, HomeSummary,
   PlanConflictView, PlanSummary, QuickAnswer, TodaySummary, WindowDetailData, WindowFilter,
@@ -330,6 +330,8 @@ export interface PageInput {
   partnerName: string;
   /** 当天的对方数据来源（'LOCAL' | 'SNAPSHOT' | 'NONE'）：决定页面能否宣称"共同"。 */
   partnerSource: string;
+  /** 计算视界（天）：副标题里那句"未来 N 个月"的唯一来源，页面不再自己读参数。 */
+  horizonDays: number;
   computedAt: number;
   nowEpochMin: number;
 }
@@ -378,6 +380,7 @@ export class CommonTimeQueryService {
       mode: CommonTimeQueryService.resolveMode(day.partnerSource),
       partnerName: profile != null ? profile.nick : '',
       partnerSource: day.partnerSource,
+      horizonDays: SettingsStoreParams().horizonDays,
       computedAt: computedAt,
       nowEpochMin: nowEpochMin
     };
@@ -516,6 +519,7 @@ export class CommonTimeQueryService {
       mode: input.mode,
       partnerName: input.partnerName,
       partnerKnown: CommonTimeQueryService.partnerKnownOf(input.mode, input.partnerSource),
+      horizonDays: input.horizonDays,
       computedAt: input.computedAt,
       stale: CommonTimeQueryService.isStale(input.computedAt, input.nowEpochMin)
     };

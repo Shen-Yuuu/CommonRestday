@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { horizonError, HORIZON_MAX, isCrossMidnight, rhythmError } from 'feature';
+import { horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, rhythmError } from 'feature';
 
 /**
  * 作息输入口径（阶段 1R / R2）：轮班与夜猫子的"就寝 00:30"必须能保存。
@@ -48,6 +48,16 @@ export default function rhythmRulesTest() {
       expect(horizonError('abc') === '').assertFalse();
       // 提示语里的区间数字要跟着常量走，避免文案与校验各说一套
       expect(horizonError('367').indexOf('7–366') >= 0).assertTrue();
+    });
+
+    it('horizon_label_rounds_to_months_and_keeps_short_views_in_days', 0, () => {
+      // 默认视界 120 天念作"未来 4 个月"，与原型页头同一口径
+      expect(horizonLabel(120)).assertEqual('未来 4 个月');
+      expect(horizonLabel(366)).assertEqual('未来 12 个月');
+      expect(horizonLabel(30)).assertEqual('未来 1 个月');
+      // 不足一个月不折成"0 个月"：允许的最短视界就是"只看本周"那一档
+      expect(horizonLabel(7)).assertEqual('未来 7 天');
+      expect(horizonLabel(14)).assertEqual('未来 14 天');
     });
   });
 }

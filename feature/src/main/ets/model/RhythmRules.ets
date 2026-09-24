@@ -45,3 +45,12 @@ export function horizonError(horizonText: string): string {
   }
   return '';
 }
+
+/**
+ * 视界口语读法：参数存的是天数（7–366），读者关心的是"往后能看多远"，所以满一个月
+ * 折成月；不足一个月照实念天——允许输入 7 天，折成月就成了"0 个月"。
+ */
+export function horizonLabel(horizonDays: number): string {
+  const months = Math.round(horizonDays / 30);
+  return months < 1 ? '未来 ' + horizonDays + ' 天' : '未来 ' + months + ' 个月';
+}

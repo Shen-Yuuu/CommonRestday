@@ -135,6 +135,7 @@ export default function presentationModelsTest() {
         mode: ExperienceMode.LOCAL_PARTNER,
         partnerName: '小陈',
         partnerKnown: true,
+        horizonDays: 120,
         computedAt: 29822000,
         stale: false
       };

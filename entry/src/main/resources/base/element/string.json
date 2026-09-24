@@ -169,14 +169,6 @@
                        "value":  "计算中…"
                    },
                    {
-                       "name":  "cotime_subtitle_partner",
-                       "value":  "「我们」的空闲——已扣除双方的课程、班次、睡眠与收整缓冲"
-                   },
-                   {
-                       "name":  "cotime_subtitle_single",
-                       "value":  "「我」的空闲——添加伴侣后，这里展示你们的共同时间"
-                   },
-                   {
                        "name":  "cotime_empty_partner_title",
                        "value":  "添加伴侣后即可计算共同时间"
                    },

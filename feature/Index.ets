@@ -30,7 +30,7 @@ export {
   ProfileSettingsService, SettingsResult, InviteResult, RhythmInput, PartnerInput, MyRhythm
 } from './src/main/ets/usecase/ProfileSettingsService';
 export {
-  HORIZON_MIN, HORIZON_MAX, rhythmError, horizonError, isCrossMidnight
+  HORIZON_MIN, HORIZON_MAX, rhythmError, horizonError, horizonLabel, isCrossMidnight
 } from './src/main/ets/model/RhythmRules';
 export { PlanKindOption, OTHER_PLAN_KIND_KEY, PLAN_KINDS, planKindLabel } from './src/main/ets/model/PlanKinds';
 export {

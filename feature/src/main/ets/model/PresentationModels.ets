@@ -152,6 +152,8 @@ export interface CommonTimePageData {
   partnerName: string;
   /** 已配对/代录却拿不到对方数据时为 false：此时窗口只是"我的空闲"，不能宣称共同时间。 */
   partnerKnown: boolean;
+  /** 计算视界（天）：用户在「我的 · 高级设置」里设的那个数，页面据此说"未来 N 个月"。 */
+  horizonDays: number;
   computedAt: number;
   stale: boolean;
 }

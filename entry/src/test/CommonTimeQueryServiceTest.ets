@@ -92,7 +92,7 @@ function pageOf(all: Window[], key: WindowFilterKey): CommonTimePageData {
   const input: PageInput = {
     windows: all, plans: [], filter: f,
     mode: ExperienceMode.LOCAL_PARTNER, partnerName: '小陈', partnerSource: 'LOCAL',
-    computedAt: FRESH, nowEpochMin: NOW
+    horizonDays: 120, computedAt: FRESH, nowEpochMin: NOW
   };
   return CommonTimeQueryService.assemblePage(input);
 }
@@ -407,7 +407,7 @@ export default function commonTimeQueryServiceTest() {
       const blind: PageInput = {
         windows: all, plans: [], filter: f,
         mode: ExperienceMode.PAIRED, partnerName: '小陈', partnerSource: 'NONE',
-        computedAt: FRESH, nowEpochMin: NOW
+        horizonDays: 120, computedAt: FRESH, nowEpochMin: NOW
       };
       const blindPage = CommonTimeQueryService.assemblePage(blind);
       expect(blindPage.partnerKnown).assertFalse();
@@ -418,9 +418,12 @@ export default function commonTimeQueryServiceTest() {
       const solo: PageInput = {
         windows: all, plans: [], filter: f,
         mode: ExperienceMode.SOLO, partnerName: '', partnerSource: 'NONE',
-        computedAt: FRESH, nowEpochMin: NOW
+        horizonDays: 45, computedAt: FRESH, nowEpochMin: NOW
       };
       expect(CommonTimeQueryService.assemblePage(solo).partnerKnown).assertTrue();
+      // 视界是读模型字段，不是页面自己去读参数：副标题那句"未来 N 个月"只有这一个来源
+      expect(CommonTimeQueryService.assemblePage(solo).horizonDays).assertEqual(45);
+      expect(CommonTimeQueryService.assemblePage(blind).horizonDays).assertEqual(120);
     });
 
     it('plan_conflict_text_is_generated_not_stored', 0, () => {

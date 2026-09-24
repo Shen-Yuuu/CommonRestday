@@ -10,6 +10,13 @@ import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
+  /**
+   * 启动初始化链。Db.init 挂在 promise 上不 await，而 onForeground 紧跟 onCreate，
+   * 所以冷启那一次的回前台必然跑在库就绪之前（实测早约 420ms）。回前台的清扫挂到这条链尾，
+   * 冷启就等库好了再扫，温启动时链已 settle、行为与改前一致。
+   */
+  private initChain: Promise<void> = Promise.resolve();
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -26,7 +33,7 @@ export default class EntryAbility extends UIAbility {
     // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）。
     // 必须走 onScheduleChanged 而不是裸 recompute：页面首帧的读可能落在这一路重算之前，
     // 只有广播才能让那次陈旧的读被纠正回来，否则冷启动答案要等用户手动刷新（D-24 现象一）。
-    Promise.all([
+    this.initChain = Promise.all([
       Db.init(this.context).then(() => ScheduleUseCase.ensureSeeded()),
       SettingsStore.init(this.context)
     ]).then(() => {
@@ -91,7 +98,8 @@ export default class EntryAbility extends UIAbility {
     }
     // 补删系统侧残留：取消/改期时删不动的日程与提醒只留在看不见的行里，
     // 用户不会再有入口点"重试"，权限恢复后的这一次就是它唯一的机会（验收报告 B2）。
-    PlanUseCase.sweepPendingProjections().catch((e: Error) => {
+    // 挂在初始化链之后：库没就绪时这一趟除了warn 什么都不做，冷启那一次就等于白跑（D-31）。
+    this.initChain.then(() => PlanUseCase.sweepPendingProjections()).catch((e: Error) => {
       Logger.warn('EntryAbility', 'projection sweep failed: ' + e.message);
     });
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');

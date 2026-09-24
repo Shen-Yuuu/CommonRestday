@@ -24,12 +24,14 @@ export default class EntryAbility extends UIAbility {
     // 从配对链接或卡片点击拉起本机：只登记意图，跳转与确认都留给页面（进程外参数不可信）
     this.takeDeepLink(want);
     // 初始化本地存储与内置数据（失败不阻塞启动，页面内各自兜底）；
-    // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）
+    // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）。
+    // 必须走 onScheduleChanged 而不是裸 recompute：页面首帧的读可能落在这一路重算之前，
+    // 只有广播才能让那次陈旧的读被纠正回来，否则冷启动答案要等用户手动刷新（D-24 现象一）。
     Promise.all([
       Db.init(this.context).then(() => ScheduleUseCase.ensureSeeded()),
       SettingsStore.init(this.context)
     ]).then(() => {
-      return ScheduleUseCase.recompute(todayEpochDay());
+      return ScheduleUseCase.onScheduleChanged();
     }).catch((e: Error) => {
       Logger.error('EntryAbility', 'startup init/recompute failed: ' + e.message);
     });

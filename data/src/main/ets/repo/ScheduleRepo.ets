@@ -443,17 +443,26 @@ export class ScheduleRepo {
   /**
    * 全量覆盖窗口缓存：tags 以 '|' 连接入单列，channel/computedAt 各自成列。
    * channel 只透传引擎写入的值，仓储不从 tags 反推通道。
+   *
+   * 写入顺序是"先插新、后清旧"，整批再包在一个事务里，两件事都为同一类故障服务（D-24 现象一）：
+   * 冷启动时首页的那一次读会和这一路覆盖交错进行，先 DELETE 会在两步之间留下一个"零行"的瞬间，
+   * 读到的那一帧就把「今晚没有空档」当成事实念出来；且因为每行都自带本次 computed_at，
+   * "缓存为空或过期"那道判据拦不住它（有几行就已经是今天的了）。
+   * 主键是 (start_min, end_min)，INSERT OR REPLACE 原地覆盖，中间态只会是新旧行的并集，
+   * 不会重复计数；进程在写完前被杀时事务整批回滚，留下的仍是上一版完整缓存而不是半截视界。
    */
   static async replaceWindows(windows: Window[], computedAt: number): Promise<void> {
     const s = Db.get();
-    await s.executeSql('DELETE FROM computed_window');
-    for (let i = 0; i < windows.length; i++) {
-      const w = windows[i];
-      const sql = `INSERT OR REPLACE INTO computed_window
-        (start_min, end_min, duration_min, tags, computed_at, channel) VALUES (?, ?, ?, ?, ?, ?)`;
-      await s.executeSql(sql,
-        [w.start, w.end, w.durationMin, w.tags.join('|'), computedAt, w.channel]);
-    }
+    await ScheduleRepo.runInTransaction(async (): Promise<void> => {
+      for (let i = 0; i < windows.length; i++) {
+        const w = windows[i];
+        const sql = `INSERT OR REPLACE INTO computed_window
+          (start_min, end_min, duration_min, tags, computed_at, channel) VALUES (?, ?, ?, ?, ?, ?)`;
+        await s.executeSql(sql,
+          [w.start, w.end, w.durationMin, w.tags.join('|'), computedAt, w.channel]);
+      }
+      await s.executeSql('DELETE FROM computed_window WHERE computed_at < ?', [computedAt]);
+    });
   }
 
   /** 窗口缓存，按开始时间升序；tags 还原为数组，channel 原样返回。 */

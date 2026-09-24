@@ -15,7 +15,7 @@ export {
 export {
   CalendarOutcome, CalendarState, CalendarWriteResult, CalendarCapability, RemoveOutcome,
   ReminderCapability, CleanupReport, PlanDraft, PlanOpResult, SubmitLatch,
-  LOCAL_ONLY_NOTE, CLEANUP_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN, altLandedEnd,
+  LOCAL_ONLY_NOTE, CLEANUP_NOTE, MIN_PLAN_MIN, DEFAULT_PLAN_MIN, DRAFT_GRID_MIN, altLandedEnd,
   addCleanupReport, calendarBadgeOf, calendarStateAfterCleanup, calendarStateOf, canExportToCalendar,
   canRetryCalendarSync, canRetryCleanup, clearAllMessageOf, cleanupMessageOf, defaultDraft,
   emptyCleanupReport, epochMinToUtcMs, hasCleanupLeft, isAppManagedEvent, isOnSystemCalendar,

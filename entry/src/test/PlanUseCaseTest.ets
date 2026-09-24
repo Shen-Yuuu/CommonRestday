@@ -450,6 +450,27 @@ export default function planUseCaseTest() {
       expect(defaultDraft(base, we, '一起吃饭', 'meal', null).start).assertEqual(base);
     });
 
+    it('default_draft_start_never_suggests_the_past', 0, () => {
+      const base = dayBase(9);
+      const we = base + 3 * DAY;
+      // 今天这段窗口从 00:00 就开始：14:07 打开它，默认值不该是一条已经过去的时间（D-27）
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', null, base + 847).start).assertEqual(base + 855);
+      // 向上对齐只做一次，已经踩在 15 分钟网格上就不再多推一格
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', null, base + 855).start).assertEqual(base + 855);
+      // 夹到当下之后仍要避开作息：14:15 压着一段不可用就继续向后找，而不是把冲突带回来
+      const nap: Interval[] = [{ start: base + 840, end: base + 1000, tag: 'SLEEP' }];
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', nap, base + 847).start).assertEqual(base + 1000);
+      // 整段窗口都留在身后时不夹：夹不出合法草稿，那种窗口只剩"事后补记一条"这一个用途
+      const past = base + 120;
+      const kept = defaultDraft(base, past, '一起吃饭', 'meal', null, past + 180);
+      expect(kept.start).assertEqual(base);
+      expect(kept.end).assertEqual(past);
+      // 窗口尾部只剩不到最短时长时同样退回，不交出一条必然非法的草稿
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', null, we - 10).start).assertEqual(base);
+      // 不传 now 就是改动前的行为：窗口列表与卡片照旧从窗口开头呈现
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', null).start).assertEqual(base);
+    });
+
     it('calendar_gateway_exception_becomes_a_retryable_state', 0, async () => {
       const pair = bind();
       pair[0].thrown = true;

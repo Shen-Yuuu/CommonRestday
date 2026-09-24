@@ -89,6 +89,8 @@ export function normalizeCalendarState(raw: string): string {
 /** 计划最短时长与默认时长（分钟）。 */
 export const MIN_PLAN_MIN = 15;
 export const DEFAULT_PLAN_MIN = 120;
+/** 起草网格：默认起点向上对齐到这里，和窗口详情里的 ± 步进是同一把尺子。 */
+export const DRAFT_GRID_MIN = 15;
 
 /**
  * 采用替代空档后的落地结束时刻：起点对齐空档开头、时长不变，空档装不下则截到空档末尾。
@@ -273,6 +275,20 @@ function firstArrangableStart(winStart: number, winEnd: number, unavailable: Int
 }
 
 /**
+ * 起草的扫描下限（D-27 口径 1）：默认起点不早于当下，且向上对齐到 DRAFT_GRID_MIN，
+ * 这样 ± 步进走出来的时间还在同一网格上，不会出现 14:07 这种半刻建议。
+ * 夹不进一段合法时长就退回窗口起点——整段窗口已经留在身后时，"事后补记一条"是唯一能做的事，
+ * 那种窗口夹不出可用草稿，不该由它承担"默认值"的责任。
+ */
+function startFloor(winStart: number, winEnd: number, now: number): number {
+  if (now <= winStart) {
+    return winStart;
+  }
+  const grid = Math.ceil(now / DRAFT_GRID_MIN) * DRAFT_GRID_MIN;
+  return grid + MIN_PLAN_MIN <= winEnd ? grid : winStart;
+}
+
+/**
  * 打开窗口时的默认草稿：从窗口起点（或 unavailable 给出的第一个可安排时刻）排 DEFAULT_PLAN_MIN 分钟，
  * 超出窗口则收缩到窗口止点；整段窗口不足最短时长时按窗口原样给出，
  * 由 planDraftError 判非法——这样 sheet 恢复/换窗口重开都得到同一结果。
@@ -280,10 +296,14 @@ function firstArrangableStart(winStart: number, winEnd: number, unavailable: Int
  * unavailable 是"我不能安排"的区间（真忙 + 收整 + 作息，和冲突归因读的是同一份）。
  * 传它的理由（D-25）：旅行通道的窗口只扣真忙、睡眠算在里面，一段 120 天的窗口起点就是 00:00，
  * 于是「选窗口 → 不改动任何参数直接保存」得到的第一条计划必然落在睡觉时间里。
+ *
+ * now 是"当下"（同样的分钟刻度），传它的理由（D-27）：今天的窗口从 00:00 开始，
+ * 14:07 打开它时默认值却是 07:00——不改动任何参数直接保存就得到一条"已经过去的已确认计划"。
+ * 不传（或传窗口起点之前的值）就是改动前的行为，所以列表与卡片照旧从窗口开头呈现。
  */
 export function defaultDraft(winStart: number, winEnd: number, title: string, kind: string,
-  unavailable: Interval[] | null = null): PlanDraft {
-  const start = firstArrangableStart(winStart, winEnd, unavailable);
+  unavailable: Interval[] | null = null, now: number = 0): PlanDraft {
+  const start = firstArrangableStart(startFloor(winStart, winEnd, now), winEnd, unavailable);
   let end = Math.min(start + DEFAULT_PLAN_MIN, winEnd);
   if (end - start < MIN_PLAN_MIN) {
     end = Math.min(start + MIN_PLAN_MIN, winEnd);

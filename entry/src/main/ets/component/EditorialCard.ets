@@ -113,7 +113,9 @@ export struct EditorialCard {
     .scale(this.isPressed
       ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }
       : { x: 1, y: 1 })
-    .focusable(this.tappable)
+    // 容器卡必须把 focusable 留成 undefined 而不是 false：显式 false 会连卡内子树的
+    // TextInput 一起吃掉点击落焦（实测输入法弹不出来，子级再声明 true 也救不回来）。
+    .focusable(this.tappable ? true : undefined)
     // 可点卡读成一个整体（日期/时长/标签不被拆成三段）；容器卡必须分组关掉，
     // 否则卡内的按钮与开关在读屏里就没有独立落点了。
     .accessibilityGroup(this.tappable)

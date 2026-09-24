@@ -26,7 +26,7 @@ export interface PlanRow extends PlanBlock {
   conflictHint: string;
   /** 关联的系统日历日程 id：受管写入/导出的那条日程；空串表示系统日历里没有它。 */
   myEventId: string;
-  /** 关联的本地提醒 id（reminderAgentManager 发布成功后记录）；-1 表示未注册提醒。 */
+  /** 关联的本地提醒 id；-1 表示没有提醒。D-20 起应用不再注册系统提醒，所以生产路径恒为 -1，列留着只为兼容旧行与如实报数。 */
   reminderId: number;
   /** 最后修改时间（epoch ms）；所有 plan 写入方共同维护，供后续增量同步排序。 */
   updatedAt: number;
@@ -339,7 +339,7 @@ export class ScheduleRepo {
     });
   }
 
-  /** 回写计划关联的本地提醒 id（reminderAgentManager 发布成功后调用；-1 表示无提醒）。 */
+  /** 回写计划关联的本地提醒 id（-1 表示无提醒）。自 D-20 起真机实现恒回 -1，调用方只在拿到非负句柄时回写。 */
   static async updatePlanReminder(id: string, reminderId: number): Promise<void> {
     await ScheduleRepo.setPlanColumns(id, { 'reminder_id': reminderId, 'updated_at': Date.now() });
   }

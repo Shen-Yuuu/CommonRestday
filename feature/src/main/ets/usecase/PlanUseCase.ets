@@ -402,7 +402,8 @@ export class PlanUseCase {
   }
 
   /** 本地提醒（US8 / FR-014）：任何失败都静默降级，绝不阻塞计划本身。
-   * 要不要注册由 NotificationGateway 的"精确提醒"开关决定，这里不问策略，只管回写 id。 */
+   * 真机实现自 D-20 起恒回 -1（首发零提醒），所以生产路径不会回写句柄；端口与列都留着，
+   * 因为「句柄删不动就如实报数」的降级逻辑还在读 reminder_id。 */
   private static async publishReminder(id: string, title: string, startMin: number): Promise<void> {
     try {
       const reminderId = await PlanCapabilities.reminder().publish(title, startMin);

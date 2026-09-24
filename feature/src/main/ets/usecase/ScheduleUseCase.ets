@@ -9,7 +9,6 @@ import {
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
 import { FeatureFlags } from '../config/FeatureFlags';
-import { NotificationGateway } from '../integration/NotificationGateway';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { AppConst, Logger } from 'commons';
 
@@ -229,8 +228,6 @@ export class ScheduleUseCase {
       const ivs = partnerIntervalsFromSnapshot(snap, keyHex);
       if (ivs == null) {
         Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
-        // 密钥失配只有用户能修（重新配对），所以这是"需行动"的那一类；云端不可用不提示，那不是用户的事
-        NotificationGateway.notifyRepairNeeded();
         return null;
       }
       await SettingsStore.setPartnerSnapVer(snap.version);
@@ -380,13 +377,11 @@ export class ScheduleUseCase {
       const row = planRows[i];
       if (row.status !== newStatus || row.conflictHint !== newHint) {
         await ScheduleRepo.updatePlanConflict(oc.planId, newStatus, newHint);
-        // 内存行跟着落库结果走，下面的通知判定与数据库用的是同一份事实
+        // 内存行跟着落库结果走，调用方读到的状态与数据库是同一份事实
         row.status = newStatus;
         row.conflictHint = newHint;
       }
     }
-    // 需行动的冲突才提示，同一次冲突不重复提示；策略与去重都在网关，fire-and-forget
-    NotificationGateway.notifyConflicts(planRows);
   }
 
   /**
@@ -406,7 +401,6 @@ export class ScheduleUseCase {
    * UI 保存动作后的统一事件入口：重算 + AppStorage 重算计数广播。
    * 页面通过 AppStorage 监听 recomputeCount 变化刷新（毫秒级同步计算，无需发布订阅）。
    * 已配对时尽力推送我的加密快照（fire-and-forget，内部全捕获不产生未处理拒绝）。
-   * 通知/提醒一律交给 NotificationGateway 判定，这里只负责"有事发生了一次"这个触发点。
    */
   static async onScheduleChanged(): Promise<void> {
     await ScheduleUseCase.recompute(todayEpochDay());
@@ -415,7 +409,6 @@ export class ScheduleUseCase {
     if (SettingsStore.getPairState() === PAIRED) {
       ScheduleUseCase.pushMySnapshot(todayEpochDay());
     }
-    NotificationGateway.syncWeeklyReminder();
   }
 
   // ---------- 日视图（DayDetailSheet 数据源） ----------

@@ -97,7 +97,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 - **结构保险**（防"以后只翻开关就复活不安全实现"）：`SnapshotCrypto.deriveKeyHex` 与 `SettingsStore.savePairKey` 两个方法**已从源码删除**，`getPairKey` 转为只读、`clearPairKey` 只用来清旧原型残留；
 - 入口不再只在 UI 上藏：`PairingShareGateway.channels()` 把 `share`/`scan` 都以云端档位为前提，`offerFromScan()` / `shareLink()` / `offerIncoming()` 在网关层各自先拒（关闭态不开相机、不开分享面板、外来 want 不留痕也不广播 `pairOfferCount`）；`ScheduleUseCase.pullPartnerSnapshot/pushMySnapshot` 第一句看档位；
 - `MeView` 关闭态一格云入口都不摆（生成/输码/扫码/二维码/分享/共享等级一起收），只留本机代录说明与**退出通道**（上一版原型留下的 `PAIRED`/`WAITING` 仍能被用户亲手撤掉——「开关只关能力，不关数据」）；
-- `entry/src/main/module.json5` 移除 `ohos.permission.INTERNET`：`requestPermissions` 现在只有 3 条（`READ_CALENDAR`/`WRITE_CALENDAR`/`PUBLISH_AGENT_REMINDER`），这个包即便代码有漏网的云调用也发不出去。
+- `entry/src/main/module.json5` 移除 `ohos.permission.INTERNET`：这个包即便代码有漏网的云调用也发不出去。**（2026-09-24 D-20 连带：`requestPermissions` 现为 2 条，`READ_CALENDAR`/`WRITE_CALENDAR`——后台代理提醒权限随零通知定稿一起删掉了。）**
 
 **证据**：离线新增 `entry/src/test/ProfileSettingsGuardTest.ets` 8 条（含"关闭态 `AgcPairingClient.calls === 0` 且 pairId/key/state 三者不变"），当轮 190 passed / 0 类型错误 / exit 0（阶段 6R.4 复跑 195 passed）；替身的云客户端**总是成功**，所以这条断言只能由守卫给出、不能靠"AGC 恰好没配"。变异验证：临时移除 `createInvite` 首句守卫 → 只有那条用例失败。
 
@@ -109,24 +109,24 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 - `AgcSnapshotSync.pushSnapshot` 的唯一调用方 `ScheduleUseCase.pushMySnapshot()` 现在**第一句**就是 `if (!FeatureFlags.cloudPairing) return false`；其后 `pairId === '' || keyHex === ''` 那道短路仍然在，且因为 `SettingsStore.savePairKey` 已删除，本机已经没有任何代码路径能写出密钥——G2 那条违规路径不再是"配了就能同步"，而是"连钥匙都造不出来"；
 - 云数据库侧：`entry/src/main/resources/rawfile` 为空，云 schema 从未部署（`docs/cloud/operations-runbook.md` §1 第 5 项仍未执行）；
-- 通知与卡片文本已按"不含课程名/班次名/地点/计划标题/昵称"实现（TC §11.11、§12.10，均**待设备**复核）。
+- 卡片文本已按"不含课程名/班次名/地点/计划标题/昵称"实现（TC §11.11，仍**待设备**复核）。通知侧自 2026-09-24 D-20 起零通知：不发通知，也就没有通知正文可言（原先这条引的 TC §12.10 锁屏隐私判据随链路删除）。
 
 **口径提醒**：这条只在"云端保持关闭"时成立。门禁解除（HUKS 托管长期密钥验证通过）后必须重新判：届时明文边界要看 `SnapshotCodec` 的字段集与 `shareLevel` 裁剪，见 `docs/cloud/pairing-protocol-v1.md`。
 
 ### G4 隐私文案与实际权限一致 —— **代码与材料已改（阶段 6R.4 + 最终验收 R1）；判定停在待设备**
 
-实际权限只有 3 条（`entry/src/main/module.json5`）：`READ_CALENDAR`、`WRITE_CALENDAR`（两条带 `reason: $string:calendar_perm_reason` = 「用于将共同计划写入系统日历，并在取消计划时同步移除」）、`PUBLISH_AGENT_REMINDER`（无 reason / 无 usedScene）。**阶段 6R.2 已按定稿移除 `INTERNET`**，**阶段 6R.4 已把下表第 1/4/5/7 行的文案与材料口径统一到位**，第 3 行仍是提审前的官方列表复核动作；第 8/9 行是最终验收新登记的 R1（备份恢复披露）与 R2（清空后的重试承诺）。逐条比对结果：
+实际权限只有 2 条（`entry/src/main/module.json5`）：`READ_CALENDAR`、`WRITE_CALENDAR`（两条带 `reason: $string:calendar_perm_reason` = 「用于将共同计划写入系统日历，并在取消计划时同步移除」）。**阶段 6R.2 已按定稿移除 `INTERNET`**；**2026-09-24 D-20 又把后台代理提醒权限一并移除**——首发零通知：不申请通知授权、不注册任何系统提醒，那条权限没有使用方，提审时少一个问答题。**阶段 6R.4 已把下表第 1/4/5/7 行的文案与材料口径统一到位**，第 3 行随 D-20 关闭；第 8/9 行是最终验收新登记的 R1（备份恢复披露）与 R2（清空后的重试承诺）。逐条比对结果：
 
 | # | 现状 | 结论 |
 |---|---|---|
 | 1 | 首启弹窗的《隐私政策》全文入口只 toast「隐私政策全文即将上线」（`AppConst.PRIVACY_POLICY_URL` 是空串，`PrivacyUtil.openPrivacyPolicy` 因此不跳转） | **代码已处理（阶段 6R.4，最终验收 R1 补一节）**：全文改为随包内置半模态 `component/PrivacyPolicySheet.ets`（**十一节**，含 R1 新增的「系统备份与换机迁移」；首启弹窗与「我的 · 数据与隐私」两处入口共用同一 builder），`PrivacyUtil` 与 `privacy_fulltext_soon` 文案已删除。**为什么内置而不是跳 URL**：这个包按定稿没有 `INTERNET` 权限，用浏览器打开托管页在当前形态下根本做不到，"入口存在但只会 toast"就是这么来的。剩下的缺口是账号侧：应用市场仍要求填写可访问的隐私政策 URL，《隐私政策》全文已成文（`docs/legal/privacy-policy.md`）并附一份可直接上传的静态页（`docs/legal/privacy-policy.html`），托管动作需开发者账号执行，URL 回填到 `AppConst.PRIVACY_POLICY_URL`（空串时全文页底部显示"在线版地址尚未填写"，不阻断阅读）。**三份文字 + 五条摘要的逐字同源已进门禁**（`tools/test/copy-audit.mjs`，冲突即退出码 1），前瞻性表述已如实写明**当前未开通**（第 7 节「云端配对当前未开放」） |
-| 2 | `INTERNET` **已声明但无用** | **已处理（阶段 6R.2）**：`module.json5` 删掉该权限，`requestPermissions` 只剩 3 条；纯本地版连"发不出去"都不成立——没有联网权限。隐私政策与提审"权限用途说明"里因此**不得**出现"联网权限"字样，云端档位真正打开的那个包才把它加回来（`docs/release/rollout-and-rollback.md` §3.3）。仍需设备复核：无 INTERNET 时日历/提醒/卡片链路确实无差异 |
-| 3 | `PUBLISH_AGENT_REMINDER` 无 `reason` | **需核对（缺证据）**：本机 SDK 的 `permissions.d.ts` 不标注授权方式；代码里它从未走 `requestPermissionsFromUser`（`ReminderGateway` 直接发布提醒），这与 system_grant 一致，所以缺 reason 很可能合规。提审前按官方权限列表复核该权限是否需要用途说明 |
-| 4 | 弹窗第二句「日历事件：仅在你确认创建共同计划时写入系统日历」 | **已按三态重写（阶段 6R.4）**：该句现为 `privacy_point_calendar` =「共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理」，与阶段 6R.1 的实际路径一致——默认勾选走受管 `addEvent`（不弹系统确认页，TC §6.3），`editEvent` 只剩「导出到系统日历」一个出口且那条永不试删（TC §6.6），`calendarFlow=false` 关档时一次都不写（TC §18.2）。全文第 4 节「系统日历与提醒的边界」是同口径。逐字对照动作仍在设备侧（TC §20.3） |
+| 2 | `INTERNET` **已声明但无用** | **已处理（阶段 6R.2）**：`module.json5` 删掉该权限，`requestPermissions` 只剩 3 条；纯本地版连"发不出去"都不成立——没有联网权限。隐私政策与提审"权限用途说明"里因此**不得**出现"联网权限"字样，云端档位真正打开的那个包才把它加回来（`docs/release/rollout-and-rollback.md` §3.3）。仍需设备复核：无 INTERNET 时日历/卡片链路确实无差异 |
+| 3 | `PUBLISH_AGENT_REMINDER` 无 `reason` | **已随 D-20 关闭（2026-09-24）**：该权限整条从 `module.json5` 删除，本应用不再注册系统提醒，所以"是否需要用途说明"这个官方列表复核动作没有对象了。原先登记的判断（"从未走 `requestPermissionsFromUser`，与 system_grant 一致，缺 reason 很可能合规"）保留在此作为记录——它属于**判断**，本仓库没有可引的官方条款 |
+| 4 | 弹窗第二句「日历事件：仅在你确认创建共同计划时写入系统日历」 | **已按三态重写（阶段 6R.4）**：该句现为 `privacy_point_calendar` =「共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理」，与阶段 6R.1 的实际路径一致——默认勾选走受管 `addEvent`（不弹系统确认页，TC §6.3），`editEvent` 只剩「导出到系统日历」一个出口且那条永不试删（TC §6.6），`calendarFlow=false` 关档时一次都不写（TC §18.2）。全文第 4 节「系统日历的边界」是同口径（D-20 起该节只讲日历：标题、正文与权限段一起改成"零通知、不注册任何系统提醒"）。逐字对照动作仍在设备侧（TC §20.3） |
 | 5 | 弹窗末尾「你可以随时在「我的」页调整隐私共享等级（L1 忙闲 / L2 类型 / L3 完整时间）」 | **已替换（阶段 6R.4）**：这句空头承诺删掉了，改为 `privacy_level_hint` =「上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准。」——等级控件在 `cloudPairing=false` 时不渲染（6R.2 收走），首发版没有可调的等级，因此界面上不再出现做不到的承诺。全文第 7 节明写"云端配对当前未开放、等级项在界面上不出现、值仍存本机"。设备侧确认新那句对应的全文真能打开（TC §20.3） |
 | 6 | OCR 页文案「照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图」 | **一致**：`pages/OcrCourse.ets` 走 `cameraPicker.pick` + `PhotoViewPicker.select`（系统 Picker，无需应用侧相机/相册权限），识别用端侧 `textRecognition`；全仓无图片上传代码 |
 | 7 | `AppScope/app.json5`：原 `bundleName: com.huawei.commonrestday`、`vendor: example`、`versionName 1.0.0 / versionCode 1000000` | **`bundleName` 已定稿（2026-09-23）：改为 `com.rest.common`**，`vendor` 仍是模板值 `example` 待账号侧填。改名的理由与影响面登记在 `submission-materials.md` §1：`com.huawei.*` 前缀可能被市场审核质疑为官方应用——这一条**始终是标注为"判断"的风险提示，本仓库没有华为官方条款可引**，因此不写成"改名是强制要求"；改名由开发者直接决定，风险判断是否成立不再影响首个包。改前核过的成本项：本应用从未上架、也没有装过旧包名的设备（全程无 `hdc` target），所以没有线上包/已授权用户/卡片实例被牵动；实际只需要动 `app.json5` 与 TC §1 的按包名命令，深链 scheme `crdpair`、卡片标识、数据库文件名都不含包名 |
-| 8 | `backup_config.json` 的 `allowToBackupRestore: true` + `EntryBackupAbility` 已接入：系统会在**应用克隆与应用数据迁移**时带走整个沙箱（RDB + Preferences），但政策原文只说"数据只存在这台手机上" | **已按最终验收 R1 修订披露（不关能力）**：全文新增「系统备份与换机迁移」一节、首启摘要加第二条，`pp_data_b`/`pp_delete_b`/`privacy_point_local`/`privacy_point_cloud` 四处绝对化表述改掉，**连界面上那句口号一起**——`MeView.identitySub()` 在「我的」页顶部原本显示「数据只存在这台手机」，现改「数据只写在本机的应用沙箱里」（它不属于《隐私政策》，所以由 `copy-audit.mjs` 对全部随包源码生效的同一条禁令钉住），改成"写在本机应用沙箱 + 系统备份或换机迁移时可能随系统流程恢复到你的其他设备"；同时写明恢复后**日历与提醒句柄作废、配对回到未配对**（与 `EntryBackupAbility` + `MigrationRunner.finishRestore` 的实际行为对应）。**未采用**的另一方案（`allowToBackupRestore: false` 并停用备份扩展）理由：阶段 6.1 的恢复降级对换机用户有实际价值，而披露足以消除误导。禁止绝对化表述已由 `copy-audit.mjs` 机器把关，且这一条禁令**不只管《隐私政策》**：`entry/feature/data/cloud/commons/domain` 的 `src/main` 里任何 `.ets`/`.json` 出现同类措辞都会失败；**这一节当场是否成立仍待真机做一轮备份/克隆往返**（TC §17.3.6，B6） |
+| 8 | `backup_config.json` 的 `allowToBackupRestore: true` + `EntryBackupAbility` 已接入：系统会在**应用克隆与应用数据迁移**时带走整个沙箱（RDB + Preferences），但政策原文只说"数据只存在这台手机上" | **已按最终验收 R1 修订披露（不关能力）**：全文新增「系统备份与换机迁移」一节、首启摘要加第二条，`pp_data_b`/`pp_delete_b`/`privacy_point_local`/`privacy_point_cloud` 四处绝对化表述改掉，**连界面上那句口号一起**——`MeView.identitySub()` 在「我的」页顶部原本显示「数据只存在这台手机」，现改「数据只写在本机的应用沙箱里」（它不属于《隐私政策》，所以由 `copy-audit.mjs` 对全部随包源码生效的同一条禁令钉住），改成"写在本机应用沙箱 + 系统备份或换机迁移时可能随系统流程恢复到你的其他设备"；同时写明恢复后**系统日历句柄作废、配对回到未配对**（与 `EntryBackupAbility` + `MigrationRunner.finishRestore` 的实际行为对应；提醒句柄自 D-20 起不再新建，恢复降级仍把它归 -1，但政策正文只承诺日历这一侧）。**未采用**的另一方案（`allowToBackupRestore: false` 并停用备份扩展）理由：阶段 6.1 的恢复降级对换机用户有实际价值，而披露足以消除误导。禁止绝对化表述已由 `copy-audit.mjs` 机器把关，且这一条禁令**不只管《隐私政策》**：`entry/feature/data/cloud/commons/domain` 的 `src/main` 里任何 `.ets`/`.json` 出现同类措辞都会失败；**这一节当场是否成立仍待真机做一轮备份/克隆往返**（TC §17.3.6，B6） |
 | 9 | 「清空我的全部数据」失败分支仍提示「可稍后重试」，但清库已把计划行与投影句柄一起删掉，重试无凭据（最终验收 R2） | **已处理**：`clearAllMessageOf` 不再复用 `cleanupMessageOf`，清空后的那句改成"本应用已无法再替你清理，请到系统日历/系统设置检查"；`cleanupMessageOf`（取消/改期）保留"可稍后重试"，因为那条路径留着 `CLEANUP_PENDING` 句柄与「重新清理」入口，承诺可兑现。两侧各有一条离线断言把这句话钉住（`PlanUseCaseTest` 的正反对照 + `ProfileSettingsGuardTest` 跑真实 `clearAllData()`）。设备侧仍要确认残留条目真的只能人工删（TC §20.1.4） |
 
 ### G5 所有数据删除动作可验证 —— **代码已改（阶段 6R.1 + 最终验收 R2）；判定停在待设备**
@@ -135,16 +135,16 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 | 动作 | 实现 | 删到哪 | 离线断言 | 设备验证 |
 |---|---|---|---|---|
-| 取消计划 | `PlanUseCase` + `PlanProjectionCleanupService`（只清系统侧、不写库） | 窗口恢复空闲 + 受管日程移除 + 本应用提醒取消；**删不动时句柄原样留着**、状态转 `CLEANUP_PENDING`、卡片给「重新清理」 | **有**（19 条日历用例里含"删不动→留句柄→重试→补写""导出那份永不试删"） | 待设备（TC §6.9、§6.10） |
+| 取消计划 | `PlanUseCase` + `PlanProjectionCleanupService`（只清系统侧、不写库） | 窗口恢复空闲 + 受管日程移除（旧行上残留的提醒句柄一并撤；D-20 起没有新建的提醒）；**删不动时句柄原样留着**、状态转 `CLEANUP_PENDING`、卡片给「重新清理」 | **有**（19 条日历用例里含"删不动→留句柄→重试→补写""导出那份永不试删"） | 待设备（TC §6.9、§6.10） |
 | 冲突改期 | 同上迁移 | 旧事件删 + 新事件写；旧投影没让开就**不写新的**（避免同一天两条） | **有** | 待设备（TC §6.8、§7.6） |
 | 删除伴侣档案 | `ProfileSettingsService.deletePartner` | `clearPartnerProfile` + 4 张表 `owner='PARTNER'` 行；**plan 表不动**（共同计划是本机的，口径与弹窗文案一致） | 无 | 待设备（TC §3.5） |
 | 解除配对 | `ProfileSettingsService.unpair` | 本机清 key 残留/pairId/状态/快照游标（**关闭态照样全执行**，因为云入口已藏起来，用户必须还能亲手撤掉上一版原型留下的标记）；云侧 `pairing-unpair` 只在 `cloudPairing=true` 时才发 | **有**（阶段 6R.2：`unpair_still_clears_local_marks_without_a_cloud_call` 断言关闭态本地四项清空且 `AgcPairingClient.calls===0`；`cancel_waiting_needs_no_cloud` 同样） | 真机上的"已配对"标记是否清干净 → 待设备（TC §9.4/§9.5）；云侧解绑**本轮无法到达**（`CLOUD_BLOCKED`） |
-| 清空全部数据 | `ProfileSettingsService.clearAllData` | **先**逐条清投影（`listPlansCarryingHandles` → 删日程/撤提醒）→ `purgeManagedCalendar()` 兜底清「同休日」那一本 → 取消周摘要提醒 → **再**清 8 张 RDB 表与全部设置（隐私同意标记刻意保留）；确认弹窗与结果 toast 都按实际剩余播报，**且清库之后不再承诺可重试**（R2：句柄随计划行一起没了） | 口径**有**（`clearAllMessageOf`：没清掉的一律列出，且离线正反两条钉住"清空不得出现可稍后重试 / 取消改期必须出现"）；动作本身**无**——它删的是用户真机数据，不能放进自动化里跑一次 | 待设备（TC §20.1，含 20.1.3/20.1.4 的"真删了没有""删不动时有没有谎报"） |
+| 清空全部数据 | `ProfileSettingsService.clearAllData` | **先**逐条清投影（`listPlansCarryingHandles` → 删日程/撤旧行提醒句柄）→ `purgeManagedCalendar()` 兜底清「同休日」那一本 → **再**清 8 张 RDB 表与全部设置（隐私同意标记刻意保留；D-20 起没有"取消周摘要提醒"这一步，那条注册链路已删）；确认弹窗与结果 toast 都按实际剩余播报，**且清库之后不再承诺可重试**（R2：句柄随计划行一起没了） | 口径**有**（`clearAllMessageOf`：没清掉的一律列出，且离线正反两条钉住"清空不得出现可稍后重试 / 取消改期必须出现"）；动作本身**无**——它删的是用户真机数据，不能放进自动化里跑一次 | 待设备（TC §20.1，含 20.1.3/20.1.4 的"真删了没有""删不动时有没有谎报"） |
 | 备份恢复后的降级 | `Db` 首启消费恢复标记 | 三条 UPDATE：日历投影（含 `MANAGED_WRITTEN`/`EXTERNAL_UNMANAGED`/`CLEANUP_PENDING`/`WRITTEN`/`PENDING` 五种取值）→`LOCAL_ONLY` 并清空来源设备的事件 id、提醒句柄→`-1`、云端声明→本地 | **有**（`DbMigrationTest` 12 条 + 插桩 7 条） | 待设备（TC §17.3） |
 
 **阶段 6R.1 已改**：`clearAllData()` 不再是"`DELETE FROM plan` 完事"——现在先清系统侧投影再删表，删不掉的按条数如实报；普通取消/改期也不再吞掉投影删除失败，句柄留着并可重试。修法与判据见独立验收 B0/B2。
 **阶段 6R.2 补了半边证据**：`ProfileSettingsService` 不再是"离线 runner 里被 skip 的设备耦合源码"——`tools/test/run.mjs` 给它配了签名对齐的内存 `SettingsStore`/`ScheduleRepo` 替身与**总是成功**的 `AgcPairingClient` 替身（带 `calls` 计数），于是解除配对、取消等待、清空播报这几条动作本身第一次能在离线里跑通并被断言。
-**这条门禁为什么还不算通过**：G5 要的是"可验证"，而以上每一条最终都要在设备上看见**系统日历里真的少了一条、提醒列表里真的没有残留**。本轮零设备证据（B6），所以判定停在 **待设备**；替身能证的只有"本机这四个标记清没清"，证不了日历与提醒的真实现象。
+**这条门禁为什么还不算通过**：G5 要的是"可验证"，而以上每一条最终都要在设备上看见**系统日历里真的少了一条**（D-20 起提醒侧本来就不该有本应用的东西，那一半判据并入 TC §12 的"通知栏与系统提醒里都是空的"）。本轮零设备证据（B6），所以判定停在 **待设备**；替身能证的只有"本机这四个标记清没清"，证不了日历的真实现象。
 **还缺的一条**：`deletePartner` 仍然连口径断言都没有（表里"无"）——它删的是 `owner='PARTNER'` 的四张表行，替身已具备条件，但属阶段 3 门禁解除后的补测范围，本轮不扩大。
 
 ## 3. 发布矩阵（改造文档 Task 6.4 指定的 9 维）
@@ -154,12 +154,12 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 | 全新安装 / 升级安装 | 全新安装：`bm clean` 后首启链路（待设备）。**升级维度对首版是空集**——本应用从未上架，没有可升级的线上包；这一维现在只有离线夹具 12 条（`DbMigrationTest`）+ 插桩 7 条（编译通过、未执行）撑着 | 老包→新包的真实覆盖安装留给第二个版本 | TC §1、§17.1/§17.2 |
 | 单人 / 本机代录 / 云配对 | 单人、本机代录：离线用例 + 静态文案核对。云配对：**保持关闭**，且关闭态**不摆云入口**（阶段 6R.2 起连 `INTERNET` 权限都没有） | 两形态的渲染与重算走查 | TC §2–§4、§9 |
 | 在线 / 离线 / 云停服 | **离线与在线同一份代码路径**（本机链路无网络调用，且首发包不带 `INTERNET`）；"云停服"这个概念对当前构建不成立——云客户端永不被调用，所以既没有降级 toast 也没有等待态 | 飞行模式下全量回归一次（证明没有隐藏依赖） | §2 G2/G3、TC §9.3 |
-| 通知允许 / 拒绝 | 三档默认值与文案已在代码里定死（需行动开、精确提醒关、周摘要关） | 授权弹窗、去重、锁屏隐私、到点真响 | TC §12 |
+| 通知允许 / 拒绝（D-20 起这一维退化成"始终为空"） | **静态事实**：没有通知授权入口、没有后台代理提醒权限、设备侧两个门面已删（2026-09-24）。原先这一维要判的"三档默认值 + 授权弹窗 + 去重 + 锁屏隐私 + 到点真响"整批作废 | 只剩一条：`bm clean` 后跑完整链路，通知栏始终 0 条、全程不弹授权窗（TC §12.1） | TC §12 |
 | 日历允许 / 取消 | 默认是**应用专属「同休日」日历的受管写入**（`addEvent`，不弹系统确认页）；拒绝授权 → `LOCAL_ONLY` + 「写入日历」/「导出到系统日历」两个出口；删不动 → `CLEANUP_PENDING` + 「重新清理」：这三处口径都有离线断言 | 权限弹窗、专属日历那一本真出现/真消失、`createCalendar` 是否真的建得出「同休日」、导出确认页、`CLEANUP_PENDING` 重新授权后真清得掉、回前台补扫真的跑 | TC §6、§18.2.2/§18.2.3 |
 | 扫码支持 / 不支持 | `scanPairing=false` + `canIUse(Scan)` 双前置 → 当前构建**不出现扫码按钮**（静态判定） | 两种设备各确认一次；真扫码闭环等门禁解除 | TC §10 |
 | 360vp / 横屏 / 大字体 / Senior Mode / 深色 | 令牌与断点口径为静态事实（`fp` 字号、`hit_min 44vp`、断点按容器宽度）；**横屏已按定稿锁住**（阶段 6R.4：`module.json5` 的 EntryAbility 声明 `orientation: 'portrait'`），因此"手机上横屏落进 medium/expanded 端出平板双栏"这个缺口在当前构建里不会发生——代价是平板与折叠屏展开态也保持竖屏，属已知取舍 | 真机确认横握不转（TC §20.6）。**通过不等于横屏已适配**：横屏矩阵（平板/折叠屏 + 手机横握逐屏可读）仍要单独跑通才允许删掉那行声明（TC §20.6b）。五种形态逐屏截图仍全部待设备 | TC §8、§13、§14、§15、§20.6 |
 | 卡片添加 / 更新 / 移除 | 只有 2×2、六态投影、路由白名单、只从桌面添加：静态事实 + 离线用例 | 卡面渲染、跨进程刷新、伪造参数、移除重加 | TC §11 |
-| 配对解除 / 清本机数据 / 备份恢复 | 恢复降级有离线断言（含新状态与 `CLEANUP_PENDING` 句柄作废）；解除与清空见 G5 | 备份→恢复往返、清空后「同休日」日历与提醒是否真没残留 | TC §17、§2 G5、§20.1 |
+| 配对解除 / 清本机数据 / 备份恢复 | 恢复降级有离线断言（含新状态与 `CLEANUP_PENDING` 句柄作废）；解除与清空见 G5 | 备份→恢复往返、清空后「同休日」日历是否真没残留 | TC §17、§2 G5、§20.1 |
 
 ## 4. 灰度与回退（引用，不重复）
 
@@ -171,7 +171,7 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 
 - [x] 《隐私政策》全文成文（`docs/legal/privacy-policy.md`，G4-1；如实写了不接华为账号、当前无云端同步、**本包不带联网权限**、数据删除方式=清空本机数据/卸载、**以及系统备份与换机迁移会把数据带到其他设备**（最终验收 R1 新增一节，`allowToBackupRestore` 保持为真））+ 一份可直接上传的自包含静态页（`docs/legal/privacy-policy.html`，深浅色自适应、无外部资源）+ App 内随包全文（`PrivacyPolicySheet`，无 `INTERNET` 也能读）。三处全文与五条首启摘要的逐字同源由 `node tools/test/run.mjs` 的 `copy` 审计把关，不再依赖"记得两边一起改"
 - [ ] 托管为可访问 URL 并回填 `AppConst.PRIVACY_POLICY_URL`（**账号侧动作**：上传 HTML → 拿地址 → 填常量 → 与商店页地址一致）。URL 为空不阻断 App 内阅读，页底会显示"在线版地址尚未填写"。**不要为了让链接可点而加回联网权限**（`rollout-and-rollback.md` §3.3）
-- [ ] 权限用途说明与 G4 表逐条对齐（现在只有 3 条：`READ_CALENDAR`/`WRITE_CALENDAR` 的 reason 与 `privacy_point_calendar` 已跟上阶段 6R.1 的"专属日历受管写入 + 导出"三态；`PUBLISH_AGENT_REMINDER` 待官方列表复核是否需要用途说明）
+- [ ] 权限用途说明与 G4 表逐条对齐（现在只有 2 条：`READ_CALENDAR`/`WRITE_CALENDAR` 的 reason 与 `privacy_point_calendar` 已跟上阶段 6R.1 的"专属日历受管写入 + 导出"三态。后台代理提醒权限已于 2026-09-24 D-20 从 `module.json5` 删除，提审材料里**不要再出现"提醒"类权限**；《隐私政策》权限段也已改成"这个版本零通知：不申请通知授权、不注册任何系统提醒"）
 - [ ] 应用截图（首页/共同时间/我的/班表/卡片）+ 一句话介绍 + 分类（生活或效率）+ Age rating + 版权/开发者信息 → **0 张截图，全部待设备**（B6），登记表见 `submission-materials.md` §5/§6
 - [ ] App 备案：**仓库内至今没有任何状态记录**（docs/04 M0 第 5 项只登记为"本周发起"，从未回填）→ 待设备之外的独立卡点，登记表见 `submission-materials.md` §3
 - [ ] 签名配置（自动签名或正式证书）后重跑一次 release 出包，确认产物不再是 `-unsigned`：当前 `signingConfigs: []` 且 `products[0].signingConfig: "default"`，产物 `entry/build/default/outputs/default/entry-default-unsigned.hap`。规则：密钥库口令与私钥**不进仓库**（`submission-materials.md` §2）
@@ -194,4 +194,4 @@ P0 流程 = 录入 → 三答案 → 窗口 → 计划 → 系统日历 → 冲�
 **净结论**：8 条里 3 条达成（三主入口 / 本机数据自足 / 文档与实现不再冲突）、1 条按门禁承诺未达成（HUKS 托管长期密钥）、4 条卡在"证据只到代码与离线这一层"（真机端到端、云侧实测、五种显示形态、手工验收记录）。
 提审前还欠的账（阶段 6R.4 之后）：D1 计划类型精简、D2 锁竖屏、G4 三处文案（隐私政策成文 + 日历那句 + 共享等级那句）**已全部在代码与文档里落地**；`INTERNET` 随 6R.2 移除。剩下的是**这个仓库替你做不完的两类**——
 ① 账号侧：隐私政策 URL 托管并回填 `AppConst.PRIVACY_POLICY_URL`、`vendor` 定稿（`bundleName` 已定稿为 `com.rest.common`）、备案状态、配置签名后重出 release 包、商店截图与分类/Age rating（逐项见 `submission-materials.md`）；
-② 设备侧 B6：接 API 26 真机按 TC §1–§20 全量勾一遍。G1 与 G5 的判定都卡在②上：代码与离线口径已经改完（含 G2 的云守卫），缺的是"系统日历里真的少了那条、提醒列表里真的没有残留"这类只有设备能给的证据。
+② 设备侧 B6：接 API 26 真机按 TC §1–§20 全量勾一遍。G1 与 G5 的判定都卡在②上：代码与离线口径已经改完（含 G2 的云守卫、D-20 的零通知）；缺的是"系统日历里真的少了那条"这类只有设备能给的证据，而通知侧要的的证据正好相反——**通知栏与系统提醒里始终没有本应用那一条**（TC §12.1）。

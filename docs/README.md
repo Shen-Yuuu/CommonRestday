@@ -43,7 +43,7 @@ App 在本地计算"扣除睡眠、通勤、恢复时间后**真正可用**的�
 | 班表 OCR 识别 | Core Vision Kit（端侧离线） | 无需联网；`CameraPicker` / `PhotoViewPicker` 取图 |
 | 写入系统日历 | Calendar Kit | 默认用 `getCalendar`/`createCalendar` + `addEvent` 写进应用专属的「同休日」日历（普通 `WRITE_CALENDAR` 就够，改期/取消删得动）；`editEvent` 仅作「导出到系统日历」，导出后本应用不再自动同步 |
 | 桌面服务卡片 | Form Kit（ArkTS 卡片） | **只有 2×2 一个规格**（`form_config.json` `supportDimensions: ["2*2"]`），只从桌面添加 |
-| 提醒与本地通知 | Notification Kit + reminderAgent | 精确提醒是**默认关闭的开关项**；每周共同时间摘要同理（opt-in） |
+| 通知与系统提醒 | **不使用**（2026-09-24 D-20 起整条链路已删除） | 零通知：不弹通知授权、不注册任何系统提醒，`module.json5` 只剩两条日历权限。到点报时由系统日历里那条受管日程负责（[PRD F10](./01-产品设计文档.md)、[TC §12](./testing-checklist.md)） |
 | 扫码与系统分享配对 | Scan Kit / Share Kit | 端侧已实现，但入口受 `FeatureFlags.scanPairing = false` 关闭（真机验证 + 云门禁前不出现在界面上） |
 | 云端配对与快照交换 | Cloud Foundation Kit（AGC 云函数+云数据库） | **当前关闭**：Task 0.4 门禁 `CLOUD_BLOCKED`；端云配置是 `cloud-config.json`，**不存在 `agconnect-services.json`**（05 §5） |
 | 本地存储与计算 | ArkData（RDB / Preferences）、纯本地算法 | RDB 是事实源；计算在开发机上 120 天稠密配对 P95 14.30ms（16ms 预算内） |

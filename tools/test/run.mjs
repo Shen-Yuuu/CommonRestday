@@ -48,12 +48,9 @@ const TREES = [
       // 它只依赖 SettingsStore/ScheduleRepo/云客户端，三者下面都有同名桩，而验收报告 B1 要求
       // "关闭态云调用 0 次、pairId/key/state 不变"必须在离线侧断言，不能只写在真机清单里。
       'ScheduleUseCase.ets', 'ScheduleOverviewQueryService.ets',
-      // 两个门面包 @kit.CalendarKit / reminderAgentManager；PlanUseCase 通过能力端口调用它们，
-      // 单测注入确定性端口实现，这里只需要类型壳让默认适配器过编译。
-      'CalendarGateway.ets', 'ReminderGateway.ets',
-      // 通知策略门面 @kit.NotificationKit / reminderAgentManager：默认端口适配器经它走，
-      // 同样只留类型壳；开关默认值与授权分支属真机验收（docs/testing-checklist.md）。
-      'NotificationGateway.ets',
+      // 门面包 @kit.CalendarKit；PlanUseCase 通过能力端口调用它，单测注入确定性端口实现，
+      // 这里只需要类型壳让默认适配器过编译。
+      'CalendarGateway.ets',
       // 扫码/分享门面包 @kit.ScanKit / @kit.ShareKit / 剪贴板；一次性凭据口径由 domain 的
       // PairLinkTest 离线覆盖，这里不参与转译（真机侧行为见 docs/testing-checklist.md）。
       'PairingShareGateway.ets',
@@ -368,9 +365,6 @@ export class SettingsStore {
   static async clearPartnerProfile(): Promise<void> {
     settingsRows.delete('partner_profile');
   }
-  static async getWeeklyReminderId(): Promise<number> {
-    return Number(settingOf('weekly_reminder_id', -1));
-  }
   static isPrivacyAccepted(): boolean {
     return settingOf('privacy_accepted', false) === true;
   }
@@ -426,8 +420,9 @@ function mkSession(id: string, code: string, creator: string): PairingSession {
 `;
 
 /**
- * 设备侧日历/提醒门面的类型壳：PlanCapabilities 的默认适配器引用它们，
+ * 设备侧日历门面的类型壳：PlanCapabilities 的默认适配器引用它，
  * 用例通过 PlanCapabilities.bind 注入确定性端口实现，所以这里返回"能力不可用"即可。
+ * 提醒那一侧自 D-20 起不再有设备门面（首发零提醒），所以只剩日历这一个壳。
  */
 const STUB_GATEWAYS = {
   'CalendarGateway.ts': `
@@ -444,19 +439,6 @@ export class CalendarGateway {
   }
   static async removeEvent(eventId: string): Promise<RemoveOutcome> { return RemoveOutcome.FAILED; }
   static async purgeManagedCalendar(): Promise<boolean> { return false; }
-}
-`,
-  'ReminderGateway.ts': `
-export class ReminderGateway {
-  static init(context: Object): void {}
-  static async publish(title: string, startMin: number): Promise<number> { return -1; }
-  static async cancel(reminderId: number): Promise<void> {}
-}
-`,
-  'NotificationGateway.ts': `
-export class NotificationGateway {
-  static async publishPlanReminder(title: string, startMin: number): Promise<number> { return -1; }
-  static async cancelPlanReminder(reminderId: number): Promise<void> {}
 }
 `
 };

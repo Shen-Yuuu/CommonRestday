@@ -8,8 +8,6 @@ export {
 export { PlanProjectionCleanupService } from './src/main/ets/usecase/PlanProjectionCleanupService';
 export { PlanCapabilities } from './src/main/ets/integration/PlanCapabilities';
 export { CalendarGateway } from './src/main/ets/integration/CalendarGateway';
-export { ReminderGateway } from './src/main/ets/integration/ReminderGateway';
-export { NotificationGateway } from './src/main/ets/integration/NotificationGateway';
 export {
   PairingShareGateway, PairChannels, PairOpResult, ScanResult, ScanOutcome, PAIR_OFFER_KEY,
   PAIR_CLOUD_CLOSED

@@ -98,13 +98,11 @@
           ],
           "when": "inuse"
         }
-      },
-      {
-        "name": "ohos.permission.PUBLISH_AGENT_REMINDER"
       }
       // 阶段 6R.2 首发移除 ohos.permission.INTERNET：纯本地版一条网络请求都不发——
       // 云配对档位关闭，且 createInvite/joinByCode/快照推拉在发请求前就先看开关。
       // 加回条件见 docs/release/rollout-and-rollback.md §3.3（云端档位真正打开的那个包才带它）。
+      // D-20 首发零通知，一并移除后台代理提醒权限：不弹通知授权、不注册任何系统提醒，这条权限没有使用方。
     ]
   }
 }

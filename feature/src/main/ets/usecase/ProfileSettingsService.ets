@@ -7,7 +7,6 @@ import { Logger } from 'commons';
 import { FeatureFlags } from '../config/FeatureFlags';
 import { ScheduleUseCase } from './ScheduleUseCase';
 import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
-import { PlanCapabilities } from '../integration/PlanCapabilities';
 import {
   addCleanupReport, clearAllMessageOf, emptyCleanupReport
 } from '../model/PlanFlow';
@@ -311,8 +310,8 @@ export class ProfileSettingsService {
   /**
    * 清空 8 张 RDB 表 + 全部设置；隐私同意标记保留，避免重启后重复弹窗。
    *
-   * 清库之前先把系统侧的东西一起带走（验收报告 B2）：计划级日历日程、计划级提醒、周报提醒，
-   * 再整本清掉应用专属「同休日」日历作兜底（句柄丢了的那些日程也一并删掉）。
+   * 清库之前先把系统侧的东西一起带走（验收报告 B2）：计划级的系统日历日程，以及（升级前遗留的）
+   * 计划级提醒句柄，再整本清掉应用专属「同休日」日历作兜底（句柄丢了的那些日程也一并删掉）。
    * "清空我的全部数据"这句话若只管本机表，用户删掉的只是自己看得见的那份，
    * 日程和提醒还留在系统里——所以清不干净的部分必须报数，不能回一句"已清空"。
    */
@@ -324,10 +323,6 @@ export class ProfileSettingsService {
       const rows = await ScheduleRepo.listPlansCarryingHandles();
       addCleanupReport(report, await PlanProjectionCleanupService.cleanupPlanList(rows));
       calendarPurged = await PlanProjectionCleanupService.purgeManagedCalendar();
-      const weeklyId = await SettingsStore.getWeeklyReminderId();
-      if (weeklyId >= 0 && !await PlanCapabilities.reminder().cancel(weeklyId)) {
-        report.remindersPending = report.remindersPending + 1;
-      }
     } catch (e) {
       // 系统侧清不动也要把本机表清掉：数据在用户设备上，本机那份是能立刻收回的
       Logger.warn(TAG, 'clearAllData projection cleanup degraded: ' + (e as Error).message);

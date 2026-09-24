@@ -172,7 +172,7 @@ export struct PlansView {
     this.working = false;
   }
 
-  /** 采用替代时间（冲突动作一）：二次确认后级联改期（受管日程与提醒同步迁移）。 */
+  /** 采用替代时间（冲突动作一）：二次确认后级联改期（受管日程同步迁移）。 */
   askAcceptAlternative(p: PlanSummary): void {
     const c = p.conflict;
     const when = c != null && c.altStart > 0
@@ -181,7 +181,7 @@ export struct PlansView {
     this.getUIContext().showAlertDialog({
       title: '改到替代时间',
       message: (when !== '' ? '新时间：' + when + '。' : '')
-        + (isAppManagedEvent(p.calendarState) ? '系统日历日程与提醒会一并更新。'
+        + (isAppManagedEvent(p.calendarState) ? '系统日历日程会一并更新。'
           : '计划会改到新时间；' + this.cancelCalendarNote(p.calendarState)),
       primaryButton: {
         value: '确认改期',
@@ -205,7 +205,7 @@ export struct PlansView {
       this.say(r.error);
     } else {
       // 计划已经改到新时间；日历没跟上时不喊失败，条目上的重试入口才是该点的那个
-      this.say(joinNote(isOnSystemCalendar(r.calendarState) ? '已改期，日历与提醒已同步'
+      this.say(joinNote(isOnSystemCalendar(r.calendarState) ? '已改期，日历已同步'
         : '已改期（' + LOCAL_ONLY_NOTE + '）', r.cleanupNote));
     }
     this.reload();

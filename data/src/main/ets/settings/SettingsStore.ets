@@ -22,13 +22,7 @@ const KEY_DEVICE_UID = 'device_uid';
 const KEY_PAIR_KEY = 'pair_key';
 const KEY_PAIR_ID = 'pair_id';
 const KEY_PARTNER_SNAP_VER = 'partner_snap_ver';
-const KEY_WEEKLY_REMINDER_ID = 'weekly_reminder_id';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
-const KEY_NOTIFY_PRECISE = 'notify_precise_reminder';
-const KEY_NOTIFY_WEEKLY = 'notify_weekly_summary';
-const KEY_NOTIFY_ACTION = 'notify_action_alerts';
-const KEY_NOTIFIED_CONFLICT_SIGS = 'notified_conflict_sigs';
-const KEY_NOTIFIED_REPAIR = 'notified_repair';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
@@ -161,8 +155,6 @@ export class SettingsStore {
   static async setPairState(state: string, partnerUid: string): Promise<void> {
     await SettingsStore.p().put(KEY_PAIR_STATE, state);
     await SettingsStore.p().put(KEY_PARTNER_ID, partnerUid);
-    // 配对一变，"需要重新配对"那句提示就过期：新状态下要还能再提醒一次
-    await SettingsStore.p().delete(KEY_NOTIFIED_REPAIR);
     await SettingsStore.p().flush();
   }
 
@@ -236,76 +228,6 @@ export class SettingsStore {
 
   static async setPartnerSnapVer(v: number): Promise<void> {
     await SettingsStore.p().put(KEY_PARTNER_SNAP_VER, v);
-    await SettingsStore.p().flush();
-  }
-
-  // ---------- 周摘要提醒 ----------
-
-  /** 周摘要提醒的 reminder id；未注册时返回 -1。 */
-  static async getWeeklyReminderId(): Promise<number> {
-    return Number(SettingsStore.p().getSync(KEY_WEEKLY_REMINDER_ID, -1));
-  }
-
-  static async setWeeklyReminderId(id: number): Promise<void> {
-    await SettingsStore.p().put(KEY_WEEKLY_REMINDER_ID, id);
-    await SettingsStore.p().flush();
-  }
-
-  // ---------- 通知与提醒开关（阶段 4 Task 4.3：默认低打扰） ----------
-
-  /**
-   * 精确提醒（ReminderAgent 定点提醒）。默认关闭：
-   * 计划默认写进系统日历，报时由日历负责，再叠一条应用自建提醒就是双倍打扰。
-   */
-  static isPreciseReminderOn(): boolean {
-    return SettingsStore.p().getSync(KEY_NOTIFY_PRECISE, false) === true;
-  }
-
-  static async setPreciseReminderOn(on: boolean): Promise<void> {
-    await SettingsStore.p().put(KEY_NOTIFY_PRECISE, on);
-    await SettingsStore.p().flush();
-  }
-
-  /** 周日周摘要提醒。默认关闭：共同时间是"要看的那一周"，不是每周必到的推送。 */
-  static isWeeklySummaryOn(): boolean {
-    return SettingsStore.p().getSync(KEY_NOTIFY_WEEKLY, false) === true;
-  }
-
-  static async setWeeklySummaryOn(on: boolean): Promise<void> {
-    await SettingsStore.p().put(KEY_NOTIFY_WEEKLY, on);
-    await SettingsStore.p().flush();
-  }
-
-  /** 需行动通知（冲突、需重新配对）。默认开启：这是唯一"用户不在屏幕上时也有价值"的一类。 */
-  static isActionAlertsOn(): boolean {
-    return SettingsStore.p().getSync(KEY_NOTIFY_ACTION, true) === true;
-  }
-
-  static async setActionAlertsOn(on: boolean): Promise<void> {
-    await SettingsStore.p().put(KEY_NOTIFY_ACTION, on);
-    await SettingsStore.p().flush();
-  }
-
-  /**
-   * 已提示过的冲突签名集合（';' 连接）。每轮重算整体覆写，所以随冲突消失自动收敛；
-   * 同一签名不重复提示，签名一变（原因或受影响区间变了）就是新冲突，会再提示一次。
-   */
-  static getNotifiedConflictSigs(): string {
-    return SettingsStore.p().getSync(KEY_NOTIFIED_CONFLICT_SIGS, '') as string;
-  }
-
-  static async setNotifiedConflictSigs(sigs: string): Promise<void> {
-    await SettingsStore.p().put(KEY_NOTIFIED_CONFLICT_SIGS, sigs);
-    await SettingsStore.p().flush();
-  }
-
-  /** "需要重新配对"是否已经提示过；配对状态一变就清，允许下一次再提示。 */
-  static isRepairNoticeSent(): boolean {
-    return SettingsStore.p().getSync(KEY_NOTIFIED_REPAIR, false) === true;
-  }
-
-  static async setRepairNoticeSent(on: boolean): Promise<void> {
-    await SettingsStore.p().put(KEY_NOTIFIED_REPAIR, on);
     await SettingsStore.p().flush();
   }
 

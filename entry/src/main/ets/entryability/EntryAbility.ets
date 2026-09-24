@@ -3,7 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
-import { CalendarGateway, PairingShareGateway, PlanUseCase, ReminderGateway, ScheduleUseCase } from 'feature';
+import { CalendarGateway, PairingShareGateway, PlanUseCase, ScheduleUseCase } from 'feature';
 import { Logger } from 'commons';
 import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
 
@@ -16,9 +16,8 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
-    // 系统日历（受管写入与导出）和本地提醒都要 UIAbility 上下文；拿不到上下文时一律静默降级
+    // 系统日历（受管写入与导出）要 UIAbility 上下文；拿不到上下文时一律静默降级
     CalendarGateway.init(this.context);
-    ReminderGateway.init(this.context);
     // 扫码/系统分享同样要上下文；能力不具备时网关按"不可用"回话，页面无需判机型
     PairingShareGateway.init(this.context);
     // 从配对链接或卡片点击拉起本机：只登记意图，跳转与确认都留给页面（进程外参数不可信）

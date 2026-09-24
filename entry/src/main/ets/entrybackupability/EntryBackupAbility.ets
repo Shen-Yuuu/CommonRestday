@@ -55,8 +55,9 @@ export default class EntryBackupAbility extends BackupExtensionAbility {
   }
 
   /**
-   * 抹掉随备份过来但在这台机器上不成立的配对与提醒句柄。
+   * 抹掉随备份过来但在这台机器上不成立的配对凭据。
    * 伴侣档案（本机代录的那份）是用户输入、不是设备投影，保留。
+   * 计划行的日历/提醒句柄不在这里清：RESTORE_PENDING 标记会让首启把它们降级重挂（Task 6.1）。
    */
   private async dropDeviceLocalHandles(): Promise<void> {
     try {
@@ -64,12 +65,10 @@ export default class EntryBackupAbility extends BackupExtensionAbility {
       await SettingsStore.clearPairKey();
       await SettingsStore.savePairId('');
       await SettingsStore.setPartnerSnapVer(0);
-      await SettingsStore.setWeeklyReminderId(-1);
       // 强制首启重算一次：恢复来的窗口缓存可能是旧引擎算的，重算比让它一直准更便宜
       await SettingsStore.setLastRecomputeDay(-1);
-      // setPairState 顺带清掉"已提示过重新配对"标记，首启那句提示还能再响一次
       await SettingsStore.setPairState(PAIR_NONE, '');
-      Logger.info(TAG, 'pairing and reminder handles reset after restore');
+      Logger.info(TAG, 'pairing handles reset after restore');
     } catch (e) {
       Logger.warn(TAG, 'pairing reset failed: ' + (e as Error).message);
     }

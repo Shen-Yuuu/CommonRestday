@@ -3,8 +3,6 @@ import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, ReminderCapability, RemoveOutcome
 } from '../model/PlanFlow';
 import { CalendarGateway } from './CalendarGateway';
-import { NotificationGateway } from './NotificationGateway';
-import { ReminderGateway } from './ReminderGateway';
 
 const TAG = 'PlanCapabilities';
 
@@ -27,23 +25,18 @@ class DeviceCalendar implements CalendarCapability {
   }
 }
 
-/** 真机提醒门面 → 端口适配（要不要提醒由通知策略决定，见 NotificationGateway）。 */
+/**
+ * 首发零提醒（D-20）：应用不再申请后台代理提醒权限，也不注册任何系统提醒，
+ * 到点报时全部交给系统日历。端口留着是因为计划行的 reminder_id 还在（删列要走 schema 迁移，不值），
+ * 而「取消不动就要如实报数」这条口径不能因为能力下线就变成谎报——所以带旧句柄时 cancel 回 false。
+ */
 class DeviceReminder implements ReminderCapability {
-  publish(title: string, startMin: number): Promise<number> {
-    return NotificationGateway.publishPlanReminder(title, startMin);
+  async publish(title: string, startMin: number): Promise<number> {
+    return -1;
   }
 
   async cancel(reminderId: number): Promise<boolean> {
-    if (reminderId < 0) {
-      return true;
-    }
-    try {
-      await ReminderGateway.cancel(reminderId);
-      return true;
-    } catch (e) {
-      Logger.warn(TAG, 'reminder cancel threw: ' + (e as Error).message);
-      return false;
-    }
+    return reminderId < 0;
   }
 }
 
@@ -53,7 +46,7 @@ class DeviceReminder implements ReminderCapability {
  * 为什么单独一份：日历日程的取消/改期/清空分散在 PlanUseCase 与
  * PlanProjectionCleanupService 两处，如果各自持有实现，测试注入的假能力就只管得住一半，
  * "删不掉时留不留重试信息"这类分支反而测不到。所以：
- * - 生产默认值是这里的真机门面（CalendarGateway / NotificationGateway）；
+ * - 生产默认值是这里的真机门面（CalendarGateway）与零提醒实现（DeviceReminder）；
  * - 单测用 bind() 换成确定性端口实现，两处消费者看到同一份假能力。
  */
 export class PlanCapabilities {

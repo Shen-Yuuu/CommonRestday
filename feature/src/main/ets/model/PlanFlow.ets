@@ -113,8 +113,8 @@ export interface CalendarWriteResult {
 /**
  * 计划编排要用的系统能力端口（阶段 2 Task 2.2，阶段 6R.1 按权限边界重划分）。
  *
- * 设备侧的真实现是 CalendarGateway / ReminderGateway 的静态门面；把它们收成端口，
- * 是因为"用户点了取消""权限被拒""日程删不动"这类分支在真机上不可复现，
+ * 设备侧的真实现是 CalendarGateway 的静态门面，加上一个零提醒实现（D-20 起首发不注册系统提醒）；
+ * 把它们收成端口，是因为"用户点了取消""权限被拒""日程删不动"这类分支在真机上不可复现，
  * 而它们恰恰决定了本地计划该不该保留——不能只靠人肉验收。
  */
 export interface CalendarCapability {

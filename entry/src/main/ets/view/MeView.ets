@@ -649,19 +649,20 @@ export struct MeView {
     EditorialCard({ hero: true, cutTopLeft: true, tappable: false }) {
       Row({ space: DesignTokens.space3 }) {
         Column() {
+          // 「我」字徽标只是装饰，标题文案已经说明了同一件事。no 挂在 Text 自己身上才摘得掉——
+          // 挂在外层 Column 上只摘容器，这枚字照样进读屏树（D-29）
           Text('我')
             .fontSize(DesignTokens.fontBody)
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
+            .accessibilityLevel('no')
         }
         .width(44)
         .height(44)
         .justifyContent(FlexAlign.Center)
         .borderRadius(DesignTokens.radiusPill)
         .backgroundColor(DesignTokens.heroGlow)
-        // 「我」字徽标只是装饰，标题文案已经说明了同一件事
-        .accessibilityLevel('no')
 
         Column({ space: 2 }) {
           Text(this.identityTitle())

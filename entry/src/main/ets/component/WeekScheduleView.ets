@@ -507,9 +507,12 @@ export struct WeekScheduleView {
       Column() {
         ForEach(HOURS, (h: number) => {
           Row() {
+            // 纵轴刻度只给眼睛用：每个日程块自己会念起止时间，逐格念 12 遍纯属噪音。
+            // no 只能挂在这枚 Text 自己身上——挂在下面的 Column 上只摘掉容器，子节点照念（D-29）。
             Text(pad2(h))
               .fontSize(8).fontColor($r('app.color.text_hint'))
               .visibility(h % 2 === 0 ? Visibility.Visible : Visibility.None)
+              .accessibilityLevel('no')
           }
           .width(LABEL_W)
           .height(HOUR_H)
@@ -517,8 +520,6 @@ export struct WeekScheduleView {
         }, (h: number) => 'h' + h)
       }
       .height(GRID_H)
-      // 纵轴刻度只给眼睛用：每个日程块自己会念起止时间，逐格念 24 遍纯属噪音
-      .accessibilityLevel('no')
 
       Row() {
         ForEach(this.weekDays(), (ed: number) => {
@@ -616,8 +617,10 @@ export struct WeekScheduleView {
         ForEach(this.axisHours(), (h: number) => {
           Row() {
             if (this.showHourLabel(h)) {
+              // 同 scheduleCols：静音要落在刻度自己身上，右上那行「纵轴 06–24」已经把轴说明念出来了
               Text(pad2(h % 24))
                 .fontSize(8).fontColor(DesignTokens.textHint)
+                .accessibilityLevel('no')
             }
           }
           .width(LABEL_W)
@@ -626,7 +629,6 @@ export struct WeekScheduleView {
         }, (h: number) => 'ch' + h)
       }
       .height(this.gridH())
-      .accessibilityLevel('no')
 
       Row() {
         ForEach(this.weekDays(), (ed: number) => {

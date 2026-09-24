@@ -13,6 +13,9 @@ import { toastCommand } from '../util/CommandToast';
 const ANCHOR_RANGE_START: Date = new Date(2020, 0, 1);
 const ANCHOR_RANGE_END: Date = new Date(2030, 11, 31);
 const MS_PER_DAY: number = 86400000;
+/** 序列里的"休"用空串表示：CycleExpander 对空串不生成班次实例，与单日覆盖清空同一口径。 */
+const REST_IN_SEQ: string = '';
+const REST_COLOR: string = '#B8C4CE';
 
 /** 循环模板编辑：班次序列 + 锚点日期（owner 双侧复用）。 */
 @Entry
@@ -45,6 +48,9 @@ struct CycleEditor {
   }
 
   typeName(id: string): string {
+    if (id === REST_IN_SEQ) {
+      return '休息';
+    }
     for (let i = 0; i < this.types.length; i++) {
       if (this.types[i].id === id) {
         return this.types[i].name;
@@ -54,6 +60,9 @@ struct CycleEditor {
   }
 
   typeColor(id: string): string {
+    if (id === REST_IN_SEQ) {
+      return REST_COLOR;
+    }
     for (let i = 0; i < this.types.length; i++) {
       if (this.types[i].id === id) {
         return this.types[i].color;
@@ -177,6 +186,12 @@ struct CycleEditor {
                   .borderRadius(14).backgroundColor(st.color)
                   .onClick(() => this.seq.push(st.id))
               }, (st: ShiftType) => st.id)
+              // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
+              Text('休息')
+                .fontSize(13).fontColor('#FFFFFF')
+                .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                .borderRadius(14).backgroundColor(REST_COLOR)
+                .onClick(() => this.seq.push(REST_IN_SEQ))
             }.width('100%')
 
             if (this.seq.length === 0) {

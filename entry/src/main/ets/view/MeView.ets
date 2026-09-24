@@ -782,10 +782,21 @@ export struct MeView {
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
 
-        SymbolGlyph($r('sys.symbol.heart'))
-          .fontSize(22)
-          .fontColor([DesignTokens.heroGlow])
-          .accessibilityLevel('no')
+        Text('共同时间')
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.heroText)
+          .padding({
+            left: DesignTokens.space3,
+            right: DesignTokens.space3,
+            top: DesignTokens.space1,
+            bottom: DesignTokens.space1
+          })
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .borderRadius(DesignTokens.radiusPill)
+          .backgroundColor(DesignTokens.heroGlow)
+          .focusable(true)
+          .accessibilityText('去共同时间页')
+          .onClick(() => this.onOpenRoute(NavRoutes.COMMON_TIME))
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)

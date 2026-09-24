@@ -19,6 +19,12 @@ import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
 
+/** @Builder 传两个及以上参数时不参与动态渲染（ArkUI 限制），所以一格合成一个对象字面量按引用传。 */
+interface ParamStatArg {
+  value: string;
+  label: string;
+}
+
 /**
  * 我的页：六段收纳——伴侣与同步、我的日程、作息、提醒与通知、无障碍、数据与隐私。
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
@@ -1290,9 +1296,9 @@ export struct MeView {
           }.width('100%')
         } else {
           Row() {
-            this.paramStat(this.myWake, '起床')
-            this.paramStat(this.myBed, '就寝')
-            this.paramStat(this.myWind + '分', '收整')
+            this.paramStat({ value: this.myWake, label: '起床' })
+            this.paramStat({ value: this.myBed, label: '就寝' })
+            this.paramStat({ value: this.myWind + '分', label: '收整' })
           }.width('100%')
 
           if (this.bedNote(this.myWake, this.myBed) !== '') {
@@ -1322,14 +1328,14 @@ export struct MeView {
   }
 
   @Builder
-  paramStat(value: string, label: string) {
+  paramStat(row: ParamStatArg) {
     Column({ space: 2 }) {
-      Text(value)
+      Text(row.value)
         .fontSize(DesignTokens.fontBody)
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
-      Text(label)
+      Text(row.label)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
     }
@@ -1337,7 +1343,7 @@ export struct MeView {
     .alignItems(HorizontalAlign.Start)
     // 数值和标签分两行画，读屏要连成一句"07:30 起床"
     .accessibilityGroup(true)
-    .accessibilityText(value + ' ' + label)
+    .accessibilityText(row.value + ' ' + row.label)
   }
 
   @Builder

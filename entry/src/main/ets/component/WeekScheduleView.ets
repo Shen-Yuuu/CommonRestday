@@ -12,29 +12,20 @@ import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 export const WEEK_MODE_SCHEDULE = 'SCHEDULE';
 export const WEEK_MODE_COMMON = 'COMMON';
 
-/** 日程模式网格：全天 24h 纵向网格，每小时 HOUR_H。 */
-const HOUR_H = 34;
-const GRID_H = 24 * HOUR_H;
 const LABEL_W = 26;
 const DAY_HEADERS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 /** 共同空闲分级门槛（分钟）：≥6h / ≥3h / 其余。 */
 const FREE_HIGH_MIN = 360;
 const FREE_MID_MIN = 180;
-/** 周历可用高度（vp）：按它反推每小时高度，窗口越少格子越高。 */
+/** 网格可用高度（vp）：两种模式都按它反推每小时高度，块越少格子越高，总高不会超过这一档。 */
 const GRID_BUDGET = 452;
-const HOUR_H_MIN = 13;
+/** 每小时高度上下限。下限分模式：日程块里要放两行文字，不能压到只剩色块那么矮。 */
+const HOUR_H_MIN_COMMON = 13;
+const HOUR_H_MIN_SCHEDULE = 18;
 const HOUR_H_MAX = 30;
-/** 默认只画 06:00–24:00，有空闲落在外面才把坐标轴撑开。 */
+/** 默认只画 06:00–24:00：凌晨与深夜一律缩略，有内容落在外面才把坐标轴撑开。 */
 const AXIS_DEFAULT_START = 6;
 const AXIS_END = 24;
-
-const HOURS: number[] = (() => {
-  const out: number[] = [];
-  for (let i = 0; i < 24; i++) {
-    out.push(i);
-  }
-  return out;
-})();
 
 /** 共同空闲块：裁剪到当日后的区间 + 所属窗口的原始起止。 */
 interface FreeBlock {
@@ -141,6 +132,7 @@ export struct WeekScheduleView {
       const data: WeekSchedule = await ScheduleOverviewQueryService.getWeekSchedule(this.owner,
         this.weekStart);
       this.weekItems = data.blocks;
+      this.fitAxis();
     } catch (e) {
       this.weekItems = [];
     }
@@ -177,23 +169,40 @@ export struct WeekScheduleView {
     this.loading = false;
   }
 
-  /** 纵轴自适应：默认 06:00–24:00，凌晨有空闲才把起点往上撑；每小时高度按可用高度反推。 */
+  /**
+   * 纵轴自适应：默认只画 06:00–24:00（深夜直接缩略），有内容落在六点之前才把起点往上撑。
+   * 每小时高度按可用高度反推：块越少格子越高，但整张网格不超过 GRID_BUDGET，
+   * 日程模式原来固定 24×34=816vp，比屏幕还高、必须滚动才能看完一周。
+   */
   private fitAxis(): void {
     let h0 = AXIS_DEFAULT_START;
     const days = this.weekDays();
     for (let i = 0; i < days.length; i++) {
-      if (!this.isKnown(days[i])) {
-        continue;
-      }
-      const blocks = this.dayFreeBlocks(days[i]);
-      for (let j = 0; j < blocks.length; j++) {
-        const startMin = blocks[j].start - days[i] * MIN_PER_DAY;
-        h0 = Math.min(h0, Math.floor(startMin / 60));
+      const day = days[i];
+      if (this.isCommon()) {
+        if (!this.isKnown(day)) {
+          continue;
+        }
+        const blocks = this.dayFreeBlocks(day);
+        for (let j = 0; j < blocks.length; j++) {
+          h0 = Math.min(h0, this.startHour(blocks[j].start, day));
+        }
+      } else {
+        const items = this.dayItems(day);
+        for (let j = 0; j < items.length; j++) {
+          h0 = Math.min(h0, this.startHour(items[j].start, day));
+        }
       }
     }
     this.axisStart = h0;
     const hours = AXIS_END - h0;
-    this.hourH = Math.max(HOUR_H_MIN, Math.min(HOUR_H_MAX, Math.floor(GRID_BUDGET / hours)));
+    const min = this.isCommon() ? HOUR_H_MIN_COMMON : HOUR_H_MIN_SCHEDULE;
+    this.hourH = Math.max(min, Math.min(HOUR_H_MAX, Math.floor(GRID_BUDGET / hours)));
+  }
+
+  /** 块起点落在当日第几小时。块已按自然日裁剪，末端不会超过 24:00，轴只需往起点方向撑。 */
+  private startHour(startMin: number, epochDay: number): number {
+    return Math.floor((startMin - epochDay * MIN_PER_DAY) / 60);
   }
 
   /** 该日是否在计算视界内：视界外的列不画块、不可点，避免把"没算"当成"没空"。 */
@@ -203,13 +212,10 @@ export struct WeekScheduleView {
   }
 
   private gridH(): number {
-    return this.isCommon() ? (AXIS_END - this.axisStart) * this.hourH : GRID_H;
+    return (AXIS_END - this.axisStart) * this.hourH;
   }
 
   private axisHours(): number[] {
-    if (!this.isCommon()) {
-      return HOURS;
-    }
     const out: number[] = [];
     for (let h = this.axisStart; h < AXIS_END; h++) {
       out.push(h);
@@ -358,14 +364,11 @@ export struct WeekScheduleView {
   }
 
   blockY(startMin: number, epochDay: number): number {
-    const axisMin = this.isCommon() ? this.axisStart * 60 : 0;
-    const hourH = this.isCommon() ? this.hourH : HOUR_H;
-    return (startMin - epochDay * MIN_PER_DAY - axisMin) / 60 * hourH;
+    return (startMin - epochDay * MIN_PER_DAY - this.axisStart * 60) / 60 * this.hourH;
   }
 
   blockH(startMin: number, endMin: number): number {
-    const hourH = this.isCommon() ? this.hourH : HOUR_H;
-    const h = (endMin - startMin) / 60 * hourH;
+    const h = (endMin - startMin) / 60 * this.hourH;
     // 共同模式留 1vp 缝：相邻块属于不同窗口，贴死会被看成一段
     return this.isCommon() ? Math.max(h - 1, 4) : Math.max(h, 14);
   }
@@ -393,11 +396,9 @@ export struct WeekScheduleView {
   build() {
     Column({ space: 8 }) {
       this.weekNav()
-      // 那一排是为纵轴说明而存在的，「本周」只是搭在同一排；日程模式是整 24 小时网格、
-      // 左侧刻度自己就把轴讲清楚了，没有说明可放，所以「本周」留在上面的周导航行里。
-      if (this.isCommon()) {
-        this.axisLine()
-      }
+      // 那一排是为纵轴说明而存在的，「本周」只是搭在同一排。两种模式现在共用自适应纵轴
+      // （日程模式不再固定整 24 小时），所以都读得到这一行，也都要有回到本周的出口。
+      this.axisLine()
 
       if (this.loading) {
         Text('加载中…').fontSize(12).fontColor($r('app.color.text_tertiary'))
@@ -444,9 +445,6 @@ export struct WeekScheduleView {
         .focusable(true)
         .accessibilityText('查看下一周')
         .onClick(() => this.nextWeek())
-      if (!this.isCommon()) {
-        this.currentWeekChip()
-      }
     }.width('100%')
   }
 
@@ -505,39 +503,40 @@ export struct WeekScheduleView {
   scheduleCols() {
     Row() {
       Column() {
-        ForEach(HOURS, (h: number) => {
+        ForEach(this.axisHours(), (h: number) => {
           Row() {
             // 纵轴刻度只给眼睛用：每个日程块自己会念起止时间，逐格念 12 遍纯属噪音。
             // no 只能挂在这枚 Text 自己身上——挂在下面的 Column 上只摘掉容器，子节点照念（D-29）。
-            Text(pad2(h))
-              .fontSize(8).fontColor($r('app.color.text_hint'))
-              .visibility(h % 2 === 0 ? Visibility.Visible : Visibility.None)
-              .accessibilityLevel('no')
+            if (this.showHourLabel(h)) {
+              Text(pad2(h))
+                .fontSize(8).fontColor($r('app.color.text_hint'))
+                .accessibilityLevel('no')
+            }
           }
           .width(LABEL_W)
-          .height(HOUR_H)
+          .height(this.hourH)
           .alignItems(VerticalAlign.Top)
-        }, (h: number) => 'h' + h)
+        }, (h: number) => 'sh' + h)
       }
-      .height(GRID_H)
+      .height(this.gridH())
 
       Row() {
         ForEach(this.weekDays(), (ed: number) => {
           Stack({ alignContent: Alignment.TopStart }) {
             // 小时网格线
             Column() {
-              ForEach(HOURS, (h: number) => {
+              ForEach(this.axisHours(), (h: number) => {
                 Row()
                   .width('100%')
-                  .height(HOUR_H)
+                  .height(this.hourH)
                   .border({ width: { bottom: 0.5 }, color: $r('app.color.divider') })
-              }, (h: number) => 'l' + h)
-            }.width('100%').height(GRID_H).accessibilityLevel('no')
+              }, (h: number) => 'sl' + h)
+            }.width('100%').height(this.gridH()).accessibilityLevel('no')
 
             // 今日列高亮
             if (ed === todayEpochDay()) {
               Column()
-                .width('100%').height(GRID_H)
+                .width('100%').height(this.gridH())
                 .backgroundColor($r('app.color.brand_pink_bg'))
                 .accessibilityLevel('no')
             }
@@ -561,7 +560,7 @@ export struct WeekScheduleView {
             }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
           }
           .width('14.28%')
-          .height(GRID_H)
+          .height(this.gridH())
           .clip(true)
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
           .focusable(true)
@@ -570,10 +569,10 @@ export struct WeekScheduleView {
         }, (ed: number) => 'c' + ed)
       }
       .layoutWeight(1)
-      .height(GRID_H)
+      .height(this.gridH())
     }
     .width('100%')
-    .height(GRID_H)
+    .height(this.gridH())
   }
 
   // ---------- 共同空闲模式 ----------

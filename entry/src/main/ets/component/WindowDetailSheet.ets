@@ -15,7 +15,8 @@ const STEP_MIN = 15;
 /**
  * 窗口详情半模态（US5 / FR-009）：
  * - 顶部：日期 + 窗口起止 + 时长 + 标签；
- * - 时间轴可视化：窗口横条 + 计划区间高亮预览（Row 比例布局）；
+ * - 时间轴可视化：窗口横条 + 计划区间高亮预览（Row 比例布局）；条下方两端是窗口起止
+ *   （跨日才带日期），中间标窗口总长——计划区间条上已高亮、下面表单里有数字，不再占这一行；
  * - 计划类型选择 + 标题（默认=类型名）+ 起止调节：±15 分钟步进，硬限制在 [窗口起, 窗口止]；
  * - 「创建计划」→ PlanUseCase.createPlan：默认受管写入应用专属「同休日」日历（开关可关成"只留在应用里"），
  *   没写成时计划照样保留，toast 明说"仅保存在应用内"。
@@ -131,6 +132,30 @@ export struct WindowDetailSheet {
     }
     const pct = Math.max(0, Math.min(100, min / total * 100));
     return pct.toFixed(2) + '%';
+  }
+
+  // ---------- 时间轴端点文字 ----------
+
+  /** 端点落在哪个日历日：窗口结束若是整午夜，记在前一天的 24:00，与 DateLabel.endLabel 同一口径。 */
+  private edgeDay(min: number, isEnd: boolean): number {
+    if (isEnd && min % MIN_PER_DAY === 0) {
+      return min / MIN_PER_DAY - 1;
+    }
+    return Math.floor(min / MIN_PER_DAY);
+  }
+
+  /**
+   * 跨日窗口两端都写「00:00」，读者判不出比例尺（D-13），所以跨日时端点带日期。
+   * 同一天不带的理由是上方 hero 已经念过「9月24日 周四 07:00–22:30」，重复一遍只会挤掉中间那行。
+   */
+  private crossesDays(): boolean {
+    return this.edgeDay(this.winEnd, true) > this.edgeDay(this.winStart, false);
+  }
+
+  private edgeLabel(min: number, isEnd: boolean): string {
+    const day = this.edgeDay(min, isEnd);
+    const time = isEnd && min % MIN_PER_DAY === 0 ? '24:00' : DateLabel.hm(min);
+    return this.crossesDays() ? DateLabel.md(day) + ' ' + time : time;
   }
 
   // ---------- 创建 ----------
@@ -292,19 +317,19 @@ export struct WindowDetailSheet {
       .accessibilityLevel('no')
 
       Row() {
-        Text(DateLabel.hm(this.winStart)).fontSize(10).fontColor($r('app.color.text_hint'))
+        Text(this.edgeLabel(this.winStart, false)).fontSize(10).fontColor($r('app.color.text_hint'))
         Blank()
-        Text('计划 ' + DateLabel.endLabel(this.planStart, this.planEnd)
-          + '（' + DateLabel.duration(this.planEnd - this.planStart) + '）')
-          .fontSize(10).fontColor($r('app.color.brand_pink'))
+        Text('整段 ' + DateLabel.duration(this.winEnd - this.winStart))
+          .fontSize(10).fontColor($r('app.color.text_secondary'))
         Blank()
-        Text(DateLabel.hm(this.winEnd)).fontSize(10).fontColor($r('app.color.text_hint'))
+        Text(this.edgeLabel(this.winEnd, true)).fontSize(10).fontColor($r('app.color.text_hint'))
       }
       .width('100%')
       .accessibilityGroup(true)
-      .accessibilityText('窗口 ' + DateLabel.hm(this.winStart) + ' 到 ' + DateLabel.hm(this.winEnd)
-        + '，计划 ' + DateLabel.endLabel(this.planStart, this.planEnd)
-        + '，共 ' + DateLabel.duration(this.planEnd - this.planStart))
+      // 计划区间在条上只是高亮色块，读屏拿不到，所以朗读里保留它，视觉上让位给窗口总长
+      .accessibilityText('窗口 ' + this.edgeLabel(this.winStart, false) + ' 到 '
+        + this.edgeLabel(this.winEnd, true) + '，整段 ' + DateLabel.duration(this.winEnd - this.winStart)
+        + '，计划 ' + DateLabel.endLabel(this.planStart, this.planEnd))
     }
     .width('100%')
     .padding({ left: 4, right: 4 })

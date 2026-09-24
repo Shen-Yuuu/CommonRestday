@@ -1,11 +1,11 @@
-import { MIN_PER_DAY, WindowChannel, WindowTag, todayEpochDay, weekdayOf } from 'domain';
+import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, todayEpochDay, weekdayOf } from 'domain';
 import { DateLabel } from 'commons';
 import {
   CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
-  WeekSchedule, WindowFilter, WindowFilterKey, WindowSummary
+  WeekLanes, WeekSchedule, WindowFilter, WindowFilterKey, WindowSummary
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
-import { tagColor } from '../util/WindowTagUtil';
+import { busyTagLabel, tagColor } from '../util/WindowTagUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 周视图模式：某一方的日程，或双方的共同空闲。 */
@@ -26,6 +26,8 @@ const HOUR_H_MAX = 30;
 /** 默认只画 06:00–24:00：凌晨与深夜一律缩略，有内容落在外面才把坐标轴撑开。 */
 const AXIS_DEFAULT_START = 6;
 const AXIS_END = 24;
+/** 泳道块最低高度（vp）：半小时的忙碌在矮格里也只有 6vp，再低就看不出那一条了。 */
+const LANE_MIN_H = 6;
 
 /** 共同空闲块：裁剪到当日后的区间 + 所属窗口的原始起止。 */
 interface FreeBlock {
@@ -34,6 +36,13 @@ interface FreeBlock {
   /** 原始窗口起止：点击必须回传它，列表与周历选中的才是同一个窗口。 */
   winStart: number;
   winEnd: number;
+}
+
+/** 忙碌泳道块：区间已裁剪到当日，tag 是忙碌类型（块里不放文字，类型只由读屏念出）。 */
+interface LaneBlock {
+  start: number;
+  end: number;
+  tag: string;
 }
 
 /** 当前周周一。 */
@@ -51,6 +60,7 @@ function pad2(n: number): string {
  * - 日程模式（班表页）：当前侧的班次（循环+单日覆盖）、课程（学期+节次模板）、共同计划；
  * - 共同空闲模式（共同时间页「周历」）：把月历的"哪天有空"细化成课程表式的"几点到几点有空"，
  *   只画常规通道（睡眠不计入空闲），旅行通道在表头标点，点色块直接去建计划。
+ *   每列纵向分两半画双方忙碌（青灰／驼的玻璃层），空闲色块压在泳道之上，一眼看出空档是怎么来的。
  * 数据随重算广播自动刷新（涂抹/导入/参数变更后无需手动更新）。
  */
 @Component
@@ -70,6 +80,9 @@ export struct WeekScheduleView {
   @State loading: boolean = true;
   @State weekItems: WeekBlock[] = [];
   @State commonWindows: WindowSummary[] = [];
+  /** 共同模式的双方忙碌泳道：没有 TA 数据时 partner 为 null（右半不画，图例跟着改说法）。 */
+  @State myLanes: Interval[] = [];
+  @State partnerLanes: Interval[] | null = null;
   @State axisStart: number = AXIS_DEFAULT_START;
   @State hourH: number = 24;
   @State horizonDays: number = 0;
@@ -162,11 +175,27 @@ export struct WeekScheduleView {
         }
       }
       this.commonWindows = wins;
+      await this.loadLanes();
       this.fitAxis();
     } catch (e) {
       this.commonWindows = [];
     }
     this.loading = false;
+  }
+
+  /**
+   * 单独读一周的双方忙碌。失败只让左右两半空着：空闲块是另一条读模型算好的，
+   * 不因为"看不出为什么没空"就把已有的答案一起抹掉。
+   */
+  private async loadLanes(): Promise<void> {
+    try {
+      const lanes: WeekLanes = await ScheduleOverviewQueryService.getWeekLanes(this.weekStart);
+      this.myLanes = lanes.mine;
+      this.partnerLanes = lanes.partner;
+    } catch (e) {
+      this.myLanes = [];
+      this.partnerLanes = null;
+    }
   }
 
   /**
@@ -262,6 +291,34 @@ export struct WeekScheduleView {
     }
     out.sort((a: FreeBlock, b: FreeBlock): number => a.start - b.start);
     return out;
+  }
+
+  /** 某日的忙碌泳道块：跨天班次/夜班自然断到两列，与日程模式同一套裁剪口径。无数据（null）给空数组。 */
+  private dayLanes(list: Interval[] | null, epochDay: number): LaneBlock[] {
+    const s = epochDay * MIN_PER_DAY;
+    const e = s + MIN_PER_DAY;
+    const out: LaneBlock[] = [];
+    if (list == null) {
+      return out;
+    }
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      const cs = Math.max(it.start, s);
+      const ce = Math.min(it.end, e);
+      if (ce > cs) {
+        out.push({ start: cs, end: ce, tag: it.tag });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 泳道块的朗读文本。块里一个像素的文字都放不下（半列宽约 40vp），
+   * 所以「谁、几点到几点、在忙什么」必须整句读出来，否则这块颜色对读屏用户就是噪音。
+   */
+  private laneRead(who: string, b: LaneBlock, epochDay: number): string {
+    return DateLabel.weekday(epochDay) + ' ' + who + ' ' + DateLabel.hm(b.start) + ' 到 '
+      + DateLabel.hm(b.end) + '，' + busyTagLabel(b.tag);
   }
 
   /** 该日是否有旅行通道窗口覆盖（表头标点，不画块）。 */
@@ -406,6 +463,7 @@ export struct WeekScheduleView {
       } else if (this.isCommon()) {
         this.commonHead()
         this.commonCols()
+        this.busyLegendLine()
         this.commonLegend()
         Text(this.commonNote())
           .fontSize(11).fontColor(DesignTokens.textHint)
@@ -609,6 +667,23 @@ export struct WeekScheduleView {
     .alignItems(VerticalAlign.Top)
   }
 
+  /**
+   * 半列宽的忙碌泳道。块里一个字都不放：半列约 40vp，写「07 到 12 班次」只会糊成一团，
+   * 所以谁、几点到几点、在忙什么整句交给读屏念（laneRead）。
+   */
+  @Builder
+  laneRow(b: LaneBlock, epochDay: number, partner: boolean) {
+    Column()
+      .width('100%')
+      .height(Math.max(this.blockH(b.start, b.end), LANE_MIN_H))
+      .position({ x: 0, y: this.blockY(b.start, epochDay) })
+      .backgroundColor(partner ? DesignTokens.busyPartnerGlass : DesignTokens.busyMineGlass)
+      .border({ width: 0.5, color: partner ? DesignTokens.busyPartnerEdge : DesignTokens.busyMineEdge })
+      .borderRadius(3)
+      .accessibilityGroup(true)
+      .accessibilityText(this.laneRead(partner ? 'TA' : '我', b, epochDay))
+  }
+
   @Builder
   commonCols() {
     Row() {
@@ -656,6 +731,32 @@ export struct WeekScheduleView {
                 .accessibilityLevel('no')
             }
 
+            // 双方忙碌泳道：这一列纵向分两半，左半是我、右半是 TA。
+            // 画在空闲块之下——共同空闲本来就是"两边都空"，它是泳道之间的缝，色块压上去才读得出空档怎么来的。
+            Row() {
+              Stack({ alignContent: Alignment.TopStart }) {
+                ForEach(this.dayLanes(this.myLanes, ed), (b: LaneBlock) => {
+                  this.laneRow(b, ed, false)
+                }, (b: LaneBlock) => 'm' + b.start + '-' + b.end + b.tag)
+              }
+              .layoutWeight(1)
+              .height(this.gridH())
+
+              if (this.partnerLanes != null) {
+                Stack({ alignContent: Alignment.TopStart }) {
+                  ForEach(this.dayLanes(this.partnerLanes, ed), (b: LaneBlock) => {
+                    this.laneRow(b, ed, true)
+                  }, (b: LaneBlock) => 'p' + b.start + '-' + b.end + b.tag)
+                }
+                .layoutWeight(1)
+                .height(this.gridH())
+              }
+            }
+            .width('100%')
+            .height(this.gridH())
+            // 泳道只是底色，点列看当日明细、点色块去建计划这两件事不能被它挡住
+            .hitTestBehavior(HitTestMode.None)
+
             ForEach(this.dayFreeBlocks(ed), (b: FreeBlock) => {
               Column() {
                 Text(this.blockLabel(b))
@@ -702,6 +803,39 @@ export struct WeekScheduleView {
       Text(label).fontSize(10).fontColor(DesignTokens.textHint)
     }
     .accessibilityGroup(true)
+  }
+
+  /** 泳道图例的色样：比空闲点更方、带描边，和网格里的半列块同一种画法。 */
+  @Builder
+  busySwatch(fill: ResourceColor, edge: ResourceColor, label: string) {
+    Row({ space: 4 }) {
+      Column()
+        .width(10).height(10)
+        .backgroundColor(fill)
+        .border({ width: 0.5, color: edge })
+        .borderRadius(2)
+      Text(label).fontSize(10).fontColor(DesignTokens.textHint)
+    }
+    .accessibilityGroup(true)
+    .accessibilityText(label)
+  }
+
+  /**
+   * 泳道那一行的说法跟着数据走：没有 TA 的数据时右半根本没画，
+   * 图例却写「TA 在忙」就等于用一句假话解释一片空白，所以单人态只报自己这一侧。
+   */
+  @Builder
+  busyLegendLine() {
+    Row({ space: 10 }) {
+      this.busySwatch(DesignTokens.busyMineGlass, DesignTokens.busyMineEdge, '我在忙')
+      if (this.partnerLanes != null) {
+        this.busySwatch(DesignTokens.busyPartnerGlass, DesignTokens.busyPartnerEdge, 'TA 在忙')
+      } else {
+        Text('还没有 TA 的数据').fontSize(10).fontColor(DesignTokens.textHint)
+      }
+    }
+    .width('100%')
+    .justifyContent(FlexAlign.Center)
   }
 
   @Builder

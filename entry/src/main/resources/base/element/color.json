@@ -165,6 +165,22 @@
       "value": "#B59061"
     },
     {
+      "name": "busy_mine_glass",
+      "value": "#4072888B"
+    },
+    {
+      "name": "busy_mine_edge",
+      "value": "#8C72888B"
+    },
+    {
+      "name": "busy_partner_glass",
+      "value": "#40B59061"
+    },
+    {
+      "name": "busy_partner_edge",
+      "value": "#8CB59061"
+    },
+    {
       "name": "page_bg_warm",
       "value": "#F7EDDF"
     },

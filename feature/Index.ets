@@ -32,7 +32,7 @@ export {
 } from './src/main/ets/model/RhythmRules';
 export { PlanKindOption, OTHER_PLAN_KIND_KEY, PLAN_KINDS, planKindLabel } from './src/main/ets/model/PlanKinds';
 export {
-  ScheduleOverviewQueryService, ScheduleOverview, WeekSchedule, WeekBlock, DayShiftState
+  ScheduleOverviewQueryService, ScheduleOverview, WeekSchedule, WeekBlock, WeekLanes, DayShiftState
 } from './src/main/ets/usecase/ScheduleOverviewQueryService';
 export {
   CommonTimeQueryService, DayBusy, HomeInput, PageInput, DetailInput, toDisplayTags

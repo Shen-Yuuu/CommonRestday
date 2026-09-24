@@ -1,12 +1,15 @@
 import {
   BlockTag, CycleTemplate, Interval, MIN_PER_DAY, ScheduleOverride, ShiftInstance, ShiftType,
-  expandCycle, shiftToBlocks, termWeekOf, todayEpochDay, weekdayOf
+  buildAvailability, expandCycle, shiftToBlocks, termWeekOf, todayEpochDay, weekdayOf
 } from 'domain';
 import { PlanRow, ScheduleRepo } from 'data';
 import { Logger } from 'commons';
 import { ScheduleUseCase, SettingsStoreParams } from './ScheduleUseCase';
 
 const TAG = 'ScheduleOverviewQueryService';
+
+/** 周视图跨度：一周七天，泳道与日程块都按它装配，不多算一天。 */
+const WEEK_DAYS = 7;
 
 /** 周日程块配色：班次用班次自带色，其余三类是数据语义色，集中在这里避免页面散落常量。 */
 const COURSE_COLOR = '#3AA6E8';
@@ -39,6 +42,18 @@ export interface WeekBlock {
   end: number;
   name: string;
   color: string;
+}
+
+/** 周历双泳道：本周双方各自的"真忙"区间，与日详情的 myTrueBusy / partnerTrueBusy 同一口径。 */
+export interface WeekLanes {
+  weekStart: number;
+  /** 我的忙碌（班次 + 课程 + 计划 + 夜班恢复，不含作息与收整）。 */
+  mine: Interval[];
+  /**
+   * TA 的忙碌；没有 TA 的数据时为 null（页面据此决定右半泳道与图例怎么说）。
+   * 云端快照按对方隐私等级降维后是有粒度的区间，画出来就是对方允许被看到的那份。
+   */
+  partner: Interval[] | null;
 }
 
 /** 单日改班选择器的输入：模板推算值、既有覆盖与可选班次一次读齐。 */
@@ -204,5 +219,23 @@ export class ScheduleOverviewQueryService {
     blocks.sort((a: WeekBlock, b: WeekBlock): number => a.start - b.start);
     const data: WeekSchedule = { weekStart: weekStart, blocks: blocks };
     return data;
+  }
+
+  /**
+   * 装配某一周的双方忙碌泳道（共同页周历用）。
+   * 只取"真忙"：作息与收整画进泳道会把整段夜间涂成忙碌色，而夜间本来就不在共同空闲里，
+   * 读起来只会重复。口径与日详情半模态的明细行一致（同一处事实只有一种说法，D-23）。
+   */
+  static async getWeekLanes(weekStart: number): Promise<WeekLanes> {
+    const params = ScheduleUseCase.dayParamsOf(SettingsStoreParams(), WEEK_DAYS);
+    const my = await ScheduleUseCase.loadMySchedule(weekStart, params);
+    const mine = buildAvailability(my, params, weekStart, WEEK_DAYS).trueBusy;
+    const partner = await ScheduleUseCase.buildPartnerBusy(weekStart, params);
+    const lanes: WeekLanes = {
+      weekStart: weekStart,
+      mine: mine,
+      partner: partner != null ? partner.tripBusy : null
+    };
+    return lanes;
   }
 }

@@ -61,6 +61,14 @@ export class DesignTokens {
   /** 双方忙碌标识色：我=青灰，TA=驼色（今日概览的圆点，与周视图同一套色）。 */
   static readonly busyMine: Resource = $r('app.color.my_busy');
   static readonly busyPartner: Resource = $r('app.color.partner_busy');
+  /**
+   * 周历双泳道的玻璃层：底色是同一条忙碌色的半透明版，描边用高一档的 alpha。
+   * 泳道只表示"这段时间不能安排"，不承载文字，所以 alpha 可以压得比正文卡低。
+   */
+  static readonly busyMineGlass: Resource = $r('app.color.busy_mine_glass');
+  static readonly busyMineEdge: Resource = $r('app.color.busy_mine_edge');
+  static readonly busyPartnerGlass: Resource = $r('app.color.busy_partner_glass');
+  static readonly busyPartnerEdge: Resource = $r('app.color.busy_partner_edge');
   static readonly danger: Resource = $r('app.color.danger_red');
   static readonly dangerBg: Resource = $r('app.color.danger_bg');
   static readonly dangerBorder: Resource = $r('app.color.danger_border');

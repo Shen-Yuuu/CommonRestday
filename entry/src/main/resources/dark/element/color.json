@@ -169,6 +169,22 @@
       "value": "#C7A777"
     },
     {
+      "name": "busy_mine_glass",
+      "value": "#5991A7A8"
+    },
+    {
+      "name": "busy_mine_edge",
+      "value": "#A691A7A8"
+    },
+    {
+      "name": "busy_partner_glass",
+      "value": "#59C7A777"
+    },
+    {
+      "name": "busy_partner_edge",
+      "value": "#A6C7A777"
+    },
+    {
       "name": "sunset_from",
       "value": "#8F2F4C"
     },

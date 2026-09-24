@@ -424,6 +424,26 @@ export default function homeAnswerFixtureTest() {
       expect(out[0].conflict).assertFalse();
     });
 
+    it('busy_inside_sleep_window_only_survives_in_true_busy', 0, () => {
+      // D-03 的机制钉子：落在作息窗口里的计划会被并进 SLEEP，
+      // 所以"今天忙不忙"这类文案只能读 trueBusy，读 notAvailable 会把真实的计划说成"全天空闲"。
+      const my = emptyMy();
+      const block: PlanBlock = { start: MON * MIN_PER_DAY + 60, end: MON * MIN_PER_DAY + 180 };
+      my.plans = [block];
+      const avail = buildAvailability(my, params(1), MON, 1);
+      expect(avail.trueBusy.length).assertEqual(1);
+      expect(avail.trueBusy[0].tag).assertEqual('PLAN');
+      expect(avail.trueBusy[0].start).assertEqual(block.start);
+      let visible = 0;
+      for (let i = 0; i < avail.notAvailable.length; i++) {
+        const iv: Interval = avail.notAvailable[i];
+        if (iv.tag !== 'SLEEP' && iv.end > MON * MIN_PER_DAY && iv.start < (MON + 1) * MIN_PER_DAY) {
+          visible++;
+        }
+      }
+      expect(visible).assertEqual(0);
+    });
+
     // ---------- ⑦ 快照隐私 ----------
     it('snapshot_l1_and_l2_leak_no_names_or_titles', 0, () => {
       const my = emptyMy();

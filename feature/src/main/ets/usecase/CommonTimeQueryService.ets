@@ -294,9 +294,13 @@ function conflictReasonTextOf(rows: PlanRow[]): string {
 /** 当天某一方的忙闲装配结果（getDayView 的只读投影，纯函数只依赖它）。 */
 export interface DayBusy {
   epochDay: number;
-  /** 我的不可用时间轴（含睡眠段，文案生成时排除）。 */
+  /**
+   * 我的忙碌时间轴：真忙（班次 + 课程 + 计划 + 夜班恢复），不含作息与收整。
+   * 这里不放含睡眠的不可用集——落在作息窗口里的块会被并进 SLEEP，
+   * 文案按 SLEEP 跳过就编出"全天空闲"那句假话（D-03）。
+   */
   myBusy: Interval[];
-  /** 对方不可用时间轴；单人或拿不到对方数据时为 null。 */
+  /** 对方同口径的忙碌集合；单人或拿不到对方数据时为 null。 */
   partnerBusy: Interval[] | null;
   /** 'LOCAL' | 'SNAPSHOT' | 'NONE'。 */
   partnerSource: string;
@@ -429,10 +433,11 @@ export class CommonTimeQueryService {
 
   static async loadDay(epochDay: number): Promise<DayBusy> {
     const dv: DayViewData = await ScheduleUseCase.getDayView(epochDay);
+    // 忙碌文案读真忙那一份，日视图画"不可用"才读含作息的那一份（两份都在 DayViewData 上）
     const day: DayBusy = {
       epochDay: dv.epochDay,
-      myBusy: dv.myBusy,
-      partnerBusy: dv.partnerBusy,
+      myBusy: dv.myTrueBusy,
+      partnerBusy: dv.partnerTrueBusy,
       partnerSource: dv.partnerSource,
       partnerShareLevel: dv.partnerShareLevel
     };

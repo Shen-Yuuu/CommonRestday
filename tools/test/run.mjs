@@ -123,6 +123,8 @@ export interface DayViewData {
   windows: Window[];
   myBusy: Interval[];
   partnerBusy: Interval[] | null;
+  myTrueBusy: Interval[];
+  partnerTrueBusy: Interval[] | null;
   partnerSource: string;
   partnerShareLevel: number;
 }
@@ -145,6 +147,7 @@ export class ScheduleUseCase {
   static async getDayView(epochDay: number): Promise<DayViewData> {
     const dv: DayViewData = {
       epochDay: epochDay, windows: [], myBusy: [], partnerBusy: null,
+      myTrueBusy: [], partnerTrueBusy: null,
       partnerSource: 'NONE', partnerShareLevel: 0
     };
     return dv;

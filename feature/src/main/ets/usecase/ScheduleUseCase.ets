@@ -35,10 +35,18 @@ export interface DayViewData {
   epochDay: number;
   /** 与当日有交叠的共同窗口（来自重算缓存，含 channel/tags 完整语义）。 */
   windows: Window[];
-  /** 我的不可用时间轴（真忙 + 睡眠/缓冲，与伴侣 notAvailable 同构）。 */
+  /** 我的不可用时间轴（真忙 + 睡眠/缓冲，与伴侣 notAvailable 同构）。画"这段时间不能安排"用它。 */
   myBusy: Interval[];
   /** 对方不可用时间轴；单人模式为 null。 */
   partnerBusy: Interval[] | null;
+  /**
+   * 我的"真忙"（班次 + 课程 + 计划 + 夜班恢复），不含作息与收整。
+   * 说"忙碌"的文案必须读这份：myBusy 里落在作息窗口内的块会被并进 SLEEP，
+   * 读文案时按 SLEEP 跳过，一段真实的计划或班次就说成了"全天空闲"（D-03）。
+   */
+  myTrueBusy: Interval[];
+  /** 对方与 myTrueBusy 同口径的集合；无对方数据为 null。 */
+  partnerTrueBusy: Interval[] | null;
   /** 'LOCAL' | 'SNAPSHOT'；无伴侣时为 'NONE'。 */
   partnerSource: string;
   /** 对方隐私等级（LOCAL 恒 3）；无伴侣时为 0。 */
@@ -457,6 +465,9 @@ export class ScheduleUseCase {
       windows: windows,
       myBusy: avail.notAvailable,
       partnerBusy: partner != null ? partner.busy : null,
+      myTrueBusy: avail.trueBusy,
+      // tripBusy 就是"剥掉作息的对方忙碌"：出行通道要的正是这份，文案与它同一口径
+      partnerTrueBusy: partner != null ? partner.tripBusy : null,
       partnerSource: partner != null ? partner.source : 'NONE',
       partnerShareLevel: partner != null ? partner.shareLevel : 0
     };

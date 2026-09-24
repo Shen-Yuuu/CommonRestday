@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from '@ohos/hypium';
 import { abilityDelegatorRegistry } from '@kit.TestKit';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { MIN_PER_DAY, todayEpochDay } from 'domain';
+import { CycleTemplate, MIN_PER_DAY, OWNER_ME, OWNER_PARTNER, ShiftType, todayEpochDay } from 'domain';
 import {
   Db, MigrationRunner, PAIRED, PAIR_NONE, SCHEMA_VERSION, SCHEMA_VERSION_KEY,
   ScheduleRepo, SettingsStore, PlanRow
@@ -22,6 +22,7 @@ import { CalendarState } from 'feature';
  *   （含阶段 6R.1 新增的"待清理"那一格：来源设备的句柄绝不能被这台机器的启动清扫认领）；
  * - 普通启动：同样这批计划行原样不动（不误伤）；
  * - 结构版本比本包高：整包不写库，也不把别人的版本号改小；
+ * - 班表三表的主键确实是 (owner, id)：同一个 id 在"我"和 TA 两侧各自成立、互不覆写（批次 K-5）；
  * - 恢复后配对：清 key、清 pairId、状态回 NONE 这三步在真机 Preferences 上确实落得住
  *   （密钥残留由测试直接经 Preferences 种下——阶段 6R.2 已删掉生产写入口，见 seedLegacyPairKey）。
  *
@@ -66,6 +67,27 @@ async function fixtureRow(): Promise<PlanRow | null> {
 /** 每次现取，避免把 Context 存在闭包变量里（也省掉"是否已赋值"的麻烦）。 */
 function appCtx(): common.Context {
   return abilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+}
+
+/** 某侧同名班次类型的条数：主键验收只关心"这一侧有没有、有几条"。 */
+async function countNamed(owner: string, name: string): Promise<number> {
+  const rows: ShiftType[] = await ScheduleRepo.listShiftTypes(owner);
+  let n: number = 0;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].name === name) {
+      n++;
+    }
+  }
+  return n;
+}
+
+/** 还原某侧的循环模板：原来没有就删掉验收行，原来有就按原样写回。 */
+async function restoreTemplate(owner: string, saved: CycleTemplate | null): Promise<void> {
+  if (saved != null) {
+    await ScheduleRepo.saveTemplate(saved, owner);
+  } else {
+    await ScheduleRepo.deleteTemplate(owner);
+  }
 }
 
 /**
@@ -118,6 +140,48 @@ export default function upgradeMigrationTest() {
       expect(await ScheduleRepo.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION));
       await relaunch();
       expect(Db.version()).assertEqual(SCHEMA_VERSION);
+    });
+
+    /**
+     * (owner, id) 主键的设备侧验收：同一个 id 在"我"和 TA 两侧各自成立，互不覆写。
+     * 这里是批次 K-5 的回归位——旧结构下 cycle_template.id 是全局主键，代录侧存 'main'
+     * 直接撞 UNIQUE（hilog：write failed … UNIQUE constraint failed: cycle_template.id），
+     * 而 shift_type 的种子 id 两侧同名，INSERT OR REPLACE 会把"我"的那一行整行改写成对方。
+     * 离线替身只能证明"发了哪些语句"，真库上撞不撞主键只有这里说了算。
+     */
+    it('same_id_coexists_for_both_owners', 0, async () => {
+      // saveTemplate 先按 owner 删再插，所以动任何一侧前都要把现场记下来、跑完原样还原
+      const savedMine: CycleTemplate | null = await ScheduleRepo.getTemplate(OWNER_ME);
+      const savedTheirs: CycleTemplate | null = await ScheduleRepo.getTemplate(OWNER_PARTNER);
+      const tpl: CycleTemplate = { id: 'keytest', name: '主键验收', seq: ['day'],
+        anchorEpochDay: todayEpochDay() };
+      const other: CycleTemplate = { id: 'keytest', name: '伴侣侧同名', seq: ['late'],
+        anchorEpochDay: todayEpochDay() + 1 };
+      await ScheduleRepo.saveTemplate(tpl, OWNER_ME);
+      await ScheduleRepo.saveTemplate(other, OWNER_PARTNER);
+      const mine = await ScheduleRepo.getTemplate(OWNER_ME);
+      const theirs = await ScheduleRepo.getTemplate(OWNER_PARTNER);
+      expect(mine != null).assertTrue();
+      expect(theirs != null).assertTrue();
+      expect((mine as CycleTemplate).name).assertEqual('主键验收');
+      expect((theirs as CycleTemplate).name).assertEqual('伴侣侧同名');
+      expect((theirs as CycleTemplate).anchorEpochDay).assertEqual(todayEpochDay() + 1);
+
+      const st: ShiftType = { id: 'keytest', name: '验收班次', color: '#E8833A',
+        startMin: 540, endMin: 1080, crossDay: false, commuteInMin: 0, commuteOutMin: 0,
+        recoveryMin: 0, nightMode: 0, allowActivity: false, kind: 'WORK' };
+      await ScheduleRepo.upsertShiftType(st, OWNER_ME);
+      await ScheduleRepo.upsertShiftType(st, OWNER_PARTNER);
+      expect(await countNamed(OWNER_ME, '验收班次')).assertEqual(1);
+      expect(await countNamed(OWNER_PARTNER, '验收班次')).assertEqual(1);
+      // 删一侧不许带走另一侧：deleteShiftType 的 owner 双条件也在这条里验
+      await ScheduleRepo.deleteShiftType('keytest', OWNER_PARTNER);
+      expect(await countNamed(OWNER_PARTNER, '验收班次')).assertEqual(0);
+      expect(await countNamed(OWNER_ME, '验收班次')).assertEqual(1);
+
+      await ScheduleRepo.deleteShiftType('keytest', OWNER_ME);
+      await restoreTemplate(OWNER_ME, savedMine);
+      await restoreTemplate(OWNER_PARTNER, savedTheirs);
     });
 
     /** 恢复标记：只在本机成立的三类事实一起作废，用户数据本身一条不少。 */

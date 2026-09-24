@@ -1,7 +1,7 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Logger } from 'commons';
-import { MigrationDb, MigrationRunner, SCHEMA_VERSION } from './MigrationRunner';
+import { MigrationDb, MigrationRunner, ownerScopedDdlList, SCHEMA_VERSION } from './MigrationRunner';
 
 const TAG = 'CrdDb';
 const DB_NAME = 'commonrestday.db';
@@ -10,30 +10,19 @@ const DB_NAME = 'commonrestday.db';
  * 建表语句：始终描述"当前目标结构"（= MigrationRunner.SCHEMA_VERSION），新装库一次建到位；
  * 存量库的差距由 MigrationRunner 补齐，禁止在此处再写"ALTER 失败就忽略"的兜底。
  * - 日期一律存 epochDay 整数（本地纪元日），避免字符串/时区往返错误；
- * - 班表四表含 owner 列（'ME' | 'PARTNER'，默认 'ME'），schedule_override 复合主键 (owner, epoch_day)；
+ * - 班表四表含 owner 列（'ME' | 'PARTNER'，默认 'ME'），主键一律带 owner：
+ *   shift_type / cycle_template / course 的 id 由代码固定或复用（种子班次 'day'、模板 'main'），
+ *   不带 owner 的全局主键会让代录侧的写入撞主键——撞不过就 REPLACE，把"我"的那一行整行改写成对方；
  * - plan 含 conflict_hint（冲突结果 JSON）与 reminder_id（本地提醒 id，-1 表示未注册）；
  * - plan.calendar_state/sync_state 为日历确认与云同步状态机占位，updated_at 供增量同步排序；
  * - computed_window 主键仍是 (start_min, end_min)：常规窗口上限 930 分钟、旅行窗口下限 960 分钟，
  *   两个通道的同一几何不可能重合，故无需把 channel 纳入主键；
  * - plan 不建 peer_event_hint 列（全仓库无读写代码，对方写入结果由 sync_meta 承载）。
  */
-const DDL: string[] = [
-  `CREATE TABLE IF NOT EXISTS shift_type (
-    id TEXT PRIMARY KEY, owner TEXT NOT NULL DEFAULT 'ME', name TEXT NOT NULL, color TEXT NOT NULL,
-    start_min INTEGER NOT NULL, end_min INTEGER NOT NULL, cross_day INTEGER NOT NULL DEFAULT 0,
-    commute_in_min INTEGER DEFAULT 0, commute_out_min INTEGER DEFAULT 0,
-    recovery_min INTEGER DEFAULT 0, night_mode INTEGER DEFAULT 0,
-    allow_activity INTEGER DEFAULT 0, kind TEXT DEFAULT 'WORK')`,
-  `CREATE TABLE IF NOT EXISTS cycle_template (
-    id TEXT PRIMARY KEY, owner TEXT NOT NULL DEFAULT 'ME', name TEXT NOT NULL, seq TEXT NOT NULL, anchor_day INTEGER NOT NULL)`,
+const DDL: string[] = ownerScopedDdlList().concat([
   `CREATE TABLE IF NOT EXISTS schedule_override (
     owner TEXT NOT NULL DEFAULT 'ME', epoch_day INTEGER NOT NULL, shift_type_id TEXT, note TEXT,
     PRIMARY KEY(owner, epoch_day))`,
-  `CREATE TABLE IF NOT EXISTS course (
-    id TEXT PRIMARY KEY, owner TEXT NOT NULL DEFAULT 'ME', name TEXT NOT NULL, weekday INTEGER NOT NULL,
-    section_start INTEGER NOT NULL, section_end INTEGER NOT NULL,
-    week_from INTEGER NOT NULL, week_to INTEGER NOT NULL,
-    parity INTEGER DEFAULT 0, place TEXT)`,
   `CREATE TABLE IF NOT EXISTS term_config (
     id INTEGER PRIMARY KEY CHECK(id=1), term_start INTEGER, section_times TEXT)`,
   `CREATE TABLE IF NOT EXISTS plan (
@@ -51,9 +40,9 @@ const DDL: string[] = [
     computed_at INTEGER NOT NULL DEFAULT 0, channel TEXT NOT NULL DEFAULT 'REGULAR',
     PRIMARY KEY(start_min, end_min))`,
   `CREATE TABLE IF NOT EXISTS sync_meta (k TEXT PRIMARY KEY, v TEXT)`
-];
+]);
 
-/** RdbStore → MigrationDb 适配：迁移层只见这四类能力，事务语义由 RdbStore 原生提供。 */
+/** RdbStore → MigrationDb 适配：迁移层只见这几类能力，事务语义由 RdbStore 原生提供。 */
 class RdbMigration implements MigrationDb {
   private store: relationalStore.RdbStore;
 
@@ -63,6 +52,18 @@ class RdbMigration implements MigrationDb {
 
   async execute(sql: string): Promise<void> {
     await this.store.executeSql(sql);
+  }
+
+  /** 表名来自本包的常量清单，不是用户输入；查不到（表不存在）返回空串。 */
+  async tableDDL(name: string): Promise<string> {
+    const rs = await this.store.querySql('SELECT "sql" FROM sqlite_master WHERE type=\'table\' AND name=?',
+      [name]);
+    let out: string = '';
+    if (rs.goToNextRow()) {
+      out = rs.getString(0);
+    }
+    rs.close();
+    return out;
   }
 
   /** 只读探测：SQLite 对不存在的表/列直接报错，此处仅把"读不了"折算成 false。 */

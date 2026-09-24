@@ -4,16 +4,14 @@ import {
   CommonTimePageData, CommonTimeQueryService, ExperienceMode, ScheduleUseCase, WindowFilter,
   WindowFilterKey, WindowSummary, horizonLabel
 } from 'feature';
-import {
-  CapsuleSegmentButtonV2, ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options,
-  ColorMetrics, LengthMetrics, SegmentButtonV2Items
-} from '@kit.ArkUI';
+import { ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options, SegmentButtonV2Items } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
+import { CapsuleSegment } from '../component/CapsuleSegment';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WindowCard } from '../component/WindowCard';
@@ -494,23 +492,13 @@ export struct CoTimeView {
 
   @Builder
   segmentControl() {
-    CapsuleSegmentButtonV2({
+    CapsuleSegment({
       items: this.segItems,
       selectedIndex: this.segment === COTIME_SEG_WINDOW ? 0 : 1,
-      $selectedIndex: (idx: number) => {
+      onPick: (idx: number) => {
         this.segment = idx === 0 ? COTIME_SEG_WINDOW : COTIME_SEG_PLANS;
-      },
-      itemFontSize: LengthMetrics.fp(14),
-      itemFontColor: ColorMetrics.resourceColor(DesignTokens.textSecondary),
-      itemSelectedFontColor: ColorMetrics.resourceColor(DesignTokens.heroText),
-      itemSelectedFontWeight: FontWeight.Medium,
-      itemSelectedBackgroundColor: ColorMetrics.resourceColor(DesignTokens.primary),
-      itemBorderRadius: LengthMetrics.vp(10),
-      buttonBackgroundColor: ColorMetrics.resourceColor(DesignTokens.fillSoft),
-      buttonBorderRadius: LengthMetrics.vp(14),
-      buttonPadding: LengthMetrics.vp(4)
+      }
     })
-      .width('100%')
   }
 
   /** 窗口分段：视图切换 + （列表专属）筛选档 + 内容。expanded 的列表走「列表—详情」双栏。 */

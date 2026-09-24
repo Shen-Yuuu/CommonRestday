@@ -1,4 +1,4 @@
-import { router } from '@kit.ArkUI';
+import { router, SegmentButtonV2Items } from '@kit.ArkUI';
 import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
 import { FeatureFlags, ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
 import { Logger } from 'commons';
@@ -6,6 +6,7 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { ownerFromParams, ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
+import { CapsuleSegment } from '../component/CapsuleSegment';
 import { DayShiftSheet } from '../component/DayShiftSheet';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
@@ -21,6 +22,10 @@ const PAGE_CYCLE = 'pages/CycleEditor';
 const PAGE_COURSE = 'pages/CourseImport';
 
 const TAG = 'ScheduleHub';
+
+/** 本页的两个视图：周历单独成视图，概况统计与四个主入口合成另一个。 */
+const VIEW_WEEK = 'week';
+const VIEW_MANAGE = 'manage';
 
 /** 读失败时的占位：0 是"确实没有"，破折号才是"不知道"，两者不能混用（D-22）。 */
 const STAT_UNKNOWN = '—';
@@ -62,6 +67,8 @@ const MAIN_ENTRIES: EntryItem[] = [
 /**
  * 日程录入页：从底部 Tab 降级为「我的 · 我的日程」里的栈目的地。
  * - 默认展示"我"的日程摘要与周视图；只有本机代录了伴侣（有档案或 TA 的班表数据）才出现"TA"侧；
+ * - 两个视图用与共同页同一款滑动选项卡切换：「周历」单独一屏，「日程管理」装摘要统计与四个主入口；
+ * - 系统标题栏藏掉了，所以页首要自己给一颗看得见的返回键（手势与返回键没有视觉线索）；
  * - 四个主入口：班次类型 / 循环模板 / 课程表 / 临时调整（单日改班 sheet）；
  * - 批量录入的二级入口首发不上线：`PaintMonth` / `OcrCourse` 两个旧录入页保留在路由表与 `main_pages.json` 里，只是这里不再给入口；
  * - 点周历日格 = 改这天的班，与主入口「临时调整」是同一条链路（临时调整默认今天）。
@@ -70,6 +77,9 @@ const MAIN_ENTRIES: EntryItem[] = [
 export struct ScheduleHub {
   /** 壳层 pushPathByName 带入的侧别：从「代录 TA 的班表」进入时直接落在 TA。 */
   initialOwner: string = OWNER_ME;
+  /** 返回动作由壳层注入：pop 的是它手里的 NavPathStack，本页够不到。 */
+  onBack: () => void = () => {
+  };
   @State private side: string = OWNER_ME;
   /** 本机是否代录过伴侣（有档案或 owner=PARTNER 数据）；纯云端配对不算代录。 */
   @State private partnerLocal: boolean = false;
@@ -86,6 +96,10 @@ export struct ScheduleHub {
   @State private sheetDay: number = 0;
   /** 本页容器宽度档位：expanded 把两组录入入口并排，正文按可读宽度收拢。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
+  /** 当前视图：进来默认落在周历——来这一页多半是看哪天能改，管理入口放第二屏。 */
+  @State private hubView: string = VIEW_WEEK;
+  /** 与共同页「时间窗口 / 共同计划」同款滑动选项卡；标题不带人称，两侧切换后仍然读得通。 */
+  segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '周历' }, { text: '日程管理' }]);
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
@@ -283,11 +297,50 @@ export struct ScheduleHub {
     return this.statusFailed ? STAT_UNKNOWN : value;
   }
 
+  /**
+   * 页首返回键。系统标题栏是本页自己藏掉的（标题与滚动都在正文里），
+   * 藏掉它就一起失去了唯一的可见出口；返回手势又没有视觉线索，
+   * 从「我的 · 我的日程」跳进来的人必须看得见"怎么回去"。
+   */
+  @Builder
+  backRow() {
+    Row({ space: 2 }) {
+      SymbolGlyph($r('sys.symbol.chevron_left'))
+        .fontSize(18).fontColor([DesignTokens.textSecondary])
+        // 箭头和"返回"是一回事，念两遍不如合成一句
+        .accessibilityLevel('no')
+      Text('返回')
+        .fontSize(DesignTokens.fontBody)
+        .fontColor(DesignTokens.textSecondary)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({ left: 2, right: DesignTokens.space3, top: DesignTokens.space5 })
+    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+    .focusable(true)
+    .accessibilityGroup(true)
+    .accessibilityText('返回上一页')
+    .onClick(() => this.onBack())
+  }
+
+  /** 视图切换：与共同页同一款胶囊分段（列表/周历那对 viewPill 是页内二级切换，不混用）。 */
+  @Builder
+  segmentControl() {
+    CapsuleSegment({
+      items: this.segItems,
+      selectedIndex: this.hubView === VIEW_WEEK ? 0 : 1,
+      onPick: (idx: number) => {
+        this.hubView = idx === 0 ? VIEW_WEEK : VIEW_MANAGE;
+      }
+    })
+  }
+
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
       // 周历网格本身超过一屏，整页必须可滚
       Scroll() {
         Column({ space: DesignTokens.space3 }) {
+          this.backRow()
           Column({ space: 2 }) {
             Text('日程录入')
               .fontSize(DesignTokens.fontTitle)
@@ -301,7 +354,6 @@ export struct ScheduleHub {
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
-          .padding({ top: DesignTokens.space5 })
 
           // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
           if (this.partnerLocal) {
@@ -327,34 +379,37 @@ export struct ScheduleHub {
               }
             })
           } else {
-            this.summaryCard()
+            this.segmentControl()
 
-            EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-              Column({ space: DesignTokens.space2 }) {
-                WeekScheduleView({
-                  owner: this.side,
-                  onPickDay: (epochDay: number) => {
-                    this.openDay(epochDay);
-                  }
-                })
-                Text('点周历里的某一天，可直接改这天的班')
-                  .fontSize(DesignTokens.fontCaption)
-                  .fontColor(DesignTokens.textHint)
-                  .width('100%').textAlign(TextAlign.Center)
+            if (this.hubView === VIEW_WEEK) {
+              EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+                Column({ space: DesignTokens.space2 }) {
+                  WeekScheduleView({
+                    owner: this.side,
+                    onPickDay: (epochDay: number) => {
+                      this.openDay(epochDay);
+                    }
+                  })
+                  Text('点周历里的某一天，可直接改这天的班')
+                    .fontSize(DesignTokens.fontCaption)
+                    .fontColor(DesignTokens.textHint)
+                    .width('100%').textAlign(TextAlign.Center)
+                }
+                .width('100%')
               }
-              .width('100%')
+            } else {
+              this.summaryCard()
+              this.mainEntriesCard()
+
+              // 云端档位关闭时不把用户指向一个已经收起来的入口（阶段 6R.2）
+              Text(FeatureFlags.cloudPairing
+                ? 'TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。'
+                : 'TA 的班表由你在这台手机上代录。')
+                .fontSize(DesignTokens.fontCaption)
+                .fontColor(DesignTokens.textHint)
+                .width('100%')
+                .padding({ bottom: DesignTokens.space6 })
             }
-
-            this.mainEntriesCard()
-
-            // 云端档位关闭时不把用户指向一个已经收起来的入口（阶段 6R.2）
-            Text(FeatureFlags.cloudPairing
-              ? 'TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。'
-              : 'TA 的班表由你在这台手机上代录。')
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textHint)
-              .width('100%')
-              .padding({ bottom: DesignTokens.space6 })
           }
         }
         .width('100%')

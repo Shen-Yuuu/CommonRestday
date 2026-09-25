@@ -454,6 +454,8 @@ export struct CoTimeView {
           detents: [SheetSize.LARGE],
           dragBar: false,
           showClose: false,
+          // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
+          radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
           blurStyle: BlurStyle.Thick
         })
       }
@@ -570,13 +572,15 @@ export struct CoTimeView {
   viewPill(label: string, mode: string) {
     Text(label)
       .fontSize(DesignTokens.fontCaption)
-      .fontWeight(this.viewMode === mode ? FontWeight.Medium : FontWeight.Normal)
-      .fontColor(this.viewMode === mode ? DesignTokens.heroText : DesignTokens.textSecondary)
+      // 与胶囊分段同一档糖：当前档白底粉字并浮起来，其余平贴在背板上
+      .fontWeight(FontWeight.Bold)
+      .fontColor(this.viewMode === mode ? DesignTokens.primary : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
       .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(this.viewMode === mode ? DesignTokens.primary : DesignTokens.fillWeak)
+      .backgroundColor(this.viewMode === mode ? DesignTokens.card : DesignTokens.fillWeak)
+      .shadow(this.viewMode === mode ? DesignTokens.floatShadow() : undefined)
       // 纯文字当按钮：焦点、朗读名都得补上，选中档前缀给读屏，页面上仍只靠底色区分
       .focusable(true)
       .accessibilityText((this.viewMode === mode ? '当前为' : '切换到') + label + '视图')

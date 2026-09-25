@@ -497,6 +497,8 @@ export struct PlansView {
           Button('改到替代时间').fontSize(12)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor($r('app.color.brand_pink'))
+            .fontWeight(FontWeight.Bold)
+            .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
             .onClick(() => this.askAcceptAlternative(arg.p))
         }
         this.linkAction({

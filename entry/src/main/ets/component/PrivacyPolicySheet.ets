@@ -54,6 +54,8 @@ export struct PrivacyPolicySheet {
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .borderRadius(DesignTokens.radiusPill)
           .backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textSecondary)
+          .fontWeight(FontWeight.Bold)
+          .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
           .onClick(() => this.onClose())
       }
       .width('100%')
@@ -99,6 +101,8 @@ export struct PrivacyPolicySheet {
     .width('100%')
     .height('100%')
     .backgroundColor(DesignTokens.card)
+    // 7 分甜的 sheet 面是竖向暖白渐变，不是一块平色（原型 .sheet）
+    .linearGradient(DesignTokens.sheetGradient())
     // 系统 sheet 的底色与模糊在调用处一并关掉（避免两层不透明底叠加），
     // 圆角因此由本组件自己画。
     .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })

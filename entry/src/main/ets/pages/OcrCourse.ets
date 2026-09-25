@@ -9,6 +9,7 @@ import { OWNER_ME, Course, ParsedCourseLine, parseCourseText, toCourse } from 'd
 import { Logger } from 'commons';
 import { ScheduleCommandService } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 
 const TAG = 'OcrCourse';
@@ -117,10 +118,14 @@ struct OcrCourse {
           Row({ space: 10 }) {
             Button(this.busy ? '识别中…' : '拍照识别')
               .backgroundColor($r('app.color.info_blue')).layoutWeight(1).height(44).borderRadius(22)
+              .fontWeight(FontWeight.Bold)
+              .shadow(DesignTokens.jelly(DesignTokens.infoDeep, DesignTokens.jellyDepth))
               .enabled(!this.busy)
               .onClick(() => this.takePhoto())
             Button('相册选图')
               .backgroundColor($r('app.color.accent_purple')).layoutWeight(1).height(44).borderRadius(22)
+              .fontWeight(FontWeight.Bold)
+              .shadow(DesignTokens.jelly(DesignTokens.accentDeep, DesignTokens.jellyDepth))
               .enabled(!this.busy)
               .onClick(() => this.pickImage())
           }.width('100%')
@@ -132,8 +137,13 @@ struct OcrCourse {
             Text('识别文本（可手工修正后重新解析）').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.ocrText, placeholder: '识别结果将显示在这里' })
               .height(110).fontSize(13).width('100%')
+              .borderRadius(DesignTokens.radiusInput)
+              .border({ width: 1.5, color: DesignTokens.primaryBorder })
+              .backgroundColor(DesignTokens.card)
               .onChange((v: string) => this.ocrText = v)
             Button('重新解析').height(34).backgroundColor($r('app.color.info_blue'))
+              .fontWeight(FontWeight.Bold)
+              .shadow(DesignTokens.jelly(DesignTokens.infoDeep, DesignTokens.jellyDepth))
               .onClick(() => this.parsed = parseCourseText(this.ocrText))
           }
           .width('100%').padding(12).borderRadius(16)
@@ -157,6 +167,8 @@ struct OcrCourse {
 
           if (this.parsed.length > 0) {
             Button('保存通过项').width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.success_green'))
+              .fontWeight(FontWeight.Bold)
+              .shadow(DesignTokens.jelly(DesignTokens.successDeep, DesignTokens.jellyDepth))
               .onClick(() => this.saveParsed())
           }
         }

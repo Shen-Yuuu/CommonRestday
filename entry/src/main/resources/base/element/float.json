@@ -65,6 +65,10 @@
       "value": "34vp"
     },
     {
+      "name": "radius_input",
+      "value": "16vp"
+    },
+    {
       "name": "radius_pill",
       "value": "999vp"
     },

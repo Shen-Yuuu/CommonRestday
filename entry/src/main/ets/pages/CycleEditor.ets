@@ -4,6 +4,7 @@ import { ScheduleRepo } from 'data';
 import { AppConst, DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 
 /**
@@ -182,15 +183,17 @@ struct CycleEditor {
               ForEach(this.types, (st: ShiftType) => {
                 Text(st.name)
                   .fontSize(13).fontColor('#FFFFFF')
+                  .fontWeight(FontWeight.Bold)
                   .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                  .borderRadius(14).backgroundColor(st.color)
+                  .borderRadius(DesignTokens.radiusPill).backgroundColor(st.color)
                   .onClick(() => this.seq.push(st.id))
               }, (st: ShiftType) => st.id)
               // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
               Text('休息')
                 .fontSize(13).fontColor('#FFFFFF')
+                .fontWeight(FontWeight.Bold)
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                .borderRadius(14).backgroundColor(REST_COLOR)
+                .borderRadius(DesignTokens.radiusPill).backgroundColor(REST_COLOR)
                 .onClick(() => this.seq.push(REST_IN_SEQ))
             }.width('100%')
 
@@ -202,8 +205,9 @@ struct CycleEditor {
                 ForEach(this.seq, (id: string, idx: number) => {
                   Text((idx + 1) + '.' + this.typeName(id))
                     .fontSize(12).fontColor('#FFFFFF')
+                    .fontWeight(FontWeight.Bold)
                     .padding({ left: 8, right: 8, top: 5, bottom: 5 })
-                    .borderRadius(12).backgroundColor(this.typeColor(id))
+                    .borderRadius(DesignTokens.radiusPill).backgroundColor(this.typeColor(id))
                     .onClick(() => this.seq.splice(idx, 1))
                 }, (id: string, idx: number) => idx + '-' + id)
               }.width('100%')
@@ -228,7 +232,10 @@ struct CycleEditor {
           .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
 
           Button(this.hasTemplate ? '更新模板' : '保存并展开班表')
-            .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink')).onClick(() => this.save())
+            .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink'))
+            .fontWeight(FontWeight.Bold)
+            .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
+            .onClick(() => this.save())
 
           Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班点周历里的某一天。')
             .fontSize(11).fontColor($r('app.color.text_hint'))
@@ -246,6 +253,8 @@ struct CycleEditor {
       detents: [SheetSize.MEDIUM],
       dragBar: false,
       showClose: false,
+      // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
+      radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
       blurStyle: BlurStyle.Thick
     })
   }
@@ -267,11 +276,15 @@ struct CycleEditor {
       Row({ space: 10 }) {
         Button('取消').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.btn_neutral'))
+          .fontWeight(FontWeight.Bold)
+          .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
           .onClick(() => {
             this.anchorSheetVisible = false;
           })
         Button('确定').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.brand_pink'))
+          .fontWeight(FontWeight.Bold)
+          .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
           .onClick(() => this.confirmAnchor())
       }.width('100%')
     }

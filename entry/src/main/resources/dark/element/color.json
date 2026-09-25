@@ -69,6 +69,10 @@
       "value": "#241C3B"
     },
     {
+      "name": "sheet_top",
+      "value": "#2E2545"
+    },
+    {
       "name": "border_weak",
       "value": "#3A2D52"
     },
@@ -129,12 +133,20 @@
       "value": "#9CCBF8"
     },
     {
+      "name": "info_deep",
+      "value": "#3E7DBF"
+    },
+    {
       "name": "info_bg",
       "value": "#24344E"
     },
     {
       "name": "accent_purple",
       "value": "#CFAFF5"
+    },
+    {
+      "name": "accent_deep",
+      "value": "#6F4C9E"
     },
     {
       "name": "warn_orange",

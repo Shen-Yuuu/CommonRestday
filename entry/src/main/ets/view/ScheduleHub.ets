@@ -163,14 +163,16 @@ export struct ScheduleHub {
   sidePill(label: string, partner: boolean) {
     Text(label)
       .fontSize(DesignTokens.fontCaption)
-      .fontWeight(this.isPartnerSide() === partner ? FontWeight.Medium : FontWeight.Normal)
-      .fontColor(this.isPartnerSide() === partner ? DesignTokens.heroText : DesignTokens.textSecondary)
+      // 7 分甜的当前档是一颗凸起来的白糖（白底粉字 + 落影），不再是品牌色色块
+      .fontWeight(FontWeight.Bold)
+      .fontColor(this.isPartnerSide() === partner ? DesignTokens.primary : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
       .padding({ top: DesignTokens.space2, bottom: DesignTokens.space2 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(this.isPartnerSide() === partner ? DesignTokens.primary : Color.Transparent)
+      .backgroundColor(this.isPartnerSide() === partner ? DesignTokens.card : Color.Transparent)
+      .shadow(this.isPartnerSide() === partner ? DesignTokens.floatShadow() : undefined)
       .focusable(true)
       // 选中的那一侧只剩底色区别，读屏要念出"当前"
       .accessibilityText(this.isPartnerSide() === partner ? '当前查看' + label : '切换到' + label)
@@ -413,6 +415,8 @@ export struct ScheduleHub {
         detents: [SheetSize.MEDIUM, SheetSize.LARGE],
         dragBar: false,
         showClose: false,
+        // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
+        radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
         blurStyle: BlurStyle.Thick
       })
     }

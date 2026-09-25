@@ -109,12 +109,20 @@
       "value": "#79B8F5"
     },
     {
+      "name": "info_deep",
+      "value": "#4E97DB"
+    },
+    {
       "name": "info_bg",
       "value": "#EAF3FE"
     },
     {
       "name": "accent_purple",
       "value": "#BC92F2"
+    },
+    {
+      "name": "accent_deep",
+      "value": "#9A6BDC"
     },
     {
       "name": "warn_orange",
@@ -203,6 +211,10 @@
     {
       "name": "page_bg_warm",
       "value": "#FFF6F3"
+    },
+    {
+      "name": "sheet_top",
+      "value": "#FFF9F6"
     },
     {
       "name": "sunset_from",

@@ -272,5 +272,7 @@ export struct DayShiftSheet {
     .alignItems(HorizontalAlign.Start)
     .padding({ left: 20, right: 20, top: DesignTokens.space4, bottom: DesignTokens.space6 })
     .backgroundColor(DesignTokens.page)
+    // 7 分甜的 sheet 面是竖向暖白渐变，不是一块平色（原型 .sheet）
+    .linearGradient(DesignTokens.sheetGradient())
   }
 }

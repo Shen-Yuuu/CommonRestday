@@ -64,6 +64,8 @@ export class DesignTokens {
   static readonly fillSoft: Resource = $r('app.color.fill_soft');
   static readonly fillWeakest: Resource = $r('app.color.fill_weakest');
   static readonly sheetHandle: Resource = $r('app.color.sheet_handle');
+  /** 半模态顶沿比页面亮一档的暖白（原型 .sheet 渐变起点，深色档是 #2E2545）。 */
+  static readonly sheetTop: Resource = $r('app.color.sheet_top');
 
   // ---- 语义色 ----
   static readonly success: Resource = $r('app.color.success_green');
@@ -85,6 +87,11 @@ export class DesignTokens {
   static readonly dangerBg: Resource = $r('app.color.danger_bg');
   static readonly dangerBorder: Resource = $r('app.color.danger_border');
   static readonly warn: Resource = $r('app.color.warn_orange');
+  /** OCR/相册入口等非品牌色按钮：糖果化后要的是"同色深一档的下沿"，故各自配一条 deep。 */
+  static readonly info: Resource = $r('app.color.info_blue');
+  static readonly infoDeep: Resource = $r('app.color.info_deep');
+  static readonly accent: Resource = $r('app.color.accent_purple');
+  static readonly accentDeep: Resource = $r('app.color.accent_deep');
 
   // ---- 共同空闲分级色：周历色块按当日共同空闲时长分三档（≥6h 用 primary） ----
   static readonly freeMid: Resource = $r('app.color.month_free_mid_bg');
@@ -113,6 +120,7 @@ export class DesignTokens {
   static readonly radiusHero: Resource = $r('app.float.radius_hero');
   static readonly radiusHeroCut: Resource = $r('app.float.radius_hero_cut');
   static readonly radiusSheet: Resource = $r('app.float.radius_sheet');
+  static readonly radiusInput: Resource = $r('app.float.radius_input');
   static readonly radiusPill: Resource = $r('app.float.radius_pill');
   static readonly hitMin: Resource = $r('app.float.hit_min');
 
@@ -172,6 +180,12 @@ export class DesignTokens {
     return { topLeft: round, topRight: cut, bottomLeft: round, bottomRight: round };
   }
 
+  /** 周历糖块：10/10/10/4，右下角收成尖，一列块叠起来才有节奏（原型 .cblk）。 */
+  static blockRadius(): BorderRadiuses {
+    const round: Resource = DesignTokens.radiusCardCut;
+    return { topLeft: round, topRight: round, bottomLeft: round, bottomRight: 4 };
+  }
+
   /** 主结果卡（hero）比正文卡大一档：16/30/30/30。 */
   static heroRadius(): BorderRadiuses {
     return {
@@ -203,6 +217,14 @@ export class DesignTokens {
   /** 浮在页面上的小白块（日期印章、浮岛底栏）：CSS `0 8px 18px`，比卡片轻一档。 */
   static floatShadow(): ShadowOptions {
     return { radius: 18, color: DesignTokens.shadowSoft, offsetX: 0, offsetY: 8 };
+  }
+
+  /**
+   * 半模态的面：顶部一档亮暖白向下并回页面色（原型 .sheet 的竖向渐变）。
+   * 系统 sheet 的 backgroundColor 只吃单色，所以渐变画在 sheet 自己的根容器上。
+   */
+  static sheetGradient(): LinearGradientOptions {
+    return { angle: 180, colors: [[DesignTokens.sheetTop, 0], [DesignTokens.page, 1]] };
   }
 
   /** 开启减少动效时时长归零：位移动画退化为直接呈现。 */

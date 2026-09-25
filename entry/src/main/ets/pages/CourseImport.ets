@@ -8,6 +8,7 @@ import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 
 /**
@@ -241,8 +242,11 @@ struct CourseImport {
                 .onChange((v: string) => this.sectionText = v)
               Row({ space: 10 }) {
                 Button('保存节次').backgroundColor($r('app.color.brand_pink')).height(34)
+                  .fontWeight(FontWeight.Bold)
+                  .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
                   .onClick(() => this.saveSections())
                 Button('恢复默认').backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary')).height(34)
+                  .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
                   .onClick(() => this.resetSections())
               }
               Text('第 N 节对应第 N 行；课程按"第 X-X 节"映射到这里的起止时间。')
@@ -267,8 +271,12 @@ struct CourseImport {
               .onChange((v: string) => this.pasteText = v)
             Row({ space: 10 }) {
               Button('解析预览').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
+                .fontWeight(FontWeight.Bold)
+                .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
                 .onClick(() => this.doParse())
               Button('保存通过项').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
+                .fontWeight(FontWeight.Bold)
+                .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
                 .onClick(() => this.saveParsed())
             }
             ForEach(this.parsed, (p: ParsedCourseLine) => {
@@ -297,34 +305,54 @@ struct CourseImport {
           Column({ space: 8 }) {
             Text('手动添加').fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             TextInput({ text: this.manualName, placeholder: '课程名' })
-              .height(38).width('100%')
+              .height(42).width('100%')
+              .borderRadius(DesignTokens.radiusInput)
+              .border({ width: 1.5, color: DesignTokens.primaryBorder })
+              .backgroundColor(DesignTokens.card)
               .onChange((v: string) => this.manualName = v)
             Row({ space: 6 }) {
               ForEach(['一', '二', '三', '四', '五', '六', '日'], (w: string, i: number) => {
                 Text('周' + w).fontSize(12)
+                  .fontWeight(FontWeight.Bold)
                   .padding({ left: 7, right: 7, top: 5, bottom: 5 })
-                  .borderRadius(10)
+                  .borderRadius(DesignTokens.radiusPill)
                   .fontColor(this.manualWd === i + 1 ? $r('app.color.hero_fg') : $r('app.color.text_secondary'))
                   .backgroundColor(this.manualWd === i + 1 ? $r('app.color.brand_pink') : $r('app.color.fill_weak'))
+                  .shadow(this.manualWd === i + 1
+                    ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip) : undefined)
                   .onClick(() => this.manualWd = i + 1)
               }, (w: string) => w)
             }
             Row({ space: 6 }) {
               Text('第').fontSize(13)
-              TextInput({ text: '' + this.manualSecFrom }).width(40).height(36)
+              TextInput({ text: '' + this.manualSecFrom }).width(40).height(42)
+                .borderRadius(DesignTokens.radiusInput)
+                .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                .backgroundColor(DesignTokens.card)
                 .onChange((v: string) => this.manualSecFrom = this.toInt(v, 1))
               Text('—').fontSize(13)
-              TextInput({ text: '' + this.manualSecTo }).width(40).height(36)
+              TextInput({ text: '' + this.manualSecTo }).width(40).height(42)
+                .borderRadius(DesignTokens.radiusInput)
+                .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                .backgroundColor(DesignTokens.card)
                 .onChange((v: string) => this.manualSecTo = this.toInt(v, 2))
               Text('节').fontSize(13)
               Text('周次').fontSize(13).margin({ left: 8 })
-              TextInput({ text: this.manualWeekFrom }).width(44).height(36)
+              TextInput({ text: this.manualWeekFrom }).width(44).height(42)
+                .borderRadius(DesignTokens.radiusInput)
+                .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                .backgroundColor(DesignTokens.card)
                 .onChange((v: string) => this.manualWeekFrom = v)
               Text('—').fontSize(13)
-              TextInput({ text: this.manualWeekTo }).width(44).height(36)
+              TextInput({ text: this.manualWeekTo }).width(44).height(42)
+                .borderRadius(DesignTokens.radiusInput)
+                .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                .backgroundColor(DesignTokens.card)
                 .onChange((v: string) => this.manualWeekTo = v)
             }
             Button('添加课程').width('100%').height(40).borderRadius(20).backgroundColor($r('app.color.brand_pink'))
+              .fontWeight(FontWeight.Bold)
+              .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
               .onClick(() => this.saveManual())
           }
           .alignItems(HorizontalAlign.Start)
@@ -370,6 +398,8 @@ struct CourseImport {
       detents: [SheetSize.MEDIUM],
       dragBar: false,
       showClose: false,
+      // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
+      radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
       blurStyle: BlurStyle.Thick
     })
   }
@@ -391,11 +421,15 @@ struct CourseImport {
       Row({ space: 10 }) {
         Button('取消').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.btn_neutral'))
+          .fontWeight(FontWeight.Bold)
+          .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
           .onClick(() => {
             this.termSheetVisible = false;
           })
         Button('确定').layoutWeight(1).height(42).borderRadius(21)
           .backgroundColor($r('app.color.brand_pink'))
+          .fontWeight(FontWeight.Bold)
+          .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
           .onClick(() => this.confirmTermStart())
       }.width('100%')
     }

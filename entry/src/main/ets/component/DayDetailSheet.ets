@@ -3,6 +3,7 @@ import { DateLabel } from 'commons';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
+import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DayShiftSheet } from './DayShiftSheet';
 
@@ -207,16 +208,18 @@ export struct DayDetailSheet {
         Blank()
         if (this.editing) {
           Text('返回概览').fontSize(14).fontColor($r('app.color.text_secondary'))
+            .fontWeight(FontWeight.Bold)
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-            .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
+            .borderRadius(DesignTokens.radiusPill).backgroundColor($r('app.color.fill_weakest'))
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
             .accessibilityText('返回当日概览')
             .onClick(() => this.backToOverview())
         } else {
           Text('改这天').fontSize(14).fontColor($r('app.color.brand_pink'))
+            .fontWeight(FontWeight.Bold)
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-            .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
+            .borderRadius(DesignTokens.radiusPill).backgroundColor($r('app.color.fill_weakest'))
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
             .accessibilityText('改这天的班，只影响这一天')
@@ -324,8 +327,9 @@ export struct DayDetailSheet {
             ForEach(w.displayTags, (t: string) => {
               Text(displayTagLabel(t))
                 .fontSize(10).fontColor('#FFFFFF')
+                .fontWeight(FontWeight.Bold)
                 .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-                .borderRadius(8).backgroundColor(tagColor(t))
+                .borderRadius(DesignTokens.radiusPill).backgroundColor(tagColor(t))
             }, (t: string) => t)
           }
         }

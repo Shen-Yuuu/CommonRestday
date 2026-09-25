@@ -568,8 +568,9 @@ export struct WeekScheduleView {
   @Builder
   currentWeekChip() {
     Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
+      .fontWeight(FontWeight.Bold)
       .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-      .borderRadius(10)
+      .borderRadius(DesignTokens.radiusPill)
       .backgroundColor($r('app.color.brand_pink_bg'))
       // 纯文字当按钮用：热区、焦点、朗读名都得自己补，缺一项读屏用户就找不到回到本周的入口
       .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -649,6 +650,7 @@ export struct WeekScheduleView {
               Column() {
                 Text(item.name)
                   .fontSize(9).fontColor('#FFFFFF')
+                  .fontWeight(FontWeight.Bold)
                   .maxLines(2)
                   .width('100%').textAlign(TextAlign.Center)
               }
@@ -656,7 +658,7 @@ export struct WeekScheduleView {
               .height(this.blockH(item.start, item.end))
               .position({ x: 1, y: this.blockY(item.start, ed) })
               .backgroundColor(item.color)
-              .borderRadius(4)
+              .borderRadius(DesignTokens.blockRadius())
               .clip(true)
               .accessibilityGroup(true)
               .accessibilityText(this.scheduleBlockRead(item, ed))
@@ -811,6 +813,7 @@ export struct WeekScheduleView {
               Column() {
                 Text(this.blockLabel(b))
                   .fontSize(9).fontColor(this.freeFg(b.end - b.start))
+                  .fontWeight(FontWeight.Bold)
                   .maxLines(2)
                   .width('100%').textAlign(TextAlign.Center)
               }
@@ -818,7 +821,7 @@ export struct WeekScheduleView {
               .height(this.blockH(b.start, b.end))
               .position({ x: 1, y: this.blockY(b.start, ed) })
               .backgroundColor(this.freeBg(b.end - b.start))
-              .borderRadius(4)
+              .borderRadius(DesignTokens.blockRadius())
               .clip(true)
               .focusable(true)
               .accessibilityGroup(true)

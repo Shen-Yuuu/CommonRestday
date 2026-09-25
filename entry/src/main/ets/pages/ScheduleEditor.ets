@@ -6,6 +6,7 @@ import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHint, nightModeIndex, nightModeOf } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 
 const COLORS: string[] = ['#E8833A', '#3AA6E8', '#8A63D2', '#D24A7E', '#2B4C9B', '#4E9A63', '#C9A227', '#7A7A7A'];
@@ -235,28 +236,46 @@ struct ScheduleEditor {
               Row({ space: 8 }) {
                 Text('名称').fontSize(13)
                 TextInput({ text: this.name }).onChange((v: string) => this.name = v)
-                  .layoutWeight(1).height(38)
+                  .layoutWeight(1).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
               }.width('100%')
               Row({ space: 8 }) {
                 Text('上班').fontSize(13)
                 TextInput({ text: this.startText }).onChange((v: string) => this.startText = v)
-                  .width(76).height(38)
+                  .width(76).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
                 Text('下班').fontSize(13)
                 TextInput({ text: this.endText }).onChange((v: string) => this.endText = v)
-                  .width(76).height(38)
+                  .width(76).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
                 Text('跨天自动识别').fontSize(10).fontColor($r('app.color.text_tertiary'))
               }.width('100%')
               Row({ space: 8 }) {
                 Text('前通勤(分)').fontSize(13)
-                TextInput({ text: this.commuteIn }).onChange((v: string) => this.commuteIn = v).width(56).height(38)
+                TextInput({ text: this.commuteIn }).onChange((v: string) => this.commuteIn = v).width(56).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
                 Text('后通勤(分)').fontSize(13)
-                TextInput({ text: this.commuteOut }).onChange((v: string) => this.commuteOut = v).width(56).height(38)
+                TextInput({ text: this.commuteOut }).onChange((v: string) => this.commuteOut = v).width(56).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
               }.width('100%')
               // D-35：三对「标签＋输入框」同排时 Row 不折行，第三枚被推到屏外只剩 5 px。
               // 恢复值是 recovery 分钟数的唯一入口，必须单独占一排才够得着。
               Row({ space: 8 }) {
                 Text('夜班恢复(分)').fontSize(13)
-                TextInput({ text: this.recovery }).onChange((v: string) => this.recovery = v).width(56).height(38)
+                TextInput({ text: this.recovery }).onChange((v: string) => this.recovery = v).width(56).height(42)
+                  .borderRadius(DesignTokens.radiusInput)
+                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
+                  .backgroundColor(DesignTokens.card)
               }.width('100%')
               Row({ space: 8 }) {
                 Text('夜班判定').fontSize(13)
@@ -291,10 +310,14 @@ struct ScheduleEditor {
               Row({ space: 10 }) {
                 Button('保存班次').layoutWeight(1).height(44).borderRadius(22)
                   .backgroundColor($r('app.color.brand_pink'))
+                  .fontWeight(FontWeight.Bold)
+                  .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
                   .onClick(() => this.save())
                 Button(this.persisted ? '删除' : '取消')
                   .layoutWeight(1).height(44).borderRadius(22)
                   .backgroundColor($r('app.color.fill_weak')).fontColor(this.persisted ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
+                  .fontWeight(FontWeight.Bold)
+                  .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
                   .onClick(() => this.askDelete())
               }.width('100%')
             }
@@ -323,6 +346,8 @@ struct ScheduleEditor {
       detents: [SheetSize.LARGE],
       dragBar: false,
       showClose: true,
+      // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
+      radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
       blurStyle: BlurStyle.Thick
     })
   }

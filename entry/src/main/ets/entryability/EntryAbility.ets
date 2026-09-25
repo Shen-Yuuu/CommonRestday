@@ -86,6 +86,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    // 先看一眼钟（K-4③）：后台那段时间"现在"已经走了，游标要挪。
+    // 与下面的日切重算分开，是因为它不代表数据变了，只是让看钟的界面重取值。
+    ScheduleUseCase.notifyClockTick();
     // 日切重算（PRD L8/L12）：跨天回到前台时窗口缓存已过期，重算并广播刷新
     try {
       if (SettingsStore.getLastRecomputeDay() !== todayEpochDay()) {

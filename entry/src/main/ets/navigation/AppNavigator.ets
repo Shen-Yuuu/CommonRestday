@@ -1,6 +1,6 @@
 import { router } from '@kit.ArkUI';
 import { Logger } from 'commons';
-import { PairingShareGateway } from 'feature';
+import { PairingShareGateway, ScheduleUseCase } from 'feature';
 import { HomeView } from '../view/HomeView';
 import { CoTimeView } from '../view/CoTimeView';
 import { MeView } from '../view/MeView';
@@ -183,6 +183,8 @@ export struct AppNavigator {
         .barBackgroundColor(Color.Transparent)
         .onChange((idx: number) => {
           this.activeTab = idx;
+          // 切页就是一次「重进」：看不见的那几分钟钟是不走的，切回来要重取值（K-4③）
+          ScheduleUseCase.notifyClockTick();
         })
 
         this.navIsland()
@@ -219,6 +221,13 @@ export struct AppNavigator {
       }
       .hideTitleBar(true)
       .backgroundColor($r('app.color.page_bg_warm'))
+      // 进出班表页各看一次钟：被它盖住的 Tab 页（以及从录入页返回后的自己）都没有别的重进信号（K-4③）
+      .onShown(() => {
+        ScheduleUseCase.notifyClockTick();
+      })
+      .onHidden(() => {
+        ScheduleUseCase.notifyClockTick();
+      })
     }
   }
 

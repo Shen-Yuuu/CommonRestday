@@ -89,9 +89,21 @@ export struct WeekScheduleView {
   @StorageProp('recomputeCount') @Watch('reload') recomputeCount: number = 0;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
+  /**
+   * 钟点广播键（K-4③）：回前台与切页时自增，「现在」游标跟着重取一次值。
+   * 与 recomputeCount 分开是因为它不代表数据变了——挂在重算键上会把六页的 RDB 读全触发一遍。
+   */
+  @StorageProp('crdClockTick') @Watch('refreshNow') clockTick: number = 0;
+  /** 当下分钟数（epoch 分钟，与窗口起止同一把尺子）；0 表示还没看过钟。 */
+  @State nowMin: number = 0;
 
   aboutToAppear(): void {
     this.loadWeek();
+  }
+
+  /** 重新看一眼钟：不排定时器、不做常驻动画，进页面/回前台时准就够了（K-4③ 的口径）。 */
+  refreshNow(): void {
+    this.nowMin = this.nowEpochMin();
   }
 
   reload(): void {
@@ -131,6 +143,8 @@ export struct WeekScheduleView {
   }
 
   loadWeek(): void {
+    // 每次读数顺带重取一次当下：翻页/切侧/首帧都经过这里，游标不会停在旧分钟上
+    this.refreshNow();
     if (this.isCommon()) {
       this.loadCommonWeek();
       return;
@@ -430,6 +444,37 @@ export struct WeekScheduleView {
     return this.isCommon() ? Math.max(h - 1, 4) : Math.max(h, 14);
   }
 
+  /**
+   * 「现在」游标画不画（K-4③）：落在纵轴覆盖的那段里才有容身之处。
+   * 凌晨缩略掉的那几段不画——游标停不出轴，画在边缘反而像标错了日子。
+   */
+  nowShown(): boolean {
+    const minuteOfDay = this.nowMin % MIN_PER_DAY;
+    return minuteOfDay >= this.axisStart * 60 && minuteOfDay <= AXIS_END * 60;
+  }
+
+  /**
+   * 「现在」静态游标：一枚点 + 一条向右淡出的细线，压在色块之上，只作装饰。
+   * 里面不放时间文字——半列约 40vp，两行字会互相压（与 K-4 ④ 同一理由），
+   * 读数由列头的「今天」与各块自己的 accessibilityText 承担。
+   * 全部读 this.*，不经带值传参的 @Builder：那条链路在 ArkUI 里不随状态刷新（D-24 同族）。
+   */
+  @Builder
+  nowMarker() {
+    Row()
+      .width('100%')
+      .height(1.5)
+      .position({ x: 0, y: this.blockY(this.nowMin, todayEpochDay()) })
+      .linearGradient({ angle: 90, colors: [[DesignTokens.primary, 0], [Color.Transparent, 1]] })
+      .accessibilityLevel('no')
+    Circle()
+      .width(5)
+      .height(5)
+      .fill(DesignTokens.primary)
+      .position({ x: 0, y: this.blockY(this.nowMin, todayEpochDay()) - 2 })
+      .accessibilityLevel('no')
+  }
+
   /** 周历底部说明：按当前周与结果给一句可操作的话，不给空泛提示。 */
   private commonNote(): string {
     const today = todayEpochDay();
@@ -616,6 +661,11 @@ export struct WeekScheduleView {
               .accessibilityGroup(true)
               .accessibilityText(this.scheduleBlockRead(item, ed))
             }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
+
+            // 「现在」游标画在色块之上：压在被遮住的班次下面就等于没有（K-4③）
+            if (ed === todayEpochDay() && this.nowShown()) {
+              this.nowMarker()
+            }
           }
           .width('14.28%')
           .height(this.gridH())
@@ -775,6 +825,11 @@ export struct WeekScheduleView {
               .accessibilityText(this.freeBlockRead(b, ed))
               .onClick(() => this.onPickWindow(b.winStart, b.winEnd))
             }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start)
+
+            // 「现在」游标：与日程模式同一枚画法，画在所有块之上（K-4③）
+            if (ed === todayEpochDay() && this.nowShown()) {
+              this.nowMarker()
+            }
           }
           .width('14.28%')
           .height(this.gridH())

@@ -55,6 +55,13 @@ export interface DayViewData {
 /** 重算计数广播键（UI 页面 @Monitor/AppStorage 订阅刷新）。 */
 export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
 
+/**
+ * 钟点广播键（K-4③）：回前台与切页时自增一次，让"现在"这类钟点读数重新取值。
+ * 与 recomputeCount 分开，是因为它不代表任何数据变化——订阅它的只有需要看钟的界面，
+ * 挂到重算键上会把六页的 RDB 读全部触发一遍。
+ */
+export const CLOCK_TICK_KEY = 'crdClockTick';
+
 /** 班表用例层：仓库 → 领域引擎 的装配与编排。 */
 export class ScheduleUseCase {
   /** 首次使用时写入内置班次类型（按 owner 维度各自种子一份，双侧体验一致）。 */
@@ -409,6 +416,12 @@ export class ScheduleUseCase {
     if (SettingsStore.getPairState() === PAIRED) {
       ScheduleUseCase.pushMySnapshot(todayEpochDay());
     }
+  }
+
+  /** 广播一次"重新看钟"：只让钟点读数取值，不读库、不重算（见 CLOCK_TICK_KEY）。 */
+  static notifyClockTick(): void {
+    const cur: number = AppStorage.get<number>(CLOCK_TICK_KEY) ?? 0;
+    AppStorage.setOrCreate<number>(CLOCK_TICK_KEY, cur + 1);
   }
 
   // ---------- 日视图（DayDetailSheet 数据源） ----------

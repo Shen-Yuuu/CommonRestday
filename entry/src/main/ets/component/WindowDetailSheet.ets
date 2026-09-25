@@ -82,9 +82,10 @@ export struct WindowDetailSheet {
   }
 
   /**
-   * 把默认起点挪到自己的作息之外（D-25）：旅行通道的窗口只扣真忙、不扣睡眠，
+   * 把默认起点挪到双方都排不开的时间之外（D-25 / D-28）：旅行通道的窗口只扣真忙、不扣睡眠，
    * 一段连续休息的窗口从 00:00 就开始，于是"点开窗口不改动任何参数直接保存"的第一条计划
    * 必然收到一句"落在你的作息时段外"——那是本应用自己给的答案反驳自己。
+   * 本机代录态下这一份含 TA 的作息，所以清晨那段只要 TA 还在睡就不会再被建议成起点。
    *
    * 不可用区间要读班表才算得出来，所以先按窗口起点同步给一版草稿、再异步纠正一次；
    * 期间用户已经调过时间或换了窗口就丢掉这次结果，取数失败也维持原草稿（冲突解释链照旧会说）。
@@ -94,7 +95,7 @@ export struct WindowDetailSheet {
     const winEnd = this.winEnd;
     let unavailable: Interval[] = [];
     try {
-      unavailable = await ScheduleUseCase.myUnavailableOver(winStart, winEnd);
+      unavailable = await ScheduleUseCase.unavailableForDraftOver(winStart, winEnd);
     } catch (e) {
       Logger.warn(TAG, 'load my unavailable failed: ' + (e as Error).message);
       return;

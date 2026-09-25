@@ -450,6 +450,22 @@ export default function planUseCaseTest() {
       expect(defaultDraft(base, we, '一起吃饭', 'meal', null).start).assertEqual(base);
     });
 
+    it('default_draft_start_avoids_the_recorded_partner_rhythm', 0, () => {
+      // 批次 J 在设备上拍到的那一条：23:30 从旅行窗口开起草器，我 07:00 起、TA 12:00 起。
+      // 只避我的睡眠时默认起点落在 07:00，整段建议都在 TA 的被窝里（D-28）。
+      const base = dayBase(11);
+      const we = base + 3 * DAY;
+      const now = base + 1410;
+      const mine: Interval[] = [{ start: base + 1350, end: base + DAY + 420, tag: 'SLEEP' }];
+      const ta: Interval[] = [{ start: base + 1380, end: base + DAY + 720, tag: 'SLEEP' }];
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', mine, now).start).assertEqual(base + DAY + 420);
+      // 代录态并上 TA 的那一份后，同一条草稿改口到 TA 的起床时刻；两段各自成段，不需要先合并
+      expect(defaultDraft(base, we, '一起吃饭', 'meal', mine.concat(ta), now).start)
+        .assertEqual(base + DAY + 720);
+      expect(planDraftError(defaultDraft(base, we, '一起吃饭', 'meal', mine.concat(ta), now), base, we))
+        .assertEqual('');
+    });
+
     it('default_draft_start_never_suggests_the_past', 0, () => {
       const base = dayBase(9);
       const we = base + 3 * DAY;

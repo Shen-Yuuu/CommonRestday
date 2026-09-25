@@ -5,6 +5,7 @@ import {
   AnswerState,
   CommonTimeQueryService,
   ExperienceMode,
+  greetingOf,
   HomeSummary,
   QuickAnswer,
   ScheduleUseCase,
@@ -208,21 +209,9 @@ export struct HomeView {
     return h.nextWindow == null ? HeroVariant.NO_WINDOW : HeroVariant.WINDOW;
   }
 
+  /** 分档规则在 feature/model/RhythmRules（entry/src/main 不在离线编译树里，留在本地就测不到）。 */
   private greeting(): string {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 11) {
-      return '早上好';
-    }
-    if (hour < 13) {
-      return '中午好';
-    }
-    if (hour < 18) {
-      return '下午好';
-    }
-    if (hour < 23) {
-      return '晚上好';
-    }
-    return '夜深了';
+    return greetingOf(new Date().getHours());
   }
 
   private subtitle(): string {

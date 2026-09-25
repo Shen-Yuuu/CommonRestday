@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, rhythmError } from 'feature';
+import { greetingOf, horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, rhythmError } from 'feature';
 
 /**
  * 作息输入口径（阶段 1R / R2）：轮班与夜猫子的"就寝 00:30"必须能保存。
@@ -58,6 +58,23 @@ export default function rhythmRulesTest() {
       // 不足一个月不折成"0 个月"：允许的最短视界就是"只看本周"那一档
       expect(horizonLabel(7)).assertEqual('未来 7 天');
       expect(horizonLabel(14)).assertEqual('未来 14 天');
+    });
+
+    it('greeting_has_a_small_hours_bucket_before_noon', 0, () => {
+      // D-39：0–4 点原来被 hour < 13 那一支接住，凌晨两点首页念「中午好」
+      expect(greetingOf(0)).assertEqual('凌晨好');
+      expect(greetingOf(2)).assertEqual('凌晨好');
+      expect(greetingOf(4)).assertEqual('凌晨好');
+      // 两端边界：05:00 归早上好，23:00 归夜深了
+      expect(greetingOf(5)).assertEqual('早上好');
+      expect(greetingOf(10)).assertEqual('早上好');
+      expect(greetingOf(11)).assertEqual('中午好');
+      expect(greetingOf(12)).assertEqual('中午好');
+      expect(greetingOf(13)).assertEqual('下午好');
+      expect(greetingOf(17)).assertEqual('下午好');
+      expect(greetingOf(18)).assertEqual('晚上好');
+      expect(greetingOf(22)).assertEqual('晚上好');
+      expect(greetingOf(23)).assertEqual('夜深了');
     });
   });
 }

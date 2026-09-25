@@ -54,3 +54,28 @@ export function horizonLabel(horizonDays: number): string {
   const months = Math.round(horizonDays / 30);
   return months < 1 ? '未来 ' + horizonDays + ' 天' : '未来 ' + months + ' 个月';
 }
+
+/**
+ * 首页问候语按钟点分档（D-39）。原来是一串 hour < N 的顺落判定，0–4 点被 <13 那一支
+ * 接住，于是凌晨两点首页念「中午好」——所以最前面必须先挡掉凌晨档。
+ * 05:00 起仍是早上好，23:00 起念「夜深了」，两端口径不动。
+ */
+export function greetingOf(hour: number): string {
+  if (hour < 5) {
+    return '凌晨好';
+  }
+  if (hour < 11) {
+    return '早上好';
+  }
+  if (hour < 13) {
+    return '中午好';
+  }
+  if (hour < 18) {
+    return '下午好';
+  }
+  if (hour < 23) {
+    return '晚上好';
+  }
+  return '夜深了';
+}
+

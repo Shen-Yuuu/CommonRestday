@@ -204,7 +204,7 @@ export struct AppNavigator {
   /**
    * 栈目的地映射。班表页自带标题与滚动，用系统标题栏会重复，因此隐藏标题栏；
    * 出口由页首那颗可见返回键承担（pop 只有握着 NavPathStack 的壳层能调，故注入下去）。
-   * owner 由 pushPathByName 的参数带下来：从「我的 · 代录 TA 的班表」进入时直接落在 TA 侧。
+   * owner 由 pushPathByName 的参数带下来：入口只落「我」这侧，TA 侧在页内分段上切。
    */
   @Builder
   destinationBuilder(name: string, param: Object) {

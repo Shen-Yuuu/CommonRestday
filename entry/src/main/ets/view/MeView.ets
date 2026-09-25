@@ -1,5 +1,5 @@
 import { promptAction } from '@kit.ArkUI';
-import { OWNER_ME, OWNER_PARTNER, PairLink, PairOffer } from 'domain';
+import { OWNER_ME, PairLink, PairOffer } from 'domain';
 import { PAIRED, PAIR_NONE, PAIR_WAITING, SettingsStore } from 'data';
 import {
   FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
@@ -26,7 +26,8 @@ interface ParamStatArg {
 /**
  * 我的页：四段收纳——伴侣与同步、我的日程、作息、数据与隐私。
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
- * - 班表录入不再是底部 Tab，这里给直达入口（我这侧 / 代录 TA 那侧）；
+ * - 班表录入不再是底部 Tab，这里给一条直达入口；我这侧与代录 TA 那侧是同一个页面的两个视图，
+ *   所以只给一颗，进去后用页首的「我的班表 / TA 的班表」分段切侧；
  * - 首发零通知：本页不摆任何通知/提醒开关，到点报时全部交给系统日历（D-20）；
  * - 云端配对关闭时这一页不摆任何云入口（生成/输码/扫码/分享/等级一起收），只留本机代录与退出通道。
  */
@@ -1098,7 +1099,7 @@ export struct MeView {
     .alignItems(HorizontalAlign.Start)
   }
 
-  /** 我的日程：日程录入页（栈目的地）直达，我这侧与代录 TA 那侧分别落对应 owner。 */
+  /** 我的日程：日程录入页（栈目的地）的唯一入口，落「我」这侧；切 TA 在页内分段上。 */
   @Builder
   scheduleCard() {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
@@ -1110,13 +1111,6 @@ export struct MeView {
           '循环模板 · 单日改班 · 课程 · 班次时段与通勤', false, () => {
             this.onOpenRoute(NavRoutes.SCHEDULE_HUB, ownerParam(OWNER_ME));
           })
-
-        if (this.partnerExists) {
-          this.navRow($r('sys.symbol.person_fill'), '代录 TA 的班表',
-            '在这台手机上替 TA 记录，不必装第二份', false, () => {
-              this.onOpenRoute(NavRoutes.SCHEDULE_HUB, ownerParam(OWNER_PARTNER));
-            })
-        }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)

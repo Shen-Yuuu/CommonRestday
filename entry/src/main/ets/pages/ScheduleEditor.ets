@@ -240,6 +240,10 @@ struct ScheduleEditor {
                 TextInput({ text: this.commuteIn }).onChange((v: string) => this.commuteIn = v).width(56).height(38)
                 Text('后通勤(分)').fontSize(13)
                 TextInput({ text: this.commuteOut }).onChange((v: string) => this.commuteOut = v).width(56).height(38)
+              }.width('100%')
+              // D-35：三对「标签＋输入框」同排时 Row 不折行，第三枚被推到屏外只剩 5 px。
+              // 恢复值是 recovery 分钟数的唯一入口，必须单独占一排才够得着。
+              Row({ space: 8 }) {
                 Text('夜班恢复(分)').fontSize(13)
                 TextInput({ text: this.recovery }).onChange((v: string) => this.recovery = v).width(56).height(38)
               }.width('100%')

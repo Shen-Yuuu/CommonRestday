@@ -154,6 +154,12 @@ export class DesignTokens {
   static readonly jellyDepthChip: number = 2;
   static readonly jellyDepthPressed: number = 1;
   static readonly jellySink: number = 2;
+  /**
+   * 倒计时心跳：原型 `.hb` 是 1.6s 一轮的双跳，ArkUI 用 Alternate 往复表达，
+   * 所以半程取 800ms、幅度取第一跳的 1.18。这是全 App 唯一的常驻动效。
+   */
+  static readonly beatMs: number = 800;
+  static readonly beatScale: number = 1.18;
   /** 正文卡与 hero 卡的柔光投影：CSS `0 12px 26px` / `0 16px 32px` 的 ArkUI 写法。 */
   static readonly cardShadowRadius: number = 26;
   static readonly cardShadowOffsetY: number = 12;

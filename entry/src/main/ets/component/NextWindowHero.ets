@@ -26,6 +26,23 @@ export struct NextWindowHero {
   /** 分类摘要（如"旅行窗口 · 完整同休日"），由查询服务给出，页面不再映射标签。 */
   @Prop winSubtitle: string = '';
   onTapHero: () => void = () => {};
+  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  @State private beat: number = 1;
+
+  /** 心跳起来一次就交给框架循环；开启"减少动效"时压根不挂上。 */
+  private startBeat(): void {
+    if (this.reduceMotion) {
+      return;
+    }
+    this.getUIContext().animateTo({
+      duration: DesignTokens.beatMs,
+      iterations: -1,
+      curve: Curve.EaseInOut,
+      playMode: PlayMode.Alternate
+    }, () => {
+      this.beat = DesignTokens.beatScale;
+    });
+  }
 
   /** 距今天数口语化：0=就在今天，1=明天，其余报天数（D-17 定稿：不写「就在明天」）。 */
   private daysWord(): string {
@@ -98,12 +115,23 @@ export struct NextWindowHero {
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
-          Text(DateLabel.duration(this.winDuration))
-            .fontSize(DesignTokens.fontDisplay)
-            .fontFamily(DesignTokens.fontRound)
-            .fontWeight(FontWeight.Bolder)
-            .fontColor(DesignTokens.heroText)
-            .margin({ top: DesignTokens.space2 })
+          Row({ space: DesignTokens.space2 }) {
+            // 原型 .hb：时长前一颗白心，是全 App 唯一的常驻动效，且尊重"减少动效"
+            Image($r('app.media.heart_white'))
+              .width(17)
+              .height(17)
+              .alignSelf(ItemAlign.Center)
+              .scale({ x: this.beat, y: this.beat })
+              .onAppear(() => this.startBeat())
+              .accessibilityLevel('no')
+            Text(DateLabel.duration(this.winDuration))
+              .fontSize(DesignTokens.fontDisplay)
+              .fontFamily(DesignTokens.fontRound)
+              .fontWeight(FontWeight.Bolder)
+              .fontColor(DesignTokens.heroText)
+          }
+          .alignItems(VerticalAlign.Center)
+          .margin({ top: DesignTokens.space2 })
           Text(DateLabel.endLabel(this.winStart, this.winEnd))
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.heroText)

@@ -67,6 +67,24 @@ export struct StatePanel {
           .height(30)
           .color(DesignTokens.textTertiary)
           .accessibilityText('正在加载')
+      } else if (this.kind === StatePanelKind.EMPTY) {
+        // 7 分甜把空态当情绪位：睡着的休休替掉 ○ 记号，静立不动效（原型 .empty-bunny）
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Image($r('app.media.mascot_bunny_sleep'))
+            .width(76)
+            .height(76)
+            // 吉祥物是装饰，下面两行文字才是状态说明
+            .accessibilityLevel('no')
+          Text('Z z…')
+            .fontSize(DesignTokens.fontCaption)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
+            .fontColor(DesignTokens.primary)
+            // 拟声词不承载信息，念出来只是噪音
+            .accessibilityLevel('no')
+        }
+        .width(76)
+        .height(76)
       } else {
         Text(this.markGlyph())
           .fontSize(DesignTokens.fontBody)

@@ -510,6 +510,8 @@ export struct WindowDetailSheet {
 
         Toggle({ type: ToggleType.Switch, isOn: this.writeToCalendar })
           .selectedColor($r('app.color.brand_pink'))
+          // 原型把滑块画成一颗白心；ArkUI 的 Switch 滑块只能是圆，这里先把"白"落实
+          .switchPointColor(DesignTokens.heroText)
           // 开关自己没有任何文字标签，读屏只会念"开/关"，说不出关的是哪件事
           .accessibilityText('写入系统日历')
           .accessibilityDescription('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')

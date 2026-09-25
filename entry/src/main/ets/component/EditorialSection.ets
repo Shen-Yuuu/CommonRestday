@@ -7,7 +7,7 @@ function hasLabel(v: ResourceStr): boolean {
 }
 
 /**
- * 页面级小节：眉标 + 衬线小标题 + 右侧补充说明，下面挂内容。
+ * 页面级小节：眉标 + 圆体粗字小标题 + 右侧补充说明，下面挂内容。
  * 小节本身不带底色，可直接放在纸面背景上，也可放进 EditorialCard。
  */
 @Component
@@ -39,21 +39,22 @@ export struct EditorialSection {
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.primary)
           .fontFamily(DesignTokens.fontSans)
-          .letterSpacing(1)
+          .fontWeight(FontWeight.Bolder)
+          .letterSpacing(1.8)
           .margin({ bottom: DesignTokens.space1 })
       }
       Row() {
         Text(this.title)
           .fontSize(DesignTokens.fontTitle)
           .fontColor(DesignTokens.textPrimary)
-          .fontFamily(DesignTokens.fontSerif)
-          .fontWeight(FontWeight.Medium)
-          .letterSpacing(-0.7)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(FontWeight.Bolder)
           .layoutWeight(1)
         if (hasLabel(this.trailing)) {
           Text(this.trailing)
             .fontSize(DesignTokens.fontCaption)
             .fontColor(this.trailingAction ? DesignTokens.primary : DesignTokens.textTertiary)
+            .fontWeight(this.trailingAction ? FontWeight.Bold : FontWeight.Normal)
             .textAlign(TextAlign.End)
             .constraintSize({
               minWidth: this.trailingAction ? AccessibilityPolicy.minHit(this.senior) : 0,

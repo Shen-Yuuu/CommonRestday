@@ -46,15 +46,23 @@
     },
     {
       "name": "radius_card",
-      "value": "21vp"
+      "value": "26vp"
     },
     {
       "name": "radius_card_cut",
-      "value": "8vp"
+      "value": "10vp"
+    },
+    {
+      "name": "radius_hero",
+      "value": "30vp"
+    },
+    {
+      "name": "radius_hero_cut",
+      "value": "16vp"
     },
     {
       "name": "radius_sheet",
-      "value": "28vp"
+      "value": "34vp"
     },
     {
       "name": "radius_pill",

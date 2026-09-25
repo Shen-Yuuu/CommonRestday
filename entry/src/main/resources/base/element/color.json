@@ -2,263 +2,283 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#F7EDDF"
+      "value": "#FFF6F3"
     },
     {
       "name": "brand_pink",
-      "value": "#97314F"
+      "value": "#FF7EA5"
+    },
+    {
+      "name": "brand_pink_deep",
+      "value": "#F0568C"
+    },
+    {
+      "name": "brand_pink_light",
+      "value": "#FFB7CC"
+    },
+    {
+      "name": "glow_pink",
+      "value": "#33F0568C"
     },
     {
       "name": "brand_pink_bg",
-      "value": "#F7E9E7"
+      "value": "#FFF0F5"
     },
     {
       "name": "brand_pink_border",
-      "value": "#E8C8C7"
+      "value": "#FFD3E1"
     },
     {
       "name": "brand_pink_muted",
-      "value": "#A26372"
+      "value": "#E88BA8"
     },
     {
       "name": "text_primary",
-      "value": "#382B28"
+      "value": "#5C4750"
     },
     {
       "name": "text_secondary",
-      "value": "#6F5F59"
+      "value": "#8F7A82"
     },
     {
       "name": "text_tertiary",
-      "value": "#8C7C75"
+      "value": "#AC98A0"
     },
     {
       "name": "text_hint",
-      "value": "#A89992"
+      "value": "#C4B2BA"
     },
     {
       "name": "card_bg",
-      "value": "#FFF9F0"
+      "value": "#FFFFFF"
     },
     {
       "name": "page_bg",
-      "value": "#F7EDDF"
+      "value": "#FFF6F3"
     },
     {
       "name": "border_weak",
-      "value": "#E8D9CC"
+      "value": "#FFE4EE"
     },
     {
       "name": "fill_weak",
-      "value": "#EFE2D5"
+      "value": "#FBEFF3"
     },
     {
       "name": "fill_weakest",
-      "value": "#FBF2E7"
+      "value": "#FDF4F7"
     },
     {
       "name": "btn_neutral",
-      "value": "#8D7D76"
+      "value": "#B9A6AE"
     },
     {
       "name": "sheet_handle",
-      "value": "#CEBCAF"
+      "value": "#EBD2DC"
     },
     {
       "name": "success_green",
-      "value": "#577D67"
+      "value": "#4FBE8B"
+    },
+    {
+      "name": "success_deep",
+      "value": "#3A9E6E"
     },
     {
       "name": "success_bg",
-      "value": "#E8F0E9"
+      "value": "#E9F8F0"
     },
     {
       "name": "danger_red",
-      "value": "#A94750"
+      "value": "#FF7A8A"
+    },
+    {
+      "name": "danger_deep",
+      "value": "#E4576B"
     },
     {
       "name": "danger_bg",
-      "value": "#F3DFDA"
+      "value": "#FFF0F2"
     },
     {
       "name": "danger_border",
-      "value": "#E5C0B9"
+      "value": "#FFD0D8"
     },
     {
       "name": "info_blue",
-      "value": "#587783"
+      "value": "#79B8F5"
     },
     {
       "name": "info_bg",
-      "value": "#E6ECEB"
+      "value": "#EAF3FE"
     },
     {
       "name": "accent_purple",
-      "value": "#7E6078"
+      "value": "#BC92F2"
     },
     {
       "name": "warn_orange",
-      "value": "#B36B4E"
+      "value": "#FFA45E"
     },
     {
       "name": "warn_bg",
-      "value": "#F4E6DC"
+      "value": "#FFF3E8"
     },
     {
       "name": "divider",
-      "value": "#E4D3C5"
+      "value": "#F5DCE6"
     },
     {
       "name": "fill_soft",
-      "value": "#E9DCCE"
+      "value": "#F7E3EB"
     },
     {
       "name": "text_disabled",
-      "value": "#C8BBB3"
+      "value": "#DCD0D6"
     },
     {
       "name": "page_bg_soft",
-      "value": "#F2E5D7"
+      "value": "#FFF1EC"
     },
     {
       "name": "tag_weekend",
-      "value": "#7E6078"
+      "value": "#BC92F2"
     },
     {
       "name": "tag_trip",
-      "value": "#536F75"
+      "value": "#79B8F5"
     },
     {
       "name": "tag_fallback",
-      "value": "#82736D"
+      "value": "#C9B6BF"
     },
     {
       "name": "month_free_none_bg",
-      "value": "#EEE4D9"
+      "value": "#F7EDF1"
     },
     {
       "name": "month_free_low_bg",
-      "value": "#EAD2CF"
+      "value": "#FFD9E6"
     },
     {
       "name": "month_free_mid_bg",
-      "value": "#C9808F"
+      "value": "#FFAFC7"
     },
     {
       "name": "month_free_none_fg",
-      "value": "#A99C95"
+      "value": "#C4B2BA"
     },
     {
       "name": "month_free_low_fg",
-      "value": "#743E4A"
+      "value": "#B25977"
     },
     {
       "name": "bar_gap",
-      "value": "#E9DDD1"
+      "value": "#F3DDE6"
     },
     {
       "name": "my_busy",
-      "value": "#72888B"
+      "value": "#A9C4F5"
     },
     {
       "name": "partner_busy",
-      "value": "#B59061"
+      "value": "#FFC970"
     },
     {
       "name": "busy_mine_glass",
-      "value": "#4072888B"
+      "value": "#40A9C4F5"
     },
     {
       "name": "busy_mine_edge",
-      "value": "#8C72888B"
+      "value": "#8CA9C4F5"
     },
     {
       "name": "busy_partner_glass",
-      "value": "#40B59061"
+      "value": "#40FFC970"
     },
     {
       "name": "busy_partner_edge",
-      "value": "#8CB59061"
+      "value": "#8CFFC970"
     },
     {
       "name": "page_bg_warm",
-      "value": "#F7EDDF"
+      "value": "#FFF6F3"
     },
     {
       "name": "sunset_from",
-      "value": "#8F2F4C"
+      "value": "#FF8FAE"
     },
     {
       "name": "sunset_to",
-      "value": "#8F2F4C"
+      "value": "#FFA88A"
     },
     {
       "name": "shadow_soft",
-      "value": "#115B4233"
+      "value": "#1AF0568C"
     },
     {
       "name": "hero_bg",
-      "value": "#8F2F4C"
+      "value": "#FF7EA5"
     },
     {
       "name": "hero_fg",
-      "value": "#FFF8EF"
+      "value": "#FFFFFF"
     },
     {
       "name": "hero_glow",
-      "value": "#85E09D89"
+      "value": "#29FFFFFF"
     },
     {
       "name": "page_glow",
-      "value": "#1497314F"
+      "value": "#14FF7EA5"
     },
     {
       "name": "focus_ring",
-      "value": "#B46B80"
+      "value": "#FFB0C8"
     },
     {
       "name": "scene_warm",
-      "value": "#4DF2D6A4"
+      "value": "#59FFE3D2"
     },
     {
       "name": "scene_rose",
-      "value": "#42E7AEB8"
+      "value": "#59FFDCE6"
     },
     {
       "name": "scene_blue",
-      "value": "#3A8CA6B4"
+      "value": "#33EFE3FF"
     },
     {
       "name": "scene_veil_strong",
-      "value": "#8CF7EDDF"
+      "value": "#8CFFF6F3"
     },
     {
       "name": "scene_veil_soft",
-      "value": "#52F7EDDF"
+      "value": "#52FFF6F3"
     },
     {
       "name": "glass_strong",
-      "value": "#E0FFF9F0"
+      "value": "#94FFFFFF"
     },
     {
       "name": "glass_soft",
-      "value": "#D98F2F4C"
+      "value": "#B3FFFFFF"
     },
     {
       "name": "glass_border",
-      "value": "#3097314F"
+      "value": "#8CFFFFFF"
     },
     {
       "name": "glass_highlight",
-      "value": "#4DFFFFFF"
+      "value": "#8CFFFFFF"
     },
     {
       "name": "glass_fallback",
-      "value": "#F2FFF9F0"
+      "value": "#F2FFFFFF"
     },
     {
       "name": "glass_shadow",
-      "value": "#1A5B4233"
+      "value": "#1AF0568C"
     }
   ]
 }

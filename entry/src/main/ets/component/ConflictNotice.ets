@@ -31,8 +31,8 @@ export struct ConflictNotice {
     Row({ space: DesignTokens.space2 }) {
       Text('!')
         .fontSize(DesignTokens.fontCaption)
-        .fontFamily(DesignTokens.fontSerif)
-        .fontWeight(600)
+        .fontFamily(DesignTokens.fontRound)
+        .fontWeight(800)
         .fontColor(DesignTokens.danger)
         .textAlign(TextAlign.Center)
         .width(DesignTokens.space5)
@@ -70,7 +70,7 @@ export struct ConflictNotice {
       color: this.hasFocus ? DesignTokens.focusRing : DesignTokens.dangerBorder,
       radius: DesignTokens.cardRadius(false)
     })
-    .shadow({ radius: 32, color: DesignTokens.shadowSoft, offsetX: 0, offsetY: 13 })
+    .shadow(DesignTokens.cardShadow())
     .scale(this.isPressed
       ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }
       : { x: 1, y: 1 })

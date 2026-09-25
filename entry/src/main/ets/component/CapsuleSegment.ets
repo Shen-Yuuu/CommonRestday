@@ -24,12 +24,14 @@ export struct CapsuleSegment {
       },
       itemFontSize: LengthMetrics.fp(14),
       itemFontColor: ColorMetrics.resourceColor(DesignTokens.textSecondary),
-      itemSelectedFontColor: ColorMetrics.resourceColor(DesignTokens.heroText),
-      itemSelectedFontWeight: FontWeight.Medium,
-      itemSelectedBackgroundColor: ColorMetrics.resourceColor(DesignTokens.primary),
-      itemBorderRadius: LengthMetrics.vp(10),
-      buttonBackgroundColor: ColorMetrics.resourceColor(DesignTokens.fillSoft),
-      buttonBorderRadius: LengthMetrics.vp(14),
+      // 7 分甜把选中态从"粉底白字"翻成"白底粉字"：胶囊是浮在背板上的一颗糖，不再是一块色块。
+      itemSelectedFontColor: ColorMetrics.resourceColor(DesignTokens.primary),
+      itemSelectedBackgroundColor: ColorMetrics.resourceColor(DesignTokens.card),
+      itemFontWeight: FontWeight.Bold,
+      itemSelectedFontWeight: FontWeight.Bold,
+      itemBorderRadius: LengthMetrics.vp(999),
+      buttonBackgroundColor: ColorMetrics.resourceColor(DesignTokens.fillWeak),
+      buttonBorderRadius: LengthMetrics.vp(999),
       buttonPadding: LengthMetrics.vp(4)
     })
       .width('100%')

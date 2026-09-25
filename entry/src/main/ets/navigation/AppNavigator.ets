@@ -46,6 +46,8 @@ const NAV_ITEMS: NavItem[] = [
 @Component
 export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
+  /** 当前按下的底栏单项，-1 = 没有；只影响缩放。 */
+  @State private pressedTab: number = -1;
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
@@ -88,8 +90,7 @@ export struct AppNavigator {
   }
 
   /** 挂载完成后消费冷启动深链：页内参数优先，卡片登记的那条一并清空，一次拉起只跳一次。 */
-  private consumePending(): void {
-    const stored = takePendingRoute();
+  private consumePending(): void {    const stored = takePendingRoute();
     const name = this.pendingRoute !== '' ? this.pendingRoute : stored;
     this.pendingRoute = '';
     if (name === '') {
@@ -141,6 +142,16 @@ export struct AppNavigator {
       curve: DesignTokens.curve
     }, () => {
       this.goTab(tab);
+    });
+  }
+
+  /** 单项按压反馈：只画 0.92 缩放，抬起即回弹，不参与切换与导航逻辑。 */
+  private pressTab(tab: number, down: boolean): void {
+    this.getUIContext().animateTo({
+      duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionPress),
+      curve: DesignTokens.curve
+    }, () => {
+      this.pressedTab = down ? tab : -1;
     });
   }
 
@@ -244,7 +255,7 @@ export struct AppNavigator {
   navIsland() {
     // 自定义组件不吃链式属性，留白与热区由外层 Column 承担
     Column() {
-      GlassSurface({ strength: GlassStrength.STRONG, radius: DesignTokens.radiusPill }) {
+      GlassSurface({ strength: GlassStrength.STRONG, radius: DesignTokens.radiusCard }) {
         Row() {
           ForEach(NAV_ITEMS, (item: NavItem) => {
             this.navItem(item)
@@ -269,12 +280,16 @@ export struct AppNavigator {
       SymbolGlyph(item.icon)
         .fontSize(22)
         .fontColor([this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary')])
+        // 选中那颗图标浮起来一点（原型 .t.on svg 的 drop-shadow），未选中的不画
+        .shadow(this.activeTab === item.tab
+          ? { radius: 6, color: DesignTokens.glow, offsetX: 0, offsetY: 3 }
+          : undefined)
         // 图标下面就是文字标签，读屏念两遍反而挡路
         .accessibilityLevel('no')
       Text(item.text)
         .fontSize(11)
         .fontColor(this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
-        .fontWeight(this.activeTab === item.tab ? FontWeight.Bold : FontWeight.Normal)
+        .fontWeight(this.activeTab === item.tab ? FontWeight.Bolder : FontWeight.Bold)
     }
     // 选中态用浅莓实心底标出，不只靠玻璃色差：状态要有底色/字重双重提示
     .width(ITEM_WIDTH)
@@ -283,12 +298,22 @@ export struct AppNavigator {
     .alignItems(HorizontalAlign.Center)
     .borderRadius(DesignTokens.radiusPill)
     .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
+    .scale(this.pressedTab === item.tab
+      ? { x: DesignTokens.dockPressScale, y: DesignTokens.dockPressScale }
+      : { x: 1, y: 1 })
     .focusable(true)
     .accessibilityGroup(true)
     // 底色/字重是视觉信号，读屏要把"你在哪一页、按了会去哪一页"念出来
     .accessibilityText(this.activeTab === item.tab
       ? item.text + '，当前所在页'
       : '切换到' + item.text + '页')
+    .onTouch((e: TouchEvent) => {
+      if (e.type === TouchType.Down) {
+        this.pressTab(item.tab, true);
+      } else if (e.type === TouchType.Up || e.type === TouchType.Cancel) {
+        this.pressTab(item.tab, false);
+      }
+    })
     .onClick(() => {
       this.selectTab(item.tab);
     })

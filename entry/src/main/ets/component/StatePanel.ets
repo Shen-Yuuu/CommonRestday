@@ -71,7 +71,7 @@ export struct StatePanel {
         Text(this.markGlyph())
           .fontSize(DesignTokens.fontBody)
           .fontColor(this.markFg())
-          .fontFamily(DesignTokens.fontSerif)
+          .fontFamily(DesignTokens.fontRound)
           .textAlign(TextAlign.Center)
           .width(40)
           .height(40)
@@ -106,7 +106,11 @@ export struct StatePanel {
           .backgroundColor(DesignTokens.primary)
           .fontColor(DesignTokens.heroText)
           .fontSize(DesignTokens.fontCaption)
-          .fontWeight(600)
+          .fontWeight(700)
+          // 果冻厚底：按下时下沿塌到 1vp、整颗下沉 2vp，不改变占位高度。
+          .shadow(DesignTokens.jelly(DesignTokens.primaryDeep,
+            this.isActionPressed ? DesignTokens.jellyDepthPressed : DesignTokens.jellyDepth))
+          .translate({ y: this.isActionPressed ? DesignTokens.jellySink : 0 })
           .scale(this.isActionPressed
             ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }
             : { x: 1, y: 1 })

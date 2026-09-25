@@ -4,15 +4,15 @@ import { GlassStyle } from './GlassSurface';
 import { GlassStrength } from '../theme/MaterialPolicy';
 
 /**
- * 温暖编辑感卡片：默认错角 8/21/21/21，偶数卡把切角换到右上。
- * Hero 变体是深莓底 + 暖白字 + 右下光晕，只给最重要的一个结果，不铺满整页。
- * glass=true 时这张卡走玻璃表面（首屏唯一主结果）：材质路径把底色/描边/阴影让给系统，
- * 实色路径仍用深莓近实色底，文字对比不随材质可用性变化。
+ * Q糖卡片：默认错角 10/26/26/26，偶数卡把切角换到右上，读起来像一张贴歪的贴纸。
+ * Hero 变体是粉→珊瑚斜向渐变 + 暖白字 + 右下气泡，只给最重要的一个结果，不铺满整页。
+ * glass=true 时这张卡走玻璃表面：材质路径把描边/阴影让给系统，渐变仍画在表面之上，
+ * 所以 hero 的读法不随材质可用性变化。
  * 深浅色随资源自动切换；按压只做缩放，开启减少动效时时长归零。
  */
 @Component
 export struct EditorialCard {
-  /** 深莓 Hero 变体（文字需用 DesignTokens.heroText）。 */
+  /** 粉渐变 Hero 变体（文字需用 DesignTokens.heroText）。 */
   hero: boolean = false;
   /** 切角在左上（true）还是右上（false）。 */
   cutTopLeft: boolean = true;
@@ -66,6 +66,21 @@ export struct EditorialCard {
     return GlassStyle.fill(DesignTokens.hero);
   }
 
+  /** hero 走三段斜向渐变；正文卡给一条全透明渐变，等于不画任何东西。 */
+  private surfaceGradient(): LinearGradientOptions {
+    if (!this.hero) {
+      return { angle: 135, colors: [[Color.Transparent, 0], [Color.Transparent, 1]] };
+    }
+    return {
+      angle: 135,
+      colors: [[DesignTokens.sunsetFrom, 0], [DesignTokens.primary, 0.48], [DesignTokens.sunsetTo, 1]]
+    };
+  }
+
+  private surfaceRadius(): BorderRadiuses {
+    return this.hero ? DesignTokens.heroRadius() : DesignTokens.cardRadius(this.cutTopLeft);
+  }
+
   /** 焦点环优先级高于表面描边：键盘用户任何时候都要能看出这张卡被选中。 */
   private surfaceBorderWidth(): number {
     if (this.hasFocus) {
@@ -84,10 +99,10 @@ export struct EditorialCard {
   private surfaceShadow(): ShadowOptions {
     if (!this.glass) {
       return {
-        radius: this.hero ? 38 : 32,
+        radius: this.hero ? DesignTokens.heroShadowRadius : DesignTokens.cardShadowRadius,
         color: DesignTokens.shadowSoft,
         offsetX: 0,
-        offsetY: this.hero ? 18 : 13
+        offsetY: this.hero ? DesignTokens.heroShadowOffsetY : DesignTokens.cardShadowOffsetY
       };
     }
     return GlassStyle.shadow();
@@ -119,13 +134,14 @@ export struct EditorialCard {
       ? GlassStyle.material(GlassStrength.SOFT)
       : undefined)
     .backgroundColor(this.surfaceFill())
-    .borderRadius(DesignTokens.cardRadius(this.cutTopLeft))
+    .linearGradient(this.surfaceGradient())
+    .borderRadius(this.surfaceRadius())
     .shadow(this.surfaceShadow())
     // 焦点环常驻透明边，避免聚焦时布局跳动。
     .border({
       width: this.surfaceBorderWidth(),
       color: this.surfaceBorderColor(),
-      radius: DesignTokens.cardRadius(this.cutTopLeft)
+      radius: this.surfaceRadius()
     })
     .scale(this.isPressed
       ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }

@@ -4,7 +4,7 @@ import { ColorMetrics, LengthMetrics } from '@kit.ArkUI';
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
 
 /**
- * 温暖编辑感（视觉方向 01）设计令牌。
+ * Q糖·7 分甜（视觉方向 02）设计令牌。
  * 颜色/尺寸只在此处集中引用资源：深浅色由 base 与 dark 两套 color.json 自动切换，
  * 字号走 fp 资源随系统大字体缩放，页面不得再写十六进制或裸尺寸字面量。
  */
@@ -15,13 +15,23 @@ export class DesignTokens {
   static readonly pageGlow: Resource = $r('app.color.page_glow');
   static readonly card: Resource = $r('app.color.card_bg');
   static readonly primary: Resource = $r('app.color.brand_pink');
+  /** 厚底色：果冻按钮/芯片下沿那 3vp 硬边，永远比 primary 深一档。 */
+  static readonly primaryDeep: Resource = $r('app.color.brand_pink_deep');
+  /** 进度条填充的浅端：从这档走到 primary，条子才有"糖砂"的渐变。 */
+  static readonly primaryLight: Resource = $r('app.color.brand_pink_light');
   static readonly primaryBg: Resource = $r('app.color.brand_pink_bg');
   static readonly primaryBorder: Resource = $r('app.color.brand_pink_border');
   static readonly hero: Resource = $r('app.color.hero_bg');
   static readonly heroText: Resource = $r('app.color.hero_fg');
   static readonly heroGlow: Resource = $r('app.color.hero_glow');
+  /** Hero 斜向渐变的两个端点（粉→珊瑚），中间一档用 primary。 */
+  static readonly sunsetFrom: Resource = $r('app.color.sunset_from');
+  static readonly sunsetTo: Resource = $r('app.color.sunset_to');
   static readonly shadowSoft: Resource = $r('app.color.shadow_soft');
+  /** 品牌粉 20% 光：Hero 投影与底栏选中图标的落影（原型 --glow）。 */
+  static readonly glow: Resource = $r('app.color.glow_pink');
   static readonly focusRing: Resource = $r('app.color.focus_ring');
+
 
   // ---- 气氛背景层：低饱和日光/莓粉/冷蓝，只用于首页顶部一条，正文不压在它上面 ----
   static readonly sceneWarm: Resource = $r('app.color.scene_warm');
@@ -57,6 +67,7 @@ export class DesignTokens {
 
   // ---- 语义色 ----
   static readonly success: Resource = $r('app.color.success_green');
+  static readonly successDeep: Resource = $r('app.color.success_deep');
   static readonly successBg: Resource = $r('app.color.success_bg');
   /** 双方忙碌标识色：我=青灰，TA=驼色（今日概览的圆点，与周视图同一套色）。 */
   static readonly busyMine: Resource = $r('app.color.my_busy');
@@ -70,6 +81,7 @@ export class DesignTokens {
   static readonly busyPartnerGlass: Resource = $r('app.color.busy_partner_glass');
   static readonly busyPartnerEdge: Resource = $r('app.color.busy_partner_edge');
   static readonly danger: Resource = $r('app.color.danger_red');
+  static readonly dangerDeep: Resource = $r('app.color.danger_deep');
   static readonly dangerBg: Resource = $r('app.color.danger_bg');
   static readonly dangerBorder: Resource = $r('app.color.danger_border');
   static readonly warn: Resource = $r('app.color.warn_orange');
@@ -98,6 +110,8 @@ export class DesignTokens {
   // ---- 圆角与热区 ----
   static readonly radiusCard: Resource = $r('app.float.radius_card');
   static readonly radiusCardCut: Resource = $r('app.float.radius_card_cut');
+  static readonly radiusHero: Resource = $r('app.float.radius_hero');
+  static readonly radiusHeroCut: Resource = $r('app.float.radius_hero_cut');
   static readonly radiusSheet: Resource = $r('app.float.radius_sheet');
   static readonly radiusPill: Resource = $r('app.float.radius_pill');
   static readonly hitMin: Resource = $r('app.float.hit_min');
@@ -107,13 +121,16 @@ export class DesignTokens {
   static readonly glassShadowRadius: number = 34;
   static readonly glassShadowOffsetY: number = 14;
 
-  // ---- 字体族：标题走衬线回退链，正文走系统无衬线 ----
-  static readonly fontSerif: string = 'Iowan Old Style, Songti SC, STSong, serif';
+  // ---- 字体族：展示位与正文同一条圆体链，标题靠字重立形（视觉方向 01 的衬线角色已退役） ----
+  // 两个名字分开的理由：若将来接入只覆盖数字与拉丁的圆体展示字，只改 fontRound 一处。
+  static readonly fontRound: string = 'HarmonyOS Sans SC, PingFang SC, sans-serif';
   static readonly fontSans: string = 'HarmonyOS Sans SC, PingFang SC, sans-serif';
 
   // ---- 动效：easing 固定，时长分标准与减少动效两档 ----
   // 本 SDK 的 curves.cubicBezier 已 deprecated 且返回字符串，直接用 CSS 形式描述同一条曲线。
-  static readonly curve: string = 'cubic-bezier(0.22, 1, 0.36, 1)';
+  // y 控制点 >1 即"过冲"，对应原型的 --spring；ArkUI 按字符串解析，时长仍由 motion* 决定。
+  static readonly curve: string = 'cubic-bezier(0.34, 1.36, 0.64, 1)';
+
   static readonly motionPage: number = 700;
   static readonly motionItem: number = 550;
   static readonly motionFade: number = 350;
@@ -121,6 +138,20 @@ export class DesignTokens {
   /** 玻璃层进入/选中态迁移：150–220ms，只做透明度与轻微位移。 */
   static readonly motionGlassEnter: number = 200;
   static readonly pressScale: number = 0.98;
+  /** 底栏单项按压力度比卡片大一档：小东西要按得出来。 */
+  static readonly dockPressScale: number = 0.92;
+  /** 果冻厚底：常态 3vp 硬边，按下塌到 1vp 并整体下沉 2vp（对应原型 .btn:active）。 */
+  static readonly jellyDepth: number = 3;
+  /** 芯片比主按钮小一档：CSS `0 2px 0 深色`。 */
+  static readonly jellyDepthChip: number = 2;
+  static readonly jellyDepthPressed: number = 1;
+  static readonly jellySink: number = 2;
+  /** 正文卡与 hero 卡的柔光投影：CSS `0 12px 26px` / `0 16px 32px` 的 ArkUI 写法。 */
+  static readonly cardShadowRadius: number = 26;
+  static readonly cardShadowOffsetY: number = 12;
+  static readonly heroShadowRadius: number = 32;
+  static readonly heroShadowOffsetY: number = 16;
+
   /**
    * 气氛背景漂移周期（ms）与幅度（vp）：规范只允许 8–16 秒、2–6vp 的极轻漂移，
    * 默认关闭，由 AmbientScene 的 drift 入参显式打开；减少动效时强制为 0。
@@ -131,7 +162,7 @@ export class DesignTokens {
   static readonly enterOffset: number = 14;
   static readonly staggerStep: number = 45;
 
-  /** 卡片默认错角 8/21/21/21；偶数卡把切角换到右上，形成 21/8/21/21。 */
+  /** 卡片默认错角 10/26/26/26；偶数卡把切角换到右上，形成 26/10/26/26。 */
   static cardRadius(cutTopLeft: boolean): BorderRadiuses {
     const cut: Resource = DesignTokens.radiusCardCut;
     const round: Resource = DesignTokens.radiusCard;
@@ -139,6 +170,39 @@ export class DesignTokens {
       return { topLeft: cut, topRight: round, bottomLeft: round, bottomRight: round };
     }
     return { topLeft: round, topRight: cut, bottomLeft: round, bottomRight: round };
+  }
+
+  /** 主结果卡（hero）比正文卡大一档：16/30/30/30。 */
+  static heroRadius(): BorderRadiuses {
+    return {
+      topLeft: DesignTokens.radiusHeroCut,
+      topRight: DesignTokens.radiusHero,
+      bottomLeft: DesignTokens.radiusHero,
+      bottomRight: DesignTokens.radiusHero
+    };
+  }
+
+  /**
+   * 果冻厚底：把 blur 压到 0，阴影就退化成贴在下沿的一整条硬边，对应原型的 `0 3px 0 深色`。
+   * 按下态由调用方改 offsetY 实现下沉，不动几何高度。
+   */
+  static jelly(color: Resource, depth: number): ShadowOptions {
+    return { radius: 0, type: ShadowType.COLOR, color: color, offsetX: 0, offsetY: depth };
+  }
+
+  /** 正文卡的落影：CSS `0 12px 26px var(--shadow_card)`，深色模式下 shadowSoft 自带 0 alpha。 */
+  static cardShadow(): ShadowOptions {
+    return {
+      radius: DesignTokens.cardShadowRadius,
+      color: DesignTokens.shadowSoft,
+      offsetX: 0,
+      offsetY: DesignTokens.cardShadowOffsetY
+    };
+  }
+
+  /** 浮在页面上的小白块（日期印章、浮岛底栏）：CSS `0 8px 18px`，比卡片轻一档。 */
+  static floatShadow(): ShadowOptions {
+    return { radius: 18, color: DesignTokens.shadowSoft, offsetX: 0, offsetY: 8 };
   }
 
   /** 开启减少动效时时长归零：位移动画退化为直接呈现。 */

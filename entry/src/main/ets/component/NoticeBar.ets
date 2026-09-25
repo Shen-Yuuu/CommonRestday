@@ -45,8 +45,8 @@ export struct NoticeBar {
     Row({ space: DesignTokens.space2 }) {
       Text(this.mark())
         .fontSize(DesignTokens.fontCaption)
-        .fontFamily(DesignTokens.fontSerif)
-        .fontWeight(600)
+        .fontFamily(DesignTokens.fontRound)
+        .fontWeight(800)
         .fontColor(this.accent())
         .textAlign(TextAlign.Center)
         .width(DesignTokens.space5)

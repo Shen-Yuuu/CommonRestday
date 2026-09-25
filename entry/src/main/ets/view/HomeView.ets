@@ -399,10 +399,9 @@ export struct HomeView {
       Column({ space: 2 }) {
         Text(this.greeting())
           .fontSize(DesignTokens.fontTitle)
-          .fontFamily(DesignTokens.fontSerif)
-          .fontWeight(FontWeight.Medium)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(FontWeight.Bolder)
           .fontColor(DesignTokens.textPrimary)
-          .letterSpacing(-0.9)
         Text(this.subtitle())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(this.isSolo() ? DesignTokens.textTertiary : DesignTokens.primary)
@@ -413,25 +412,27 @@ export struct HomeView {
       .accessibilityGroup(true)
       .accessibilityText(this.greeting() + '，' + this.subtitle())
 
-      // 日期印章：编辑感的页眉落款，轻微旋转像盖上去的
+      // 日期印章：7 分甜把它从"旋转的圆章"改成"浮在页眉上的一颗白方块"
       Column() {
         Text(this.sealDay())
-          .fontSize(DesignTokens.fontBody)
-          .fontFamily(DesignTokens.fontSerif)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(DesignTokens.fontCaption)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(800)
           .fontColor(DesignTokens.primary)
         Text(this.sealMonth())
           .fontSize(DesignTokens.fontCaption)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(800)
           .fontColor(DesignTokens.primary)
-          .opacity(0.8)
+          .opacity(0.72)
       }
       .width(48)
       .height(48)
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
-      .borderRadius(DesignTokens.radiusPill)
-      .border({ width: 1, color: DesignTokens.primaryBorder, radius: DesignTokens.radiusPill })
-      .rotate({ angle: 8 })
+      .borderRadius(DesignTokens.radiusHeroCut)
+      .backgroundColor(DesignTokens.card)
+      .shadow(DesignTokens.floatShadow())
       .margin({ left: DesignTokens.space3 })
       // 「22 / 9月」两行分开读会变成一个孤零零的数字，这里念成完整日期
       .accessibilityGroup(true)

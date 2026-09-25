@@ -231,10 +231,9 @@ export struct ScheduleHub {
         Row() {
           Text(this.sideTitle())
             .fontSize(DesignTokens.fontTitle)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
             .fontColor(DesignTokens.textPrimary)
-            .letterSpacing(-0.7)
             .layoutWeight(1)
           if (this.statusFailed) {
             Text('读取失败').fontSize(DesignTokens.fontCaption)
@@ -274,7 +273,7 @@ export struct ScheduleHub {
     Column({ space: 2 }) {
       Text(cell.value)
         .fontSize(DesignTokens.fontBody)
-        .fontFamily(DesignTokens.fontSerif)
+        .fontFamily(DesignTokens.fontRound)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
       Text(cell.label)

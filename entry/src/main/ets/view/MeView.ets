@@ -583,10 +583,9 @@ export struct MeView {
     Row() {
       Text(title)
         .fontSize(DesignTokens.fontBody)
-        .fontFamily(DesignTokens.fontSerif)
+        .fontFamily(DesignTokens.fontRound)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.textPrimary)
-        .letterSpacing(-0.4)
       Blank()
       if (action !== '') {
         Text(action)
@@ -654,7 +653,7 @@ export struct MeView {
           // 挂在外层 Column 上只摘容器，这枚字照样进读屏树（D-29）
           Text('我')
             .fontSize(DesignTokens.fontBody)
-            .fontFamily(DesignTokens.fontSerif)
+            .fontFamily(DesignTokens.fontRound)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
             .accessibilityLevel('no')
@@ -668,10 +667,9 @@ export struct MeView {
         Column({ space: 2 }) {
           Text(this.identityTitle())
             .fontSize(DesignTokens.fontTitle)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
             .fontColor(DesignTokens.heroText)
-            .letterSpacing(-0.9)
           Text(this.identitySub())
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.heroText)
@@ -712,10 +710,9 @@ export struct MeView {
         Row() {
           Text('伴侣与同步')
             .fontSize(DesignTokens.fontBody)
-            .fontFamily(DesignTokens.fontSerif)
+            .fontFamily(DesignTokens.fontRound)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.textPrimary)
-            .letterSpacing(-0.4)
           Blank()
           Text(this.pairStateText())
             .fontSize(DesignTokens.fontCaption)
@@ -1217,7 +1214,7 @@ export struct MeView {
     Column({ space: 2 }) {
       Text(row.value)
         .fontSize(DesignTokens.fontBody)
-        .fontFamily(DesignTokens.fontSerif)
+        .fontFamily(DesignTokens.fontRound)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
       Text(row.label)

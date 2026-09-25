@@ -57,10 +57,9 @@ export struct TodayOverview {
       Row() {
         Text('今天')
           .fontSize(DesignTokens.fontTitle)
-          .fontFamily(DesignTokens.fontSerif)
-          .fontWeight(FontWeight.Medium)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(FontWeight.Bolder)
           .fontColor(DesignTokens.textPrimary)
-          .letterSpacing(-0.7)
           .layoutWeight(1)
         Text(this.weekdayText)
           .fontSize(DesignTokens.fontCaption)
@@ -81,7 +80,7 @@ export struct TodayOverview {
       Text(this.commonText)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.primary)
-        .fontWeight(600)
+        .fontWeight(700)
         .width('100%')
         .padding({
           left: DesignTokens.space3,
@@ -89,7 +88,7 @@ export struct TodayOverview {
           top: DesignTokens.space2,
           bottom: DesignTokens.space2
         })
-        .borderRadius(DesignTokens.radiusCardCut)
+        .borderRadius(DesignTokens.radiusPill)
         .backgroundColor(DesignTokens.primaryBg)
         .margin({ top: DesignTokens.space3 })
 
@@ -112,17 +111,19 @@ export struct TodayOverview {
     Text(label)
       .fontSize(DesignTokens.fontCaption)
       .fontColor(primary ? DesignTokens.heroText : DesignTokens.textSecondary)
-      .fontWeight(600)
+      .fontWeight(700)
       .textAlign(TextAlign.Center)
       .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-      .borderRadius(DesignTokens.radiusCardCut)
+      .borderRadius(DesignTokens.radiusPill)
       .backgroundColor(primary ? DesignTokens.primary : DesignTokens.fillWeak)
+      // 主操作给一条果冻厚底；次操作是浅底芯片，不需要下沿
+      .shadow(primary ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth) : undefined)
       // 焦点环常驻 2vp 透明边，聚焦时不跳动（与首页答案行同一口径）。
       .border({
         width: 2,
         color: this.focusedPill === idx ? DesignTokens.focusRing : Color.Transparent,
-        radius: DesignTokens.radiusCardCut
+        radius: DesignTokens.radiusPill
       })
       .layoutWeight(1)
       .focusable(true)

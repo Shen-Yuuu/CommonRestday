@@ -3,7 +3,7 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /**
- * 首页一条答案：问题小字 + 衬线结论 + 依据摘要，左侧细竖条表示整行可点。
+ * 首页一条答案：问题小字 + 圆体粗字结论 + 依据摘要，行首一颗粉点表示整行可点。
  * 结论与依据文本全部来自 CommonTimeQueryService，页面只按 state 换色，不从中文文案反推业务状态。
  */
 @Component
@@ -65,18 +65,25 @@ export struct QuickAnswerRow {
   build() {
     Column() {
       if (this.showDivider) {
-        Divider()
-          .strokeWidth(1)
-          .color(DesignTokens.divider)
-          .opacity(0.72)
+        // 原型 .arow+.arow：1.5vp 虚线，比实线更轻，行与行之间只留一道糖纸似的痕迹
+        Row()
+          .width('100%')
+          .height(2)
+          .border({
+            width: { top: 1.5 },
+            color: { top: DesignTokens.borderWeak },
+            style: { top: BorderStyle.Dashed }
+          })
       }
       Row({ space: DesignTokens.space2 }) {
+        // 原型 .arow::before：行首一颗 6vp 粉点，贴在问题那一行的高度上
         Column()
-          .width(2)
-          .height(28)
-          .borderRadius(1)
-          .backgroundColor(DesignTokens.primary)
-          .opacity(0.58)
+          .width(6)
+          .height(6)
+          .borderRadius(DesignTokens.radiusPill)
+          .backgroundColor(DesignTokens.primaryBorder)
+          .alignSelf(ItemAlign.Start)
+          .margin({ top: DesignTokens.space3 })
           .accessibilityLevel('no')
         Column({ space: 2 }) {
           Text(this.question)
@@ -84,10 +91,9 @@ export struct QuickAnswerRow {
             .fontColor(DesignTokens.textTertiary)
           Text(this.headline)
             .fontSize(DesignTokens.fontBody)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
             .fontColor(this.headlineColor())
-            .letterSpacing(-0.5)
           if (this.supporting !== '') {
             Text(this.supporting)
               .fontSize(DesignTokens.fontCaption)
@@ -99,7 +105,7 @@ export struct QuickAnswerRow {
 
         Text('›')
           .fontSize(DesignTokens.fontBody)
-          .fontColor(DesignTokens.textHint)
+          .fontColor(DesignTokens.textDisabled)
           .accessibilityLevel('no')
       }
       .width('100%')

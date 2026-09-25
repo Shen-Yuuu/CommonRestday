@@ -12,7 +12,7 @@ export enum HeroVariant {
 }
 
 /**
- * 首页主视觉：一屏里只有一张深莓 Hero，用来放"下一段共同时间"这一个最重要的结论。
+ * 首页主视觉：一屏里只有一张粉渐变 Hero，用来放"下一段共同时间"这一个最重要的结论。
  * 窗口文案（时长/起止/分类）全部取自读模型，页面不自行拼业务结论。
  */
 @Component
@@ -56,7 +56,7 @@ export struct NextWindowHero {
       EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
         Text('近期没有可安排的共同时间')
           .fontSize(DesignTokens.fontBody)
-          .fontFamily(DesignTokens.fontSerif)
+          .fontFamily(DesignTokens.fontRound)
           .fontColor(DesignTokens.textSecondary)
         Text('双方班表可能完全错开。检查班次与作息参数，或到共同时间页放宽筛选。')
           .fontSize(DesignTokens.fontCaption)
@@ -100,10 +100,9 @@ export struct NextWindowHero {
 
           Text(DateLabel.duration(this.winDuration))
             .fontSize(DesignTokens.fontDisplay)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
             .fontColor(DesignTokens.heroText)
-            .letterSpacing(-1.2)
             .margin({ top: DesignTokens.space2 })
           Text(DateLabel.endLabel(this.winStart, this.winEnd))
             .fontSize(DesignTokens.fontCaption)
@@ -120,10 +119,9 @@ export struct NextWindowHero {
         } else {
           Text(this.needTitle())
             .fontSize(DesignTokens.fontTitle)
-            .fontFamily(DesignTokens.fontSerif)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(DesignTokens.fontRound)
+            .fontWeight(FontWeight.Bolder)
             .fontColor(DesignTokens.heroText)
-            .letterSpacing(-0.7)
           Text(this.needBody())
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.heroText)

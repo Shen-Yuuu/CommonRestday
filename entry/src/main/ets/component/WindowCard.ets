@@ -64,10 +64,9 @@ export struct WindowCard {
       Row() {
         Text(DateLabel.mdw(this.startDay()))
           .fontSize(DesignTokens.fontBody)
-          .fontFamily(DesignTokens.fontSerif)
+          .fontFamily(DesignTokens.fontRound)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
-          .letterSpacing(-0.4)
         Text(this.daysWord())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
@@ -75,8 +74,8 @@ export struct WindowCard {
           .layoutWeight(1)
         Text(DateLabel.duration(this.winDuration))
           .fontSize(DesignTokens.fontBody)
-          .fontFamily(DesignTokens.fontSerif)
-          .fontWeight(FontWeight.Medium)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(FontWeight.Bolder)
           .fontColor(DesignTokens.primary)
       }
       .width('100%')
@@ -88,37 +87,60 @@ export struct WindowCard {
         .margin({ top: DesignTokens.space1 })
 
       // 时长轨道：一眼分出"半小时碎片"和"能安排一整天"
+      // 朗读里时长已经由上面的文字给出，这条不再读一遍；`no` 只能落在每片叶子上，
+      // 挂在这个 Stack 上盖不住子节点（D-29）。
       Stack({ alignContent: Alignment.Start }) {
         Row()
           .width('100%')
-          .height(4)
+          .height(16)
           .borderRadius(DesignTokens.radiusPill)
-          .backgroundColor(DesignTokens.fillWeak)
-        Row()
-          .width(this.trackPct())
-          .height(4)
-          .borderRadius(DesignTokens.radiusPill)
-          .backgroundColor(DesignTokens.primary)
+          .backgroundColor(DesignTokens.primaryBg)
+          .accessibilityLevel('no')
+        // 填充端探出一颗白边爱心；窗口再短也按 18vp 兜底，别把爱心挤没。
+        Stack({ alignContent: Alignment.End }) {
+          Row()
+            .width('100%')
+            .height('100%')
+            .borderRadius(DesignTokens.radiusPill)
+            .linearGradient({
+              angle: 90,
+              colors: [[DesignTokens.primaryLight, 0], [DesignTokens.primary, 1]]
+            })
+            .accessibilityLevel('no')
+          Image($r('app.media.heart_head'))
+            .width(18)
+            .height(18)
+            .accessibilityLevel('no')
+        }
+        .width(this.trackPct())
+        .height(16)
+        .constraintSize({ minWidth: 18 })
       }
       .width('100%')
       .margin({ top: DesignTokens.space3 })
-      // 纯视觉的时长对比条：朗读里时长已经由上面的文字给出，这条不再读一遍
-      .accessibilityLevel('no')
 
       if (this.tagList().length > 0) {
         Row({ space: DesignTokens.space2 }) {
           ForEach(this.tagList(), (t: string) => {
-            Text(displayTagLabel(t))
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.heroText)
-              .padding({
-                left: DesignTokens.space2,
-                right: DesignTokens.space2,
-                top: 2,
-                bottom: 2
-              })
-              .borderRadius(DesignTokens.radiusCardCut)
-              .backgroundColor(tagColor(t))
+            // 胶囊标签：前面一颗白点是原型的记号，颜色仍由标签本身决定
+            Row({ space: DesignTokens.space1 }) {
+              Circle()
+                .width(5)
+                .height(5)
+                .fill(DesignTokens.heroText)
+              Text(displayTagLabel(t))
+                .fontSize(DesignTokens.fontCaption)
+                .fontColor(DesignTokens.heroText)
+                .fontWeight(FontWeight.Bold)
+            }
+            .padding({
+              left: DesignTokens.space2,
+              right: DesignTokens.space3,
+              top: 2,
+              bottom: 2
+            })
+            .borderRadius(DesignTokens.radiusPill)
+            .backgroundColor(tagColor(t))
           }, (t: string) => t)
         }
         .width('100%')

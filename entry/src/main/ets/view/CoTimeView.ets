@@ -477,10 +477,9 @@ export struct CoTimeView {
     Column({ space: 2 }) {
       Text('共同时间')
         .fontSize(DesignTokens.fontTitle)
-        .fontFamily(DesignTokens.fontSerif)
-        .fontWeight(FontWeight.Medium)
+        .fontFamily(DesignTokens.fontRound)
+        .fontWeight(FontWeight.Bolder)
         .fontColor(DesignTokens.textPrimary)
-        .letterSpacing(-0.9)
       Text(this.subtitle())
         .fontSize(DesignTokens.fontCaption)
         .fontColor(this.subtitleColor())

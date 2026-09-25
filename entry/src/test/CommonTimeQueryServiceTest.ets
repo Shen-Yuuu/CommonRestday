@@ -213,6 +213,19 @@ export default function commonTimeQueryServiceTest() {
       expect(CommonTimeQueryService.pickTonight([TONIGHT_W], TONIGHT_W.end) == null).assertTrue();
     });
 
+    it('tonight_absent_headline_reads_right_in_each_mode', 0, () => {
+      // D-36：单人态把「我们」换成「我」之后，「今晚没有我共同的空档」里"共同"是悬空的
+      expect(CommonTimeQueryService.tonightAnswer(null, NOW, ExperienceMode.SOLO, false).headline)
+        .assertEqual('今晚我没有空档');
+      expect(CommonTimeQueryService.tonightAnswer(TONIGHT_W, TONIGHT_W.end, ExperienceMode.SOLO, false).headline)
+        .assertEqual('今晚的空档已结束');
+      // 代录态那两支逐字不动：它们是 D-14 定下来的口径，留在这里当回归保护
+      expect(CommonTimeQueryService.tonightAnswer(null, NOW, ExperienceMode.PAIRED, false).headline)
+        .assertEqual('今晚没有我们共同的空档');
+      expect(CommonTimeQueryService.tonightAnswer(TONIGHT_W, TONIGHT_W.end, ExperienceMode.PAIRED, false).headline)
+        .assertEqual('今晚的共同空档已结束');
+    });
+
     it('tonight_is_not_hijacked_by_trip_channel', 0, () => {
       // 旅行通道窗口从今天 18:00 起横跨三天，起点比常规窗口更早
       const tripSpan = win(DAY, 1080, DAY + 2, 1200, WindowChannel.TRIP, [WindowTag.TRIP]);

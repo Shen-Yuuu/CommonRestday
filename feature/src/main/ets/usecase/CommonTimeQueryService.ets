@@ -790,15 +790,18 @@ export class CommonTimeQueryService {
 
   static tonightAnswer(w: Window | null, nowEpochMin: number,
     mode: ExperienceMode, stale: boolean): QuickAnswer {
-    const subject = mode === ExperienceMode.SOLO ? '我' : '我们';
+    const solo = mode === ExperienceMode.SOLO;
+    const subject = solo ? '我' : '我们';
+    // D-36：「今晚没有我共同的空档」在单人态里"共同"悬空，所以那一句按态分写；
+    // 代录态那两支逐字不动，它们是 D-14 定下来的口径，留着当回归保护。
     if (w == null) {
       return CommonTimeQueryService.absentAnswer(AnswerKind.TONIGHT, '今晚的空档', stale,
-        '今晚没有' + subject + '共同的空档', '看看明天，或调整就寝时间');
+        solo ? '今晚我没有空档' : '今晚没有我们共同的空档', '看看明天，或调整就寝时间');
     }
     if (nowEpochMin >= w.end) {
       // 选取环节已排除已结束窗口，走到这里只可能是缓存里的旧结果：给事实，不谎报有空
       return CommonTimeQueryService.absentAnswer(AnswerKind.TONIGHT, '今晚的空档', stale,
-        '今晚的共同空档已结束', '看看明天，或调整就寝时间');
+        solo ? '今晚的空档已结束' : '今晚的共同空档已结束', '看看明天，或调整就寝时间');
     }
     const answer: QuickAnswer = {
       kind: AnswerKind.TONIGHT,

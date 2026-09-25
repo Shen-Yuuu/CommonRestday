@@ -149,9 +149,18 @@ export struct HomeView {
     return w == null ? 0 : w.durationMin;
   }
 
+  /**
+   * Hero 末行念**分类结论**（完整同休日 / 含周末 / 可出行），与窗口卡、详情半模态同一份收敛口径：
+   * 原型那一行是「完整同休日」，而读模型的副标题把分类和特征标签（含餐点 · 半天以上）串在一起，
+   * 完整同休日会被盖在后面（D-17 定稿）。三条分类都不沾时退回副标题——末行空着比少一项更糟。
+   */
   private winSubtitle(): string {
     const w = this.next();
-    return w == null ? '' : w.subtitle;
+    if (w == null) {
+      return '';
+    }
+    const cls = displayTagLine(w.tags);
+    return cls === '' ? w.subtitle : cls.split('|').join(' · ');
   }
 
   private conflictCount(): number {

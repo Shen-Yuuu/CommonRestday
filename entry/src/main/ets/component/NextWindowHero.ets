@@ -27,14 +27,14 @@ export struct NextWindowHero {
   @Prop winSubtitle: string = '';
   onTapHero: () => void = () => {};
 
-  /** 距今天数口语化：0=就是今天，1=就在明天，其余报天数。 */
+  /** 距今天数口语化：0=就是今天，1=明天，其余报天数（D-17 定稿：不写「就在明天」）。 */
   private daysWord(): string {
     const days = Math.floor(this.winStart / MIN_PER_DAY) - this.todayEpoch;
     if (days <= 0) {
       return '就是今天';
     }
     if (days === 1) {
-      return '就在明天';
+      return '明天';
     }
     return days + ' 天后';
   }

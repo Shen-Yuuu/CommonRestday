@@ -345,7 +345,7 @@ export struct PlansView {
             })
         }
       }
-      .padding(0)
+      .padding({ bottom: DesignTokens.dockClearance })
       .width('100%').layoutWeight(1)
     }
     .width('100%').height('100%')

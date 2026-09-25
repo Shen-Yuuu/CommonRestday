@@ -574,7 +574,7 @@ export struct MeView {
   /** 留白在滚动内容上而不是 Scroll 上：底部留白要跟着内容一起滚，不占死视口。 */
   private contentPadding(): Padding {
     const h: number = Breakpoints.hPadding(this.bp);
-    return { left: h, right: h, top: DesignTokens.space5, bottom: DesignTokens.space6 };
+    return { left: h, right: h, top: DesignTokens.space5, bottom: DesignTokens.dockClearance };
   }
 
   /** 卡内小标题：衬线标题 + 可选的右侧操作文字（编辑/收起等）。 */

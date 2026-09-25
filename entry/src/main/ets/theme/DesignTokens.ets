@@ -127,6 +127,11 @@ export class DesignTokens {
   static readonly markRadius: number = 10;
   /** 冲突提示条比正文卡收一档、且不留切角：原型 .conflict-card 的 22px。 */
   static readonly conflictRadius: number = 22;
+  /**
+   * 悬浮底栏的滚动净空：底栏 barOverlap 后内容会一路铺到窗口底，岛顶约在 88vp 处，
+   * 末屏内容要能整体升到岛上面（原型 .page 的 padding-bottom 就是为这条留白带画的）。
+   */
+  static readonly dockClearance: number = 96;
 
   // ---- 玻璃层几何：1vp 描边 + 大半径低透明环境阴影，圆角仍复用 radius* ----
   static readonly glassBorderWidth: number = 1;

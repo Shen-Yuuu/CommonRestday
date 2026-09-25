@@ -1,4 +1,5 @@
 import { router } from '@kit.ArkUI';
+import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { Logger } from 'commons';
 import { PairingShareGateway, ScheduleUseCase } from 'feature';
 import { HomeView } from '../view/HomeView';
@@ -9,17 +10,17 @@ import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
 import { navParamsFrom, routeNameFromParams, takePendingRoute } from '../util/NavUtil';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
-import { GlassStrength } from '../theme/MaterialPolicy';
-import { GlassSurface } from '../component/GlassSurface';
 
 const TAG = 'AppNavigator';
 /**
- * 底栏留白带高度：系统条收成透明后仍占这一段，浮岛画在它里面。
- * 用留白带而不是让浮岛盖住内容，三个 Tab 页面就不必各自补底部内边距。
+ * 底栏留白带高度：悬浮岛画在这一段里，内容从它下面穿过（barOverlap 是悬浮样式的硬约束）。
+ * 页面底部因此必须自己留出这段呼吸空间，否则末屏内容会被岛压住。
  */
 const BAR_BAND = 78;
-/** 浮岛高度与单项热区：热区不小于 48vp，不用视觉胶囊大小代替真实热区。 */
-const ISLAND_HEIGHT = 58;
+/** 浮岛与左右/底部留白（原型 .tabbar 的 margin:-40px 30px 10px）。 */
+const DOCK_SIDE_MARGIN = 30;
+const DOCK_BOTTOM_MARGIN = 10;
+/** 单项热区：不小于 48vp，不用视觉胶囊大小代替真实热区。 */
 const ITEM_HEIGHT = 50;
 const ITEM_WIDTH = 74;
 
@@ -58,6 +59,8 @@ export struct AppNavigator {
   // 服务卡片点击深链广播：EntryAbility 过白名单后登记，壳层取走并落地
   @StorageProp('crdPendingRouteCount') @Watch('onPendingRoute') pendingRouteCount: number = 0;
   private pathStack: NavPathStack = new NavPathStack();
+  /** 悬浮底栏由 HdsTabs 自持控制器；切页仍走 activeTab，控制器只用于组件挂载。 */
+  private tabsController: HdsTabsController = new HdsTabsController();
   /** 冷启动深链：aboutToAppear 时 Navigation 尚未挂载，先记下，挂载后再消费。 */
   private pendingRoute: string = '';
   private pendingRaw: Object | undefined = undefined;
@@ -157,51 +160,59 @@ export struct AppNavigator {
 
   build() {
     Navigation(this.pathStack) {
-      Stack({ alignContent: Alignment.Bottom }) {
-        Tabs({ barPosition: BarPosition.End, index: this.activeTab }) {
-          TabContent() {
-            // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
-            HomeView({
-              onOpenRoute: (name: string): void => {
-                this.openRoute(name, undefined);
-              }
-            })
-          }
-          .tabBar(this.hiddenBar())
-
-          TabContent() {
-            // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
-            CoTimeView({
-              onOpenRoute: (name: string): void => {
-                this.openRoute(name, undefined);
-              }
-            })
-          }
-          .tabBar(this.hiddenBar())
-
-          TabContent() {
-            // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
-            MeView({
-              onOpenRoute: (name: string, params?: Object): void => {
-                this.openRoute(name, params);
-              }
-            })
-          }
-          .tabBar(this.hiddenBar())
+      HdsTabs({ controller: this.tabsController, index: this.activeTab }) {
+        TabContent() {
+          // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
+          HomeView({
+            onOpenRoute: (name: string): void => {
+              this.openRoute(name, undefined);
+            }
+          })
         }
-        .scrollable(false)
-        .barHeight(BAR_BAND)
-        .barBackgroundColor(Color.Transparent)
-        .onChange((idx: number) => {
-          this.activeTab = idx;
-          // 切页就是一次「重进」：看不见的那几分钟钟是不走的，切回来要重取值（K-4③）
-          ScheduleUseCase.notifyClockTick();
-        })
+        .tabBar(this.tabBarItem(NavRoutes.TAB_HOME))
 
-        this.navIsland()
+        TabContent() {
+          // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
+          CoTimeView({
+            onOpenRoute: (name: string): void => {
+              this.openRoute(name, undefined);
+            }
+          })
+        }
+        .tabBar(this.tabBarItem(NavRoutes.TAB_COMMON_TIME))
+
+        TabContent() {
+          // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
+          MeView({
+            onOpenRoute: (name: string, params?: Object): void => {
+              this.openRoute(name, params);
+            }
+          })
+        }
+        .tabBar(this.tabBarItem(NavRoutes.TAB_ME))
       }
-      .width('100%')
-      .height('100%')
+      .vertical(false)
+      .barPosition(BarPosition.End)
+      // 悬浮样式的第一条约束：页签栏要叠在内容之上，系统才会画那层悬浮背板；
+      // 不打开时只有整条 band 的底色，岛本身什么都不画（官方「设置页签栏的悬浮样式」约束条件）。
+      .barOverlap(true)
+      .scrollable(false)
+      .barHeight(BAR_BAND)
+      // 悬浮底栏 + 沉浸光感材质（API 23 起）：岛的面与模糊交给系统，应用侧不再自绘玻璃
+      .barFloatingStyle({
+        barSideMargin: DOCK_SIDE_MARGIN,
+        barBottomMargin: DOCK_BOTTOM_MARGIN,
+        gradientMask: { maskColor: $r('app.color.dock_mask') },
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.IMMERSIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+        }
+      })
+      .onChange((idx: number) => {
+        this.activeTab = idx;
+        // 切页就是一次「重进」：看不见的那几分钟钟是不走的，切回来要重取值（K-4③）
+        ScheduleUseCase.notifyClockTick();
+      })
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
@@ -242,36 +253,13 @@ export struct AppNavigator {
     }
   }
 
-  /** 系统条收成透明占位：真正的控件是下面的浮岛，避免两处底栏同时可点。 */
+  /**
+   * 底栏单项：岛的面（材质/描边/阴影）由系统悬浮条画，这里只给图标 + 文字 + 选中底色。
+   * tab 就是 NAV_ITEMS 的下标，也是 TabContent 的索引，三处口径同一个数。
+   */
   @Builder
-  hiddenBar() {
-    Column()
-      .width('100%')
-      .height(0)
-  }
-
-  /** 悬浮底栏：与左右和底部安全区留出呼吸空间，材质不可用时退化为近实色暖白。 */
-  @Builder
-  navIsland() {
-    // 自定义组件不吃链式属性，留白与热区由外层 Column 承担
-    Column() {
-      GlassSurface({ strength: GlassStrength.STRONG, radius: DesignTokens.radiusCard }) {
-        Row() {
-          ForEach(NAV_ITEMS, (item: NavItem) => {
-            this.navItem(item)
-          }, (item: NavItem) => '' + item.tab)
-        }
-        .height(ISLAND_HEIGHT)
-        .width('100%')
-        .justifyContent(FlexAlign.SpaceEvenly)
-      }
-    }
-    .width('100%')
-    .margin({
-      left: DesignTokens.space4,
-      right: DesignTokens.space4,
-      bottom: DesignTokens.space3
-    })
+  tabBarItem(tab: number) {
+    this.navItem(NAV_ITEMS[tab])
   }
 
   @Builder

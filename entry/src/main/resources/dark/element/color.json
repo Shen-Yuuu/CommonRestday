@@ -291,6 +291,10 @@
     {
       "name": "glass_shadow",
       "value": "#40000000"
+    },
+    {
+      "name": "dock_mask",
+      "value": "#66241C3B"
     }
   ]
 }

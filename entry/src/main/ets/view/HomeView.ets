@@ -567,7 +567,7 @@ export struct HomeView {
           .padding({
             left: Breakpoints.hPadding(this.bp),
             right: Breakpoints.hPadding(this.bp),
-            bottom: DesignTokens.space6
+            bottom: DesignTokens.dockClearance
           })
         }
         .width('100%')
@@ -580,7 +580,7 @@ export struct HomeView {
           detents: [SheetSize.MEDIUM, SheetSize.LARGE],
           dragBar: false,
           showClose: false,
-          // 表面（材质或近实色回退）由 WindowDetailSheet 里的 GlassSurface 负责，
+          // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
           // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
           backgroundColor: Color.Transparent,
           blurStyle: BlurStyle.NONE

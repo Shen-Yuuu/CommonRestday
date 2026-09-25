@@ -466,7 +466,7 @@ export struct CoTimeView {
         detents: [SheetSize.MEDIUM, SheetSize.LARGE],
         dragBar: false,
         showClose: false,
-        // 表面（材质或近实色回退）由 WindowDetailSheet 里的 GlassSurface 负责，
+        // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
         // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
         backgroundColor: Color.Transparent,
         blurStyle: BlurStyle.NONE
@@ -656,7 +656,7 @@ export struct CoTimeView {
         .width('100%')
         .height('100%')
         .scrollBar(BarState.Off)
-        .padding({ bottom: DesignTokens.space6 })
+        .padding({ bottom: DesignTokens.dockClearance })
       }
       .onRefreshing(() => {
         this.onRefresh();
@@ -685,6 +685,7 @@ export struct CoTimeView {
       }
       .width('100%')
       .scrollBar(BarState.Off)
+      .padding({ bottom: DesignTokens.dockClearance })
       .align(Alignment.Top)
     }
     .onRefreshing(() => {

@@ -325,7 +325,7 @@ export struct PlansView {
                 })
             }
             .alignItems(HorizontalAlign.Center)
-            .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(20)
+            .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(DesignTokens.cardRadius(false))
             .backgroundColor($r('app.color.brand_pink_bg'))
           }
         } else {
@@ -364,7 +364,8 @@ export struct PlansView {
       Text('＋ 在下一个窗口计划')
         .fontSize(13).fontColor($r('app.color.brand_pink'))
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-        .borderRadius(18)
+        // 原型这颗是 .chip，跟着芯片一起收成胶囊。
+        .borderRadius(DesignTokens.radiusPill)
         .backgroundColor($r('app.color.brand_pink_bg'))
         .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
         .focusable(true)
@@ -382,7 +383,7 @@ export struct PlansView {
   @Builder
   cancelSwipe(arg: PlanCardArg) {
     Row() {
-      Text('取消计划').fontSize(14).fontColor('#FFFFFF')
+      Text('取消计划').fontSize(14).fontColor(DesignTokens.heroText)
     }
     .width(88)
     .height('100%')
@@ -422,7 +423,8 @@ export struct PlansView {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
     }
-    .width('100%').padding(16).borderRadius(20).backgroundColor($r('app.color.card_bg'))
+    .width('100%').padding(16).borderRadius(DesignTokens.cardRadius(false)).backgroundColor($r('app.color.card_bg'))
+    // 原型给计划卡留了一档更轻的落影（0 4px 16px），比正文卡薄，一列排下来才不糊。
     .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
     .onClick(() => this.onPlanTap(arg.p))
   }

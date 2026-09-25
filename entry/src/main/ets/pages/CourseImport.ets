@@ -256,9 +256,9 @@ struct CourseImport {
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             }
           }
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
         }
 
         // 粘贴导入
@@ -295,9 +295,9 @@ struct CourseImport {
             }, (p: ParsedCourseLine, i: number) => '' + i + p.rawLine)
           }
           .alignItems(HorizontalAlign.Start)
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(true))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
         }
 
         // 手动添加
@@ -356,9 +356,9 @@ struct CourseImport {
               .onClick(() => this.saveManual())
           }
           .alignItems(HorizontalAlign.Start)
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
         }
 
         // 课程列表（左滑删除）
@@ -442,7 +442,7 @@ struct CourseImport {
   @Builder
   courseDelete(c: Course) {
     Row() {
-      Text('删除').fontSize(14).fontColor('#FFFFFF')
+      Text('删除').fontSize(14).fontColor(DesignTokens.heroText)
     }
     .width(72)
     .height('100%')

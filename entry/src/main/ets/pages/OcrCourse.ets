@@ -146,9 +146,9 @@ struct OcrCourse {
               .shadow(DesignTokens.jelly(DesignTokens.infoDeep, DesignTokens.jellyDepth))
               .onClick(() => this.parsed = parseCourseText(this.ocrText))
           }
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
 
           ForEach(this.parsed, (p: ParsedCourseLine) => {
             Row() {

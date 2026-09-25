@@ -37,7 +37,7 @@ export struct ConflictNotice {
         .textAlign(TextAlign.Center)
         .width(DesignTokens.space5)
         .height(DesignTokens.space5)
-        .borderRadius(DesignTokens.radiusCardCut)
+        .borderRadius(DesignTokens.markRadius)
         .backgroundColor(DesignTokens.card)
         .accessibilityLevel('no')
       Column({ space: 2 }) {
@@ -64,11 +64,11 @@ export struct ConflictNotice {
     .padding(DesignTokens.space3)
     .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .backgroundColor(DesignTokens.dangerBg)
-    .borderRadius(DesignTokens.cardRadius(false))
+    .borderRadius(DesignTokens.conflictRadius)
     .border({
       width: this.hasFocus ? 2 : 1,
       color: this.hasFocus ? DesignTokens.focusRing : DesignTokens.dangerBorder,
-      radius: DesignTokens.cardRadius(false)
+      radius: DesignTokens.conflictRadius
     })
     .shadow(DesignTokens.cardShadow())
     .scale(this.isPressed

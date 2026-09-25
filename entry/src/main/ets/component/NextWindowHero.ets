@@ -168,7 +168,7 @@ export struct NextWindowHero {
               top: DesignTokens.space1,
               bottom: DesignTokens.space1
             })
-            .borderRadius(DesignTokens.radiusCardCut)
+            .borderRadius(DesignTokens.radiusPill)
             .backgroundColor(DesignTokens.heroGlow)
             .margin({ top: DesignTokens.space3 })
         }

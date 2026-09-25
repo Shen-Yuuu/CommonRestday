@@ -123,6 +123,10 @@ export class DesignTokens {
   static readonly radiusInput: Resource = $r('app.float.radius_input');
   static readonly radiusPill: Resource = $r('app.float.radius_pill');
   static readonly hitMin: Resource = $r('app.float.hit_min');
+  /** 语气符号徽标（! / ↻）：原型 .conflict-mark 收成 10vp 小糖块，比卡片切角还小一档。 */
+  static readonly markRadius: number = 10;
+  /** 冲突提示条比正文卡收一档、且不留切角：原型 .conflict-card 的 22px。 */
+  static readonly conflictRadius: number = 22;
 
   // ---- 玻璃层几何：1vp 描边 + 大半径低透明环境阴影，圆角仍复用 radius* ----
   static readonly glassBorderWidth: number = 1;
@@ -176,28 +180,30 @@ export class DesignTokens {
   static readonly enterOffset: number = 14;
   static readonly staggerStep: number = 45;
 
-  /** 卡片默认错角 10/26/26/26；偶数卡把切角换到右上，形成 26/10/26/26。 */
+  /**
+   * 卡片切角两档：默认 28/28/28/14 把尖收在左下（原型 .card），
+   * cutTopLeft 给出 14/28/28/28 的镜像档，让相邻卡片一左一右错开（.card:nth-of-type(even)）。
+   */
   static cardRadius(cutTopLeft: boolean): BorderRadiuses {
     const cut: Resource = DesignTokens.radiusCardCut;
     const round: Resource = DesignTokens.radiusCard;
     if (cutTopLeft) {
       return { topLeft: cut, topRight: round, bottomLeft: round, bottomRight: round };
     }
-    return { topLeft: round, topRight: cut, bottomLeft: round, bottomRight: round };
+    return { topLeft: round, topRight: round, bottomLeft: cut, bottomRight: round };
   }
 
   /** 周历糖块：10/10/10/4，右下角收成尖，一列块叠起来才有节奏（原型 .cblk）。 */
   static blockRadius(): BorderRadiuses {
-    const round: Resource = DesignTokens.radiusCardCut;
-    return { topLeft: round, topRight: round, bottomLeft: round, bottomRight: 4 };
+    return { topLeft: 10, topRight: 10, bottomLeft: 10, bottomRight: 4 };
   }
 
-  /** 主结果卡（hero）比正文卡大一档：16/30/30/30。 */
+  /** 主结果卡（hero）比正文卡大一档，切角同样落在左下：30/30/16/30。 */
   static heroRadius(): BorderRadiuses {
     return {
-      topLeft: DesignTokens.radiusHeroCut,
+      topLeft: DesignTokens.radiusHero,
       topRight: DesignTokens.radiusHero,
-      bottomLeft: DesignTokens.radiusHero,
+      bottomLeft: DesignTokens.radiusHeroCut,
       bottomRight: DesignTokens.radiusHero
     };
   }

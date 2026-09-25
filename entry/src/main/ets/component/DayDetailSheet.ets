@@ -326,7 +326,7 @@ export struct DayDetailSheet {
           Row({ space: 4 }) {
             ForEach(w.displayTags, (t: string) => {
               Text(displayTagLabel(t))
-                .fontSize(10).fontColor('#FFFFFF')
+                .fontSize(10).fontColor(DesignTokens.heroText)
                 .fontWeight(FontWeight.Bold)
                 .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                 .borderRadius(DesignTokens.radiusPill).backgroundColor(tagColor(t))

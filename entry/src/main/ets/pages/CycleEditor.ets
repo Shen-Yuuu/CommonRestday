@@ -182,7 +182,7 @@ struct CycleEditor {
             Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
               ForEach(this.types, (st: ShiftType) => {
                 Text(st.name)
-                  .fontSize(13).fontColor('#FFFFFF')
+                  .fontSize(13).fontColor(DesignTokens.heroText)
                   .fontWeight(FontWeight.Bold)
                   .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                   .borderRadius(DesignTokens.radiusPill).backgroundColor(st.color)
@@ -190,7 +190,7 @@ struct CycleEditor {
               }, (st: ShiftType) => st.id)
               // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
               Text('休息')
-                .fontSize(13).fontColor('#FFFFFF')
+                .fontSize(13).fontColor(DesignTokens.heroText)
                 .fontWeight(FontWeight.Bold)
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                 .borderRadius(DesignTokens.radiusPill).backgroundColor(REST_COLOR)
@@ -204,7 +204,7 @@ struct CycleEditor {
               Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
                 ForEach(this.seq, (id: string, idx: number) => {
                   Text((idx + 1) + '.' + this.typeName(id))
-                    .fontSize(12).fontColor('#FFFFFF')
+                    .fontSize(12).fontColor(DesignTokens.heroText)
                     .fontWeight(FontWeight.Bold)
                     .padding({ left: 8, right: 8, top: 5, bottom: 5 })
                     .borderRadius(DesignTokens.radiusPill).backgroundColor(this.typeColor(id))
@@ -213,9 +213,9 @@ struct CycleEditor {
               }.width('100%')
             }
           }
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
 
           Column({ space: 8 }) {
             Text('锚点：序列第 1 天对应的真实日期').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
@@ -227,9 +227,9 @@ struct CycleEditor {
             .width('100%').padding(12).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
             .onClick(() => this.pickAnchor())
           }
-          .width('100%').padding(12).borderRadius(16)
+          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(true))
           .backgroundColor($r('app.color.card_bg'))
-          .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+          .shadow(DesignTokens.cardShadow())
 
           Button(this.hasTemplate ? '更新模板' : '保存并展开班表')
             .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink'))

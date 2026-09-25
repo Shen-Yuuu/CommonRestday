@@ -325,21 +325,21 @@ export struct WindowDetailSheet {
   windowSummary() {
     Column({ space: 6 }) {
       Text(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
-        .fontSize(17).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
+        .fontSize(17).fontWeight(FontWeight.Bold).fontColor(DesignTokens.heroText)
       Text(DateLabel.endLabel(this.winStart, this.winEnd)
         + ' · 共 ' + DateLabel.duration(this.winEnd - this.winStart))
-        .fontSize(13).fontColor('#FFFFFFB8')
+        .fontSize(13).fontColor(DesignTokens.heroText).opacity(0.72)
       if (this.winTags !== '') {
         Text(this.winTags.split('|').join(' · '))
-          .fontSize(11).fontColor('#FFFFFFB8')
+          .fontSize(11).fontColor(DesignTokens.heroText).opacity(0.72)
       }
     }
     .width('100%')
     .padding({ top: 16, bottom: 16 })
-    .borderRadius(20)
+    .borderRadius(DesignTokens.heroRadius())
     .linearGradient({
       angle: 135,
-      colors: [[$r('app.color.sunset_from'), 0], [$r('app.color.sunset_to'), 1]]
+      colors: [[DesignTokens.sunsetFrom, 0], [DesignTokens.primary, 0.48], [DesignTokens.sunsetTo, 1]]
     })
     .alignItems(HorizontalAlign.Center)
     // 日期 / 起止 / 标签三行说的是同一个窗口，合成一句读，避免读屏逐行断句
@@ -402,7 +402,8 @@ export struct WindowDetailSheet {
           ForEach(PLAN_KINDS, (k: PlanKindOption, idx: number) => {
             Column() {
               Chip({
-                label: { text: k.label, fontSize: 12, fontColor: $r('app.color.text_secondary'), activatedFontColor: '#FFFFFF' },
+                label: { text: k.label, fontSize: 12, fontColor: $r('app.color.text_secondary'),
+                  activatedFontColor: DesignTokens.heroText },
                 activated: this.kindIdx === idx,
                 backgroundColor: $r('app.color.fill_weak'),
                 activatedBackgroundColor: $r('app.color.brand_pink'),

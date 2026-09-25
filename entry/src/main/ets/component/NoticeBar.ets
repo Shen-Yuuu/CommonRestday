@@ -51,7 +51,7 @@ export struct NoticeBar {
         .textAlign(TextAlign.Center)
         .width(DesignTokens.space5)
         .height(DesignTokens.space5)
-        .borderRadius(DesignTokens.radiusCardCut)
+        .borderRadius(DesignTokens.markRadius)
         .backgroundColor(DesignTokens.card)
         // 语气符号只作视觉分区，标题文字才是朗读内容
         .accessibilityLevel('no')

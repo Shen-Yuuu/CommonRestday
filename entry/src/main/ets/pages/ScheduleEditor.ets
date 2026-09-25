@@ -216,9 +216,9 @@ struct ScheduleEditor {
                 .accessibilityText('删除班次：' + st.name)
                 .onClick(() => this.askDeleteRow(st))
             }
-            .width('100%').padding(12).borderRadius(16)
+            .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
             .backgroundColor($r('app.color.card_bg'))
-            .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+            .shadow(DesignTokens.cardShadow())
             .onClick(() => this.edit(st))
           }
           .swipeAction({
@@ -321,7 +321,9 @@ struct ScheduleEditor {
                   .onClick(() => this.askDelete())
               }.width('100%')
             }
-            .width('100%').padding(12).borderRadius(16).backgroundColor($r('app.color.fill_weakest'))
+            .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
+            .backgroundColor($r('app.color.fill_weakest'))
+            .shadow(DesignTokens.cardShadow())
           }
         }
 
@@ -377,7 +379,7 @@ struct ScheduleEditor {
   @Builder
   deleteSwipe(st: ShiftType) {
     Row() {
-      Text('删除').fontSize(14).fontColor('#FFFFFF')
+      Text('删除').fontSize(14).fontColor(DesignTokens.heroText)
     }
     .width(72)
     .height('100%')

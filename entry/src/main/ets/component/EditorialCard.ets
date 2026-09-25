@@ -4,7 +4,7 @@ import { GlassStyle } from './GlassSurface';
 import { GlassStrength } from '../theme/MaterialPolicy';
 
 /**
- * Q糖卡片：默认错角 10/26/26/26，偶数卡把切角换到右上，读起来像一张贴歪的贴纸。
+ * Q糖卡片：默认贴纸角 28/28/28/14（尖收在左下），镜像档 14/28/28/28，相邻卡一左一右，读起来像一张贴歪的贴纸。
  * Hero 变体是粉→珊瑚斜向渐变 + 暖白字 + 右下气泡，只给最重要的一个结果，不铺满整页。
  * glass=true 时这张卡走玻璃表面：材质路径把描边/阴影让给系统，渐变仍画在表面之上，
  * 所以 hero 的读法不随材质可用性变化。
@@ -14,7 +14,7 @@ import { GlassStrength } from '../theme/MaterialPolicy';
 export struct EditorialCard {
   /** 粉渐变 Hero 变体（文字需用 DesignTokens.heroText）。 */
   hero: boolean = false;
-  /** 切角在左上（true）还是右上（false）。 */
+  /** 切角在左上（镜像档）还是左下（默认档）。 */
   cutTopLeft: boolean = true;
   /** 是否可点：决定是否响应按压、焦点与键盘回车。 */
   tappable: boolean = false;

@@ -120,13 +120,14 @@ export struct QuickAnswerRow {
         right: DesignTokens.space1
       })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-      .borderRadius(DesignTokens.radiusCardCut)
+      // 按压底色按原型的行卡（.li）收 18vp，比正文卡小一档。
+      .borderRadius(18)
       .backgroundColor(this.isPressed ? DesignTokens.fillWeakest : Color.Transparent)
       // 焦点环常驻 2vp 透明边，聚焦时不跳动。
       .border({
         width: 2,
         color: this.hasFocus ? DesignTokens.focusRing : Color.Transparent,
-        radius: DesignTokens.radiusCardCut
+        radius: 18
       })
       .focusable(true)
       .onFocus(() => {

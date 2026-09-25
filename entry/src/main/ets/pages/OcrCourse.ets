@@ -10,6 +10,7 @@ import { Logger } from 'commons';
 import { ScheduleCommandService } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
+import { DesignTokens } from '../theme/DesignTokens';
 
 const TAG = 'OcrCourse';
 
@@ -17,6 +18,8 @@ const TAG = 'OcrCourse';
 @Entry
 @Component
 struct OcrCourse {
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State owner: string = OWNER_ME;
   @State busy: boolean = false;
   @State ocrText: string = '';
@@ -104,10 +107,10 @@ struct OcrCourse {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.brand_pink'))
         }.onClick(() => router.back())
         Blank()
-        Text('拍照识别课表').fontSize(17).fontWeight(FontWeight.Bold)
+        Text('拍照识别课表').fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold)
         Blank()
         Text(' ')
       }.width('100%').padding(12)
@@ -126,12 +129,12 @@ struct OcrCourse {
           }.width('100%')
 
           Text('识别在手机本地完成（Core Vision Kit），课程表图片不会上传。识别后请逐行核对再保存。')
-            .fontSize(11).fontColor($r('app.color.text_hint'))
+            .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
 
           Column({ space: 8 }) {
-            Text('识别文本（可手工修正后重新解析）').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('识别文本（可手工修正后重新解析）').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.ocrText, placeholder: '识别结果将显示在这里' })
-              .height(110).fontSize(13).width('100%')
+              .height(110).fontSize(DesignTokens.fontCaption(this.senior)).width('100%')
               .onChange((v: string) => this.ocrText = v)
             Button('重新解析').height(34).backgroundColor($r('app.color.info_blue'))
               .onClick(() => this.parsed = parseCourseText(this.ocrText))
@@ -142,13 +145,13 @@ struct OcrCourse {
 
           ForEach(this.parsed, (p: ParsedCourseLine) => {
             Row() {
-              Text(p.ok ? '✓' : '✗').fontSize(13).fontColor(p.ok ? $r('app.color.success_green') : $r('app.color.danger_red')).width(20)
+              Text(p.ok ? '✓' : '✗').fontSize(DesignTokens.fontCaption(this.senior)).fontColor(p.ok ? $r('app.color.success_green') : $r('app.color.danger_red')).width(20)
               Column({ space: 2 }) {
                 Text(p.ok ? p.name + ' · 周' + p.weekday + ' · 第' + p.sectionStart + '-' + p.sectionEnd
                   + '节 · ' + p.weekFrom + '-' + p.weekTo + '周' : p.rawLine)
-                  .fontSize(13).fontColor($r('app.color.text_primary'))
+                  .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_primary'))
                 if (!p.ok) {
-                  Text(p.error).fontSize(11).fontColor($r('app.color.danger_red'))
+                  Text(p.error).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.danger_red'))
                 }
               }.alignItems(HorizontalAlign.Start)
               Blank()

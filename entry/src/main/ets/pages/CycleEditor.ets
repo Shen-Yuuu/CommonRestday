@@ -5,6 +5,7 @@ import { AppConst, DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
+import { DesignTokens } from '../theme/DesignTokens';
 
 /**
  * 锚点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -21,6 +22,8 @@ const REST_COLOR: string = '#B8C4CE';
 @Entry
 @Component
 struct CycleEditor {
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State owner: string = OWNER_ME;
   @State types: ShiftType[] = [];
   @State seq: string[] = [];
@@ -164,44 +167,44 @@ struct CycleEditor {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.brand_pink'))
         }.onClick(() => router.back())
         Blank()
         Text(this.owner === OWNER_ME ? '循环模板' : '伴侣的循环模板')
-          .fontSize(17).fontWeight(FontWeight.Bold)
+          .fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold)
         Blank()
-        Text('清空').fontSize(15).fontColor($r('app.color.text_tertiary')).onClick(() => this.clearTemplate())
+        Text('清空').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.text_tertiary')).onClick(() => this.clearTemplate())
       }.width('100%').padding(12)
 
       Scroll() {
         Column({ space: 12 }) {
           Column({ space: 8 }) {
             Text('循环序列（点击班次追加，点击序列中的项移除）')
-              .fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
+              .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
             Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
               ForEach(this.types, (st: ShiftType) => {
                 Text(st.name)
-                  .fontSize(13).fontColor('#FFFFFF')
+                  .fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFF')
                   .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                   .borderRadius(14).backgroundColor(st.color)
                   .onClick(() => this.seq.push(st.id))
               }, (st: ShiftType) => st.id)
               // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
               Text('休息')
-                .fontSize(13).fontColor('#FFFFFF')
+                .fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFF')
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                 .borderRadius(14).backgroundColor(REST_COLOR)
                 .onClick(() => this.seq.push(REST_IN_SEQ))
             }.width('100%')
 
             if (this.seq.length === 0) {
-              Text('序列为空').fontSize(13).fontColor($r('app.color.text_disabled'))
+              Text('序列为空').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_disabled'))
                 .width('100%').textAlign(TextAlign.Center).padding(12)
             } else {
               Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
                 ForEach(this.seq, (id: string, idx: number) => {
                   Text((idx + 1) + '.' + this.typeName(id))
-                    .fontSize(12).fontColor('#FFFFFF')
+                    .fontSize(DesignTokens.fontTick(this.senior)).fontColor('#FFFFFF')
                     .padding({ left: 8, right: 8, top: 5, bottom: 5 })
                     .borderRadius(12).backgroundColor(this.typeColor(id))
                     .onClick(() => this.seq.splice(idx, 1))
@@ -214,11 +217,11 @@ struct CycleEditor {
           .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
 
           Column({ space: 8 }) {
-            Text('锚点：序列第 1 天对应的真实日期').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('锚点：序列第 1 天对应的真实日期').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
             Row() {
-              Text(DateLabel.mdw(this.anchor)).fontSize(15).fontWeight(FontWeight.Medium)
+              Text(DateLabel.mdw(this.anchor)).fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
               Blank()
-              Text('选择日期 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
+              Text('选择日期 ›').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
             }
             .width('100%').padding(12).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
             .onClick(() => this.pickAnchor())
@@ -231,7 +234,7 @@ struct CycleEditor {
             .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink')).onClick(() => this.save())
 
           Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班点周历里的某一天。')
-            .fontSize(11).fontColor($r('app.color.text_hint'))
+            .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
         }
         .padding(12).width('100%')
       }
@@ -254,7 +257,7 @@ struct CycleEditor {
   @Builder
   anchorSheet() {
     Column({ space: 12 }) {
-      Text('选择锚点日期').fontSize(16).fontWeight(FontWeight.Medium)
+      Text('选择锚点日期').fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
       DatePicker({
         start: ANCHOR_RANGE_START,
         end: ANCHOR_RANGE_END,

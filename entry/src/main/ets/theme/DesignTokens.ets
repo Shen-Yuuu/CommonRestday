@@ -89,20 +89,17 @@ export class DesignTokens {
   static readonly space5: Resource = $r('app.float.space_5');
   static readonly space6: Resource = $r('app.float.space_6');
 
-  // ---- 字号：说明/正文/小标题/展示标题 ----
-  /**
-   * 基准四档。长辈模式不另立一套字号，而是整条阶梯向上挪一档：caption 的 senior 值就是 body 的基准值。
-   * 复用而不是复制，"提高一级"才是定义本身——调 font_body 会同时调到 senior 的 caption。
-   * 只有最高档没有现成的上一档可用，单独给它一档 38fp。
-   */
+  // ---- 字号：七档阶梯，见下面 fontCaption 一组方法上的角色表 ----
   static readonly fontCaptionBase: Resource = $r('app.float.font_caption');
   static readonly fontBodyBase: Resource = $r('app.float.font_body');
+  static readonly fontHeadBase: Resource = $r('app.float.font_head');
+  static readonly fontHeadSenior: Resource = $r('app.float.font_head_senior');
   static readonly fontTitleBase: Resource = $r('app.float.font_title');
   static readonly fontDisplayBase: Resource = $r('app.float.font_display');
   static readonly fontDisplaySenior: Resource = $r('app.float.font_display_senior');
   /**
-   * 密集标注两档：周历/时间轴刻度、色块里的字数、图例这一类，整档跳会把网格顶散，
-   * 所以 senior 只加 2fp，并守住 10fp 地板（历史上散在页面上的 8fp、9fp 裸数字一律并进 micro）。
+   * 密档两档：周历/时间轴的刻度、色块里的字数、图例。senior 地板 10fp（页面上原先的 8fp、9fp
+   * 裸数字一律并进 micro，这一轮就是把"小到自己都不认得"的那半收回来）。
    */
   static readonly fontMicroBase: Resource = $r('app.float.font_micro');
   static readonly fontMicroSenior: Resource = $r('app.float.font_micro_senior');
@@ -115,12 +112,30 @@ export class DesignTokens {
    * 做成方法而不是静态字段：字段拿不到状态；而漏传参的写法（把方法本身当字号值用）会编译失败，
    * 所以覆盖面由编译器保证，不靠人工数"改了多少处"。
    */
+  /**
+   * 七档阶梯，基准值是页面上量出来的角色，不是凑等比：
+   * micro 10 网格刻度与色块字数 / tick 12 次级说明 / caption 13 标签 / body 16 正文·表单值·操作文字
+   * / head 17 子页页首标题 / title 21 主标题与行图标 / display 30 展示数字。
+   *
+   * senior 一列的规则一句话：**跳一档，能复用高一档基准值的就复用**（caption→16、body→21、title→30
+   * 分别就是 body/head·title/title 的基准）；只有没有现成上档可用时才另配资源
+   * （micro→12、tick→15、head→22、display→38）。密档（micro/tick）只走 ×1.2–1.25，
+   * 因为这两档要守可读性地板又不能让网格先散掉。
+   *
+   * 页面上原有的裸数字按**就近取档**落进来：先取基准值差最小的档（11→tick、14→caption、15→body、
+   * 18→head、22→title），差值并列时才用上面的角色定义打破平局。这样每一处都响应 senior，
+   * 而正常模式的位移控制在 1–2fp。图标字号与远离阶梯的展示级不入档，保留裸数字并记在台账里。
+   */
   static fontCaption(senior: boolean): Resource {
     return senior ? DesignTokens.fontBodyBase : DesignTokens.fontCaptionBase;
   }
 
   static fontBody(senior: boolean): Resource {
     return senior ? DesignTokens.fontTitleBase : DesignTokens.fontBodyBase;
+  }
+
+  static fontHead(senior: boolean): Resource {
+    return senior ? DesignTokens.fontHeadSenior : DesignTokens.fontHeadBase;
   }
 
   static fontTitle(senior: boolean): Resource {

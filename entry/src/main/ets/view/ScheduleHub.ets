@@ -311,7 +311,7 @@ export struct ScheduleHub {
           // 箭头和"返回"是一回事，念两遍不如合成一句
           .accessibilityLevel('no')
         Text('返回')
-          .fontSize(15).fontColor(DesignTokens.primary)
+          .fontSize(DesignTokens.fontBody(this.senior)).fontColor(DesignTokens.primary)
       }
       .padding({ left: 2, top: DesignTokens.space3, bottom: DesignTokens.space3 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -322,7 +322,7 @@ export struct ScheduleHub {
 
       Blank()
       Text('日程录入')
-        .fontSize(17)
+        .fontSize(DesignTokens.fontHead(this.senior))
         .fontWeight(FontWeight.Bold)
         .fontColor(DesignTokens.textPrimary)
       Blank()

@@ -321,13 +321,13 @@ export struct WindowDetailSheet {
   windowSummary() {
     Column({ space: 6 }) {
       Text(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
-        .fontSize(17).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
+        .fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
       Text(DateLabel.endLabel(this.winStart, this.winEnd)
         + ' · 共 ' + DateLabel.duration(this.winEnd - this.winStart))
-        .fontSize(13).fontColor('#FFFFFFB8')
+        .fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFFB8')
       if (this.winTags !== '') {
         Text(this.winTags.split('|').join(' · '))
-          .fontSize(11).fontColor('#FFFFFFB8')
+          .fontSize(DesignTokens.fontTick(this.senior)).fontColor('#FFFFFFB8')
       }
     }
     .width('100%')
@@ -369,12 +369,12 @@ export struct WindowDetailSheet {
       .accessibilityLevel('no')
 
       Row() {
-        Text(this.edgeLabel(this.winStart, false)).fontSize(10).fontColor($r('app.color.text_hint'))
+        Text(this.edgeLabel(this.winStart, false)).fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_hint'))
         Blank()
         Text('整段 ' + DateLabel.duration(this.winEnd - this.winStart))
-          .fontSize(10).fontColor($r('app.color.text_secondary'))
+          .fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_secondary'))
         Blank()
-        Text(this.edgeLabel(this.winEnd, true)).fontSize(10).fontColor($r('app.color.text_hint'))
+        Text(this.edgeLabel(this.winEnd, true)).fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_hint'))
       }
       .width('100%')
       .accessibilityGroup(true)
@@ -393,7 +393,7 @@ export struct WindowDetailSheet {
     Column({ space: 12 }) {
       // ③ 计划类型
       Column({ space: 8 }) {
-        Text('计划类型').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        Text('计划类型').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary')).width('100%')
         Flex({ wrap: FlexWrap.Wrap }) {
           ForEach(PLAN_KINDS, (k: PlanKindOption, idx: number) => {
             Column() {
@@ -422,7 +422,7 @@ export struct WindowDetailSheet {
 
       // ④ 标题
       Column({ space: 8 }) {
-        Text('标题').fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+        Text('标题').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary')).width('100%')
         TextInput({ text: this.title, placeholder: '给这个计划起个名字' })
           // 固定 height 会在大字体下把文字切掉，改成高度下限让输入框跟着文字长
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) }).width('100%')
@@ -435,22 +435,22 @@ export struct WindowDetailSheet {
       // ⑤ 起止调节（±15 分钟步进，窗口内硬限制）
       Column({ space: 8 }) {
         Text('时间调节（±' + STEP_MIN + ' 分钟，限制在窗口内）')
-          .fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+          .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary')).width('100%')
 
         Row({ space: 10 }) {
-          Text('开始').fontSize(13).constraintSize({ minWidth: 36 })
+          Text('开始').fontSize(DesignTokens.fontCaption(this.senior)).constraintSize({ minWidth: 36 })
           Text(this.stampOf(this.planStart, false))
-            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
+            .fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
             .textAlign(TextAlign.Center)
             .accessibilityText('计划开始 ' + this.stampOf(this.planStart, false))
           Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .fontSize(12)
+            .fontSize(DesignTokens.fontTick(this.senior))
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftStartEarlier())
             .accessibilityText('开始时间提前 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftStart(-STEP_MIN))
           Button('+' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .fontSize(12)
+            .fontSize(DesignTokens.fontTick(this.senior))
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftStartLater())
             .accessibilityText('开始时间推迟 ' + STEP_MIN + ' 分钟')
@@ -458,19 +458,19 @@ export struct WindowDetailSheet {
         }.width('100%')
 
         Row({ space: 10 }) {
-          Text('结束').fontSize(13).constraintSize({ minWidth: 36 })
+          Text('结束').fontSize(DesignTokens.fontCaption(this.senior)).constraintSize({ minWidth: 36 })
           Text(this.stampOf(this.planEnd, true))
-            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
+            .fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
             .textAlign(TextAlign.Center)
             .accessibilityText('计划结束 ' + this.stampOf(this.planEnd, true))
           Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .fontSize(12)
+            .fontSize(DesignTokens.fontTick(this.senior))
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftEndEarlier())
             .accessibilityText('结束时间提前 ' + STEP_MIN + ' 分钟')
             .onClick(() => this.shiftEnd(-STEP_MIN))
           Button('+' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .fontSize(12)
+            .fontSize(DesignTokens.fontTick(this.senior))
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
             .enabled(this.canShiftEndLater())
             .accessibilityText('结束时间推迟 ' + STEP_MIN + ' 分钟')
@@ -485,9 +485,9 @@ export struct WindowDetailSheet {
       // ⑦ 系统日历：默认写进应用专属日历（受管），关掉只留在应用里
       Row({ space: 10 }) {
         Column({ space: 2 }) {
-          Text('写入系统日历').fontSize(13).fontColor($r('app.color.text_secondary'))
+          Text('写入系统日历').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary'))
           Text('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')
-            .fontSize(11).fontColor($r('app.color.text_hint'))
+            .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)

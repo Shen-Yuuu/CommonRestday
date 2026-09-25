@@ -4,6 +4,7 @@ import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } f
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { DesignTokens } from '../theme/DesignTokens';
 import { DayShiftSheet } from './DayShiftSheet';
 
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
@@ -203,10 +204,10 @@ export struct DayDetailSheet {
   build() {
     Column({ space: 14 }) {
       Row() {
-        Text(DateLabel.mdw(this.day)).fontSize(18).fontWeight(FontWeight.Bold)
+        Text(DateLabel.mdw(this.day)).fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold)
         Blank()
         if (this.editing) {
-          Text('返回概览').fontSize(14).fontColor($r('app.color.text_secondary'))
+          Text('返回概览').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary'))
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })
             .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -214,7 +215,7 @@ export struct DayDetailSheet {
             .accessibilityText('返回当日概览')
             .onClick(() => this.backToOverview())
         } else {
-          Text('改这天').fontSize(14).fontColor($r('app.color.brand_pink'))
+          Text('改这天').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })
             .borderRadius(14).backgroundColor($r('app.color.fill_weakest'))
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -224,7 +225,7 @@ export struct DayDetailSheet {
               this.editing = true;
             })
         }
-        Text('关闭').fontSize(14).fontColor($r('app.color.text_secondary'))
+        Text('关闭').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary'))
           .margin({ left: 10 })
           .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
           .focusable(true)
@@ -246,23 +247,23 @@ export struct DayDetailSheet {
       } else if (this.loading) {
         Column({ space: 8 }) {
           LoadingProgress().width(32).height(32).color($r('app.color.brand_pink'))
-          Text('加载中…').fontSize(13).fontColor($r('app.color.text_tertiary'))
+          Text('加载中…').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary'))
         }.width('100%').padding({ top: 24, bottom: 24 })
         .alignItems(HorizontalAlign.Center)
       } else if (this.data == null) {
-        Text('数据加载失败，请稍后重试').fontSize(13).fontColor($r('app.color.text_tertiary'))
+        Text('数据加载失败，请稍后重试').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary'))
           .width('100%').textAlign(TextAlign.Center).padding({ top: 24, bottom: 24 })
       } else {
         Scroll() {
           Column({ space: 14 }) {
             Text(this.windowLead())
-              .fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
+              .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary')).width('100%')
 
             // ---------- 当日窗口 ----------
             Column({ space: 8 }) {
               if (this.regularWindows().length === 0) {
                 Text(this.hasPartner() ? '当天没有共同空闲窗口' : '当天没有可安排的空闲')
-                  .fontSize(12).fontColor($r('app.color.text_tertiary'))
+                  .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
               } else {
                 ForEach(this.regularWindows(), (w: WindowSummary) => {
                   this.windowRow(w)
@@ -291,9 +292,9 @@ export struct DayDetailSheet {
               })
               if (this.data.partnerBusy == null) {
                 Text('暂无对方数据（当前为单人模式）')
-                  .fontSize(12).fontColor($r('app.color.text_tertiary'))
+                  .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
               } else {
-                Text(this.partnerNote()).fontSize(11).fontColor($r('app.color.text_hint'))
+                Text(this.partnerNote()).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
                 this.busyBar(this.segmentsOf(this.clipped(this.data.partnerBusy)), $r('app.color.partner_busy'))
                 this.busyList(this.clipped(this.data.partnerTrueBusy))
               }
@@ -318,19 +319,19 @@ export struct DayDetailSheet {
     Row({ space: 8 }) {
       Column({ space: 2 }) {
         Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end) + ' · ' + DateLabel.duration(w.durationMin))
-          .fontSize(13).fontColor($r('app.color.text_primary'))
+          .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_primary'))
         if (w.displayTags.length > 0) {
           Row({ space: 4 }) {
             ForEach(w.displayTags, (t: string) => {
               Text(displayTagLabel(t))
-                .fontSize(10).fontColor('#FFFFFF')
+                .fontSize(DesignTokens.fontMicro(this.senior)).fontColor('#FFFFFF')
                 .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                 .borderRadius(8).backgroundColor(tagColor(t))
             }, (t: string) => t)
           }
         }
       }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+      Text('去计划 ›').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.brand_pink'))
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))
@@ -348,11 +349,11 @@ export struct DayDetailSheet {
       Column({ space: 2 }) {
         Text('旅行窗口 · ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
           + DateLabel.endLabel(w.start, w.end))
-          .fontSize(12).fontColor($r('app.color.text_secondary'))
+          .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_secondary'))
         Text('连续 ' + DateLabel.duration(w.durationMin) + '，夜间睡眠不计入忙碌')
-          .fontSize(10).fontColor($r('app.color.text_hint'))
+          .fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_hint'))
       }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+      Text('去计划 ›').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.brand_pink'))
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))
@@ -387,15 +388,15 @@ export struct DayDetailSheet {
   @Builder
   busyList(ivs: Interval[]) {
     if (ivs.length === 0) {
-      Text('全天空闲').fontSize(12).fontColor($r('app.color.text_tertiary'))
+      Text('全天空闲').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
     } else {
       Column({ space: 4 }) {
         ForEach(ivs, (iv: Interval) => {
           Row({ space: 8 }) {
             Text(DateLabel.hm(iv.start) + ' – ' + DateLabel.hm(iv.end))
-              .fontSize(12).fontColor($r('app.color.text_secondary'))
+              .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_secondary'))
             Text(busyTagLabel(iv.tag))
-              .fontSize(10).fontColor($r('app.color.text_tertiary'))
+              .fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_tertiary'))
           }.width('100%')
           // 时段和类型是一件事的两半，分两段念会听成两条记录
           .accessibilityGroup(true)

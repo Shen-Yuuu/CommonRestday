@@ -62,7 +62,15 @@
     },
     {
       "name": "font_tick_senior",
-      "value": "14fp"
+      "value": "15fp"
+    },
+    {
+      "name": "font_head",
+      "value": "17fp"
+    },
+    {
+      "name": "font_head_senior",
+      "value": "22fp"
     },
     {
       "name": "radius_card",

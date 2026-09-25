@@ -239,7 +239,9 @@ struct CycleEditor {
       // D-09：Scroll 内容短于视口时按默认对齐摆放，首屏会空出上半部；显式顶对齐。
       .align(Alignment.TopStart)
     }
+    // D-38：根容器扩绘制区到状态栏/导航条之下，消掉顶底两条窗口默认底色。
     .width('100%').height('100%').backgroundColor($r('app.color.page_bg_warm'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .bindSheet($$this.anchorSheetVisible, this.anchorSheet(), {
       detents: [SheetSize.MEDIUM],
       dragBar: false,

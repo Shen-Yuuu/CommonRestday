@@ -55,6 +55,30 @@ export class DateLabel {
     return DateLabel.hm(startMin) + ' – ' + DateLabel.md(ed) + ' ' + et;
   }
 
+  /**
+   * 单个端点的「日期 + 时间」（D-44）：只印 HH:MM 时，明天 07:00 与今天 07:00 在屏幕上
+   * 长得一模一样（起草器踩过两次），所以每个端点都要自证是哪一天。
+   * 今天/明天用相对词，更远（含昨天及更早的异常值）一律写死月日——
+   * 相对词按调用方给定的"查看时的今天"现算，页面停留跨天后跟着变，不会留一个会漂移的「明天」。
+   * isEnd 且落在整零点时记前一天 24:00，与 DateLabel.endLabel 同一口径。
+   */
+  static stamp(epochMin: number, isEnd: boolean, todayEpoch: number): string {
+    let day = Math.floor(epochMin / 1440);
+    let time = DateLabel.hm(epochMin);
+    if (isEnd && epochMin % 1440 === 0) {
+      day = epochMin / 1440 - 1;
+      time = '24:00';
+    }
+    const offset = day - todayEpoch;
+    if (offset === 0) {
+      return '今天 ' + time;
+    }
+    if (offset === 1) {
+      return '明天 ' + time;
+    }
+    return DateLabel.md(day) + ' ' + time;
+  }
+
   /** "7小时30分" */
   static duration(minutes: number): string {
     const h = Math.floor(minutes / 60);

@@ -20,6 +20,7 @@ const TAG = 'WindowDetailSheet';
  * - 时间轴可视化：窗口横条 + 计划区间高亮预览（Row 比例布局）；条下方两端是窗口起止
  *   （跨日才带日期），中间标窗口总长——计划区间条上已高亮、下面表单里有数字，不再占这一行；
  * - 计划类型选择 + 标题（默认=类型名）+ 起止调节：±15 分钟步进，硬限制在 [窗口起, 窗口止]；
+ *   两端读数一律带日期（D-44，今天/明天/月日三档），只印 HH:MM 时"明天 07:00"读起来和今天没区别；
  * - 「创建计划」→ PlanUseCase.createPlan：默认受管写入应用专属「同休日」日历（开关可关成"只留在应用里"），
  *   没写成时计划照样保留，toast 明说"仅保存在应用内"。
  *
@@ -199,6 +200,14 @@ export struct WindowDetailSheet {
     const day = this.edgeDay(min, isEnd);
     const time = isEnd && min % MIN_PER_DAY === 0 ? '24:00' : DateLabel.hm(min);
     return this.crossesDays() ? DateLabel.md(day) + ' ' + time : time;
+  }
+
+  /**
+   * 起止两行的读数（D-44）：日期按"看的那一刻"现算，所以草稿开着跨过零点，
+   * 标签会跟着从「今天」翻成「明天」，不会留一个已经不成立的相对词。
+   */
+  private stampOf(min: number, isEnd: boolean): string {
+    return DateLabel.stamp(min, isEnd, todayEpochDay());
   }
 
   // ---------- 创建 ----------
@@ -430,10 +439,10 @@ export struct WindowDetailSheet {
 
         Row({ space: 10 }) {
           Text('开始').fontSize(13).constraintSize({ minWidth: 36 })
-          Text(DateLabel.hm(this.planStart))
-            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 56 })
+          Text(this.stampOf(this.planStart, false))
+            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
             .textAlign(TextAlign.Center)
-            .accessibilityText('计划开始 ' + DateLabel.hm(this.planStart))
+            .accessibilityText('计划开始 ' + this.stampOf(this.planStart, false))
           Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))
@@ -450,10 +459,10 @@ export struct WindowDetailSheet {
 
         Row({ space: 10 }) {
           Text('结束').fontSize(13).constraintSize({ minWidth: 36 })
-          Text(DateLabel.hm(this.planEnd))
-            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 56 })
+          Text(this.stampOf(this.planEnd, true))
+            .fontSize(15).fontWeight(FontWeight.Medium).constraintSize({ minWidth: 96 })
             .textAlign(TextAlign.Center)
-            .accessibilityText('计划结束 ' + DateLabel.hm(this.planEnd))
+            .accessibilityText('计划结束 ' + this.stampOf(this.planEnd, true))
           Button('−' + STEP_MIN).constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .fontSize(12)
             .backgroundColor($r('app.color.fill_weak')).fontColor($r('app.color.text_secondary'))

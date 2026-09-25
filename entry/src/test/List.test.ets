@@ -8,6 +8,7 @@ import planUseCaseTest from './PlanUseCaseTest';
 import cardSummaryServiceTest from './CardSummaryServiceTest';
 import planKindsTest from './PlanKindsTest';
 import profileSettingsGuardTest from './ProfileSettingsGuardTest';
+import dateLabelTest from './DateLabelTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -20,4 +21,5 @@ export default function testsuite() {
   cardSummaryServiceTest();
   planKindsTest();
   profileSettingsGuardTest();
+  dateLabelTest();
 }

@@ -13,6 +13,10 @@ export class DesignTokens {
   static readonly page: Resource = $r('app.color.page_bg_warm');
   static readonly pageSoft: Resource = $r('app.color.page_bg_soft');
   static readonly pageGlow: Resource = $r('app.color.page_glow');
+  /** 页面竖向渐变的三档（原型 #screen）：浅色是暖白的一口回甘，深色是顶部亮紫、底部沉黑。 */
+  static readonly pageGradTop: Resource = $r('app.color.page_grad_top');
+  static readonly pageGradMid: Resource = $r('app.color.page_grad_mid');
+  static readonly pageGradBottom: Resource = $r('app.color.page_grad_bottom');
   static readonly card: Resource = $r('app.color.card_bg');
   static readonly primary: Resource = $r('app.color.brand_pink');
   /** 厚底色：果冻按钮/芯片下沿那 3vp 硬边，永远比 primary 深一档。 */
@@ -32,14 +36,6 @@ export class DesignTokens {
   static readonly glow: Resource = $r('app.color.glow_pink');
   static readonly focusRing: Resource = $r('app.color.focus_ring');
 
-
-  // ---- 气氛背景层：低饱和日光/莓粉/冷蓝，只用于首页顶部一条，正文不压在它上面 ----
-  static readonly sceneWarm: Resource = $r('app.color.scene_warm');
-  static readonly sceneRose: Resource = $r('app.color.scene_rose');
-  static readonly sceneBlue: Resource = $r('app.color.scene_blue');
-  /** 暖白雾层：压在气氛层与内容之间，保证合成后文字底下总有可预测底色。 */
-  static readonly sceneVeilStrong: Resource = $r('app.color.scene_veil_strong');
-  static readonly sceneVeilSoft: Resource = $r('app.color.scene_veil_soft');
 
   // ---- 交互玻璃层：strong=悬浮底栏与 Sheet，soft=首页唯一主结果（深莓底） ----
   static readonly glassStrong: Resource = $r('app.color.glass_strong');
@@ -175,12 +171,6 @@ export class DesignTokens {
   static readonly heroShadowRadius: number = 32;
   static readonly heroShadowOffsetY: number = 16;
 
-  /**
-   * 气氛背景漂移周期（ms）与幅度（vp）：规范只允许 8–16 秒、2–6vp 的极轻漂移，
-   * 默认关闭，由 AmbientScene 的 drift 入参显式打开；减少动效时强制为 0。
-   */
-  static readonly motionSceneShift: number = 12000;
-  static readonly sceneDriftVp: number = 4;
   /** 入场位移（vp）与列表错峰步进（ms）。 */
   static readonly enterOffset: number = 14;
   static readonly staggerStep: number = 45;
@@ -242,6 +232,19 @@ export class DesignTokens {
    */
   static sheetGradient(): LinearGradientOptions {
     return { angle: 180, colors: [[DesignTokens.sheetTop, 0], [DesignTokens.page, 1]] };
+  }
+
+  /**
+   * 页面底：原型 #screen 的那条竖向渐变（浅色 暖白→页色，深色 亮紫→沉黑）。
+   * 档位在 0/45%/100%：原型浅色把页色写在 66%，深色写在 100%，取一条两边都成立的折中，
+   * 浅色端点差不到两个色阶，肉眼分不出。铺在页面根节点上，滚动时它不动（原型也是画在 #screen）。
+   */
+  static pageGradient(): LinearGradientOptions {
+    return {
+      angle: 180,
+      colors: [[DesignTokens.pageGradTop, 0], [DesignTokens.pageGradMid, 0.45],
+        [DesignTokens.pageGradBottom, 1]]
+    };
   }
 
   /** 开启减少动效时时长归零：位移动画退化为直接呈现。 */

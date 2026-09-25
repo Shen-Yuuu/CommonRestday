@@ -410,7 +410,7 @@ export struct ScheduleHub {
       .align(Alignment.Top)
       .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
       .scrollBar(BarState.Off)
-      .backgroundColor(DesignTokens.page)
+      .linearGradient(DesignTokens.pageGradient())
       .bindSheet($$this.sheetOpen, this.daySheet(), {
         detents: [SheetSize.MEDIUM, SheetSize.LARGE],
         dragBar: false,

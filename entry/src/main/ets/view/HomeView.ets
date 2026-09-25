@@ -17,7 +17,6 @@ import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
-import { AmbientScene } from '../component/AmbientScene';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { ConflictNotice } from '../component/ConflictNotice';
@@ -446,9 +445,6 @@ export struct HomeView {
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
       Stack() {
-        // 气氛层只在首页出现，且不吃掉正文对比：暖白雾压在色带与内容之间
-        AmbientScene()
-
         Scroll() {
           Column({ space: DesignTokens.space3 }) {
             this.header()
@@ -572,7 +568,7 @@ export struct HomeView {
         }
         .width('100%')
         .height('100%')
-        // 底色交给 Stack：气氛层要能透出来，滚动容器自己不再铺底
+        // 页面底画在最外层：渐变要像原型的 #screen 那样定住，滚动容器自己不能再铺底
         .backgroundColor(Color.Transparent)
         .align(Alignment.Top)
         .scrollBar(BarState.Off)
@@ -588,7 +584,7 @@ export struct HomeView {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(DesignTokens.page)
+      .linearGradient(DesignTokens.pageGradient())
     }
   }
 }

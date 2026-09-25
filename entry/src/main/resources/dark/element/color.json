@@ -249,26 +249,6 @@
       "value": "#A85C80"
     },
     {
-      "name": "scene_warm",
-      "value": "#332E2445"
-    },
-    {
-      "name": "scene_rose",
-      "value": "#333A2230"
-    },
-    {
-      "name": "scene_blue",
-      "value": "#2624344E"
-    },
-    {
-      "name": "scene_veil_strong",
-      "value": "#8C241C3B"
-    },
-    {
-      "name": "scene_veil_soft",
-      "value": "#52241C3B"
-    },
-    {
       "name": "glass_strong",
       "value": "#8C2C2340"
     },
@@ -295,6 +275,18 @@
     {
       "name": "dock_mask",
       "value": "#66241C3B"
+    },
+    {
+      "name": "page_grad_top",
+      "value": "#2E2445"
+    },
+    {
+      "name": "page_grad_mid",
+      "value": "#241C3B"
+    },
+    {
+      "name": "page_grad_bottom",
+      "value": "#1B1430"
     }
   ]
 }

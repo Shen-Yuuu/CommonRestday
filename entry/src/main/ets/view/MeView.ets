@@ -567,7 +567,7 @@ export struct MeView {
       .height('100%')
       .align(Alignment.Top)
       .scrollBar(BarState.Off)
-      .backgroundColor(DesignTokens.page)
+      .linearGradient(DesignTokens.pageGradient())
     }
   }
 

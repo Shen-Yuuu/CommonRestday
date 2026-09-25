@@ -6,6 +6,7 @@ import { Logger } from 'commons';
 import { common } from '@kit.AbilityKit';
 import { Breakpoint } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
+import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /** 展开档下整壳的最大宽度：再宽只加留白，不把三 Tab 底栏拉到屏幕两头。 */
@@ -99,6 +100,6 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_bg_warm'))
+    .linearGradient(DesignTokens.pageGradient())
   }
 }

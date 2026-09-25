@@ -342,7 +342,7 @@ struct ScheduleEditor {
       .padding(12).width('100%').layoutWeight(1)
     }
     // D-38：根容器停在安全区里侧，状态栏与导航条那两条露出窗口默认底色；扩绘制区消掉白条。
-    .width('100%').height('100%').backgroundColor($r('app.color.page_bg_warm'))
+    .width('100%').height('100%').linearGradient(DesignTokens.pageGradient())
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .bindSheet($$this.colorSheetVisible, this.colorPickerSheet(), {
       detents: [SheetSize.LARGE],

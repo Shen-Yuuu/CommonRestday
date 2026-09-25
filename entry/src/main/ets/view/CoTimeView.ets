@@ -461,7 +461,7 @@ export struct CoTimeView {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(DesignTokens.page)
+      .linearGradient(DesignTokens.pageGradient())
       .bindSheet($$this.sheetVisible, this.detailSheet(), {
         detents: [SheetSize.MEDIUM, SheetSize.LARGE],
         dragBar: false,

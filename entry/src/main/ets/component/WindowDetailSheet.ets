@@ -7,8 +7,6 @@ import {
   DRAFT_GRID_MIN
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
-import { GlassStrength } from '../theme/MaterialPolicy';
-import { GlassSurface } from './GlassSurface';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 const STEP_MIN = DRAFT_GRID_MIN;
@@ -254,18 +252,18 @@ export struct WindowDetailSheet {
       // 卡片底而不是玻璃：详情栏是常驻面板，不是浮层
       .backgroundColor(DesignTokens.card)
     } else {
+      // 面由本组件自己画（与 PrivacyPolicySheet 同一份配方）：02 的 .sheet 是一条
+      // 顶亮下页色的不透明渐变，本来就不是玻璃。走 GlassSurface 的材质路径时，
+      // bindSheet 里那一层只留下透明填充，底下的周历格直接透上来（批次 Q·Q2）。
       Column() {
-        GlassSurface({
-          strength: GlassStrength.STRONG,
-          radius: DesignTokens.radiusSheet,
-          fallback: $r('app.color.card_bg'),
-          topCornersOnly: true
-        }) {
-          this.formBody(true)
-        }
+        this.formBody(true)
       }
       .width('100%')
       .height('100%')
+      .backgroundColor(DesignTokens.page)
+      .linearGradient(DesignTokens.sheetGradient())
+      .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })
+      .clip(true)
     }
   }
 

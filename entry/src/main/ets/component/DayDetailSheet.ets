@@ -312,7 +312,9 @@ export struct DayDetailSheet {
     .width('100%')
     .height('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 24 })
-    .backgroundColor($r('app.color.page_bg_warm'))
+    .backgroundColor(DesignTokens.page)
+    // 02 的 .sheet 面是顶亮下页色的竖向渐变，不是一块平色（与另两张自绘 sheet 同一份配方）
+    .linearGradient(DesignTokens.sheetGradient())
   }
 
   /** 常规通道窗口行：时刻 + 时长 + 压缩后的展示标签，点击交给父页建计划。 */

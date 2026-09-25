@@ -1,6 +1,6 @@
 import { router, SegmentButtonV2Items } from '@kit.ArkUI';
 import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
-import { FeatureFlags, ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
+import { ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
 import { Logger } from 'commons';
 import { DesignTokens } from '../theme/DesignTokens';
 import { ownerFromParams, ownerParam } from '../model/RouteParams';
@@ -75,7 +75,7 @@ const MAIN_ENTRIES: EntryItem[] = [
  */
 @Component
 export struct ScheduleHub {
-  /** 壳层 pushPathByName 带入的侧别：从「代录 TA 的班表」进入时直接落在 TA。 */
+  /** 壳层 pushPathByName 带入的侧别：不传落在「我」，传 PARTNER 直接落在 TA 侧。 */
   initialOwner: string = OWNER_ME;
   /** 返回动作由壳层注入：pop 的是它手里的 NavPathStack，本页够不到。 */
   onBack: () => void = () => {
@@ -298,29 +298,38 @@ export struct ScheduleHub {
   }
 
   /**
-   * 页首返回键。系统标题栏是本页自己藏掉的（标题与滚动都在正文里），
-   * 藏掉它就一起失去了唯一的可见出口；返回手势又没有视觉线索，
-   * 从「我的 · 我的日程」跳进来的人必须看得见"怎么回去"。
+   * 页首标题栏：与四个主入口页同一款——左「返回」＋居中粗标题，标题下面不再挂说明行。
+   * 系统标题栏是本页自己藏掉的（标题与滚动都在正文里），藏掉它就一起失去了唯一的可见出口，
+   * 所以这颗可见返回键必须留着（从「我的 · 我的日程」跳进来的人要看得见怎么回去）。
    */
   @Builder
-  backRow() {
-    Row({ space: 2 }) {
-      SymbolGlyph($r('sys.symbol.chevron_left'))
-        .fontSize(18).fontColor([DesignTokens.textSecondary])
-        // 箭头和"返回"是一回事，念两遍不如合成一句
-        .accessibilityLevel('no')
-      Text('返回')
-        .fontSize(DesignTokens.fontBody)
-        .fontColor(DesignTokens.textSecondary)
+  headBar() {
+    Row() {
+      Row({ space: 2 }) {
+        SymbolGlyph($r('sys.symbol.chevron_left'))
+          .fontSize(16).fontColor([DesignTokens.primary])
+          // 箭头和"返回"是一回事，念两遍不如合成一句
+          .accessibilityLevel('no')
+        Text('返回')
+          .fontSize(15).fontColor(DesignTokens.primary)
+      }
+      .padding({ left: 2, top: DesignTokens.space3, bottom: DesignTokens.space3 })
+      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+      .focusable(true)
+      .accessibilityGroup(true)
+      .accessibilityText('返回上一页')
+      .onClick(() => this.onBack())
+
+      Blank()
+      Text('日程录入')
+        .fontSize(17)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(DesignTokens.textPrimary)
+      Blank()
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
-    .padding({ left: 2, right: DesignTokens.space3, top: DesignTokens.space5 })
-    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-    .focusable(true)
-    .accessibilityGroup(true)
-    .accessibilityText('返回上一页')
-    .onClick(() => this.onBack())
+    .padding({ left: 2, right: DesignTokens.space3, top: DesignTokens.space4 })
   }
 
   /** 视图切换：与共同页同一款胶囊分段（列表/周历那对 viewPill 是页内二级切换，不混用）。 */
@@ -340,20 +349,7 @@ export struct ScheduleHub {
       // 周历网格本身超过一屏，整页必须可滚
       Scroll() {
         Column({ space: DesignTokens.space3 }) {
-          this.backRow()
-          Column({ space: 2 }) {
-            Text('日程录入')
-              .fontSize(DesignTokens.fontTitle)
-              .fontFamily(DesignTokens.fontSerif)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(DesignTokens.textPrimary)
-              .letterSpacing(-0.9)
-            Text('班次、循环、课程与临时调整都在这里；改完自动重算共同时间')
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textTertiary)
-          }
-          .width('100%')
-          .alignItems(HorizontalAlign.Start)
+          this.headBar()
 
           // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
           if (this.partnerLocal) {
@@ -400,20 +396,13 @@ export struct ScheduleHub {
             } else {
               this.summaryCard()
               this.mainEntriesCard()
-
-              // 云端档位关闭时不把用户指向一个已经收起来的入口（阶段 6R.2）
-              Text(FeatureFlags.cloudPairing
-                ? 'TA 的班表由你在这台手机上代录；两台手机各自记录请用「我的 · 伴侣与同步」配对。'
-                : 'TA 的班表由你在这台手机上代录。')
-                .fontSize(DesignTokens.fontCaption)
-                .fontColor(DesignTokens.textHint)
-                .width('100%')
-                .padding({ bottom: DesignTokens.space6 })
             }
           }
         }
         .width('100%')
         .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+        // 页脚那条代录说明删掉后，末张卡下面原本由它承担的空隙要自己留着
+        .padding({ bottom: DesignTokens.space6 })
       }
       .width('100%')
       .height('100%')

@@ -56,6 +56,34 @@ export function horizonLabel(horizonDays: number): string {
 }
 
 /**
+ * 夜班判定三档的下拉文字（D-33）。**顺序即 domain 的 nightMode 值**：
+ * 0=自动识别、1=强制夜班、2=不触发夜班恢复，所以下标可以原值往返。
+ * 原来只给两档，库里值为 2 的班次进编辑页被折成「自动识别」，下一次保存静默改写成 0。
+ */
+export const NIGHT_MODE_LABELS: string[] = ['自动识别', '强制夜班', '不触发夜班恢复'];
+
+/** 下拉框下标 → 存库值；认不出的下标落回自动档。 */
+export function nightModeOf(index: number): number {
+  return index >= 0 && index < NIGHT_MODE_LABELS.length ? index : 0;
+}
+
+/** 存库值 → 下拉框下标；将来多出来的新值按自动档显示，不会选中越界。 */
+export function nightModeIndex(mode: number): number {
+  return mode >= 0 && mode < NIGHT_MODE_LABELS.length ? mode : 0;
+}
+
+/** 当前档的一句话说明：三档都要有，不能只有中间那档带解释。 */
+export function nightModeHint(index: number): string {
+  if (index === 1) {
+    return '强制夜班：无论时段，下班后始终计入恢复时长';
+  }
+  if (index === 2) {
+    return '不触发夜班恢复：即使与夜班窗口相交，也不生成恢复块';
+  }
+  return '自动识别：班次时段与夜班窗口相交才算夜班';
+}
+
+/**
  * 首页问候语按钟点分档（D-39）。原来是一串 hour < N 的顺落判定，0–4 点被 <13 那一支
  * 接住，于是凌晨两点首页念「中午好」——所以最前面必须先挡掉凌晨档。
  * 05:00 起仍是早上好，23:00 起念「夜深了」，两端口径不动。

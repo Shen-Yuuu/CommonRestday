@@ -4,17 +4,17 @@ import { util } from '@kit.ArkTS';
 import { OWNER_ME, ShiftType, hhmmToMin, minToHHmm } from 'domain';
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import { ScheduleCommandService, ScheduleUseCase } from 'feature';
+import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHint, nightModeIndex, nightModeOf } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
 
 const COLORS: string[] = ['#E8833A', '#3AA6E8', '#8A63D2', '#D24A7E', '#2B4C9B', '#4E9A63', '#C9A227', '#7A7A7A'];
 
-/** 夜班判定选项：0=自动（与夜班窗口相交即恢复） 1=强制夜班（始终计入夜班恢复）。 */
-const NIGHT_MODE_OPTIONS: SelectOption[] = [
-  { value: '自动识别' },
-  { value: '强制夜班' }
-];
+/** 夜班判定三档（D-33）：文字与档位来自 feature/model/RhythmRules，顺序即存库值。 */
+const NIGHT_MODE_OPTIONS: SelectOption[] = NIGHT_MODE_LABELS.map((label: string): SelectOption => {
+  const opt: SelectOption = { value: label };
+  return opt;
+});
 
 /** 班次类型管理：列表 + 编辑表单（owner 双侧复用，班次类型按 owner 隔离）。 */
 @Entry
@@ -60,8 +60,19 @@ struct ScheduleEditor {
     this.commuteIn = '' + st.commuteInMin;
     this.commuteOut = '' + st.commuteOutMin;
     this.recovery = '' + st.recoveryMin;
-    this.nightIdx = st.nightMode === 1 ? 1 : 0;
+    this.nightIdx = nightModeIndex(st.nightMode);
     this.color = st.color;
+  }
+
+  /**
+   * 行 key 带上屏内显示的每一个字段（D-40，与 D-30 的 PlansView.cardKey 同一族）。
+   * 只按 id 做 key 时，保存后 reload 换掉的是数组、不是节点，这一行仍念着改值前的旧数字；
+   * 行内编辑器是 ForEach 之外的独立 ListItem，重建列表行不会碰到它。
+   */
+  rowKey(st: ShiftType): string {
+    return st.id + '-' + st.name + '-' + st.color + '-' + st.startMin + '-' + st.endMin
+      + '-' + (st.crossDay ? 1 : 0) + '-' + st.commuteInMin + '/' + st.commuteOutMin
+      + '-' + st.recoveryMin;
   }
 
   /** id 是否已存在于列表（区分"编辑已保存班次"与"新增未保存"）。 */
@@ -154,7 +165,7 @@ struct ScheduleEditor {
       commuteInMin: this.toInt(this.commuteIn, 0),
       commuteOutMin: this.toInt(this.commuteOut, 0),
       recoveryMin: this.toInt(this.recovery, 0),
-      nightMode: this.nightIdx === 1 ? 1 : 0,
+      nightMode: nightModeOf(this.nightIdx),
       allowActivity: false,
       kind: 'WORK'
     };
@@ -215,7 +226,7 @@ struct ScheduleEditor {
             },
             edgeEffect: SwipeEdgeEffect.Spring
           })
-        }, (st: ShiftType) => st.id)
+        }, (st: ShiftType) => this.rowKey(st))
 
         if (this.editing != null) {
           ListItem() {
@@ -251,13 +262,13 @@ struct ScheduleEditor {
                 Text('夜班判定').fontSize(13)
                 Select(NIGHT_MODE_OPTIONS)
                   .selected(this.nightIdx)
-                  .value(this.nightIdx === 1 ? '强制夜班' : '自动识别')
+                  .value(NIGHT_MODE_LABELS[this.nightIdx])
                   .fontColor($r('app.color.text_primary'))
                   .font({ size: 13 })
                   .onSelect((idx: number, text: string) => {
                     this.nightIdx = idx;
                   })
-                Text('强制夜班：无论时段，下班后始终计入恢复时长')
+                Text(nightModeHint(this.nightIdx))
                   .fontSize(10).fontColor($r('app.color.text_tertiary')).layoutWeight(1)
               }.width('100%')
               Row({ space: 10 }) {
@@ -295,7 +306,7 @@ struct ScheduleEditor {
         // AvailabilityBuilder.isNightShift），所以这里念规则本身而不是抄文案。
         ListItem() {
           Column({ space: 4 }) {
-            Text('夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入。')
+            Text('夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入；「不触发夜班恢复」即使相交也不生成恢复块。')
               .fontSize(11).fontColor($r('app.color.text_hint'))
             Text('恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。')
               .fontSize(11).fontColor($r('app.color.text_hint'))

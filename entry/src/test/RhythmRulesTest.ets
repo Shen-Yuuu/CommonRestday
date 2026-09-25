@@ -1,5 +1,8 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { greetingOf, horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, rhythmError } from 'feature';
+import {
+  greetingOf, horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, NIGHT_MODE_LABELS,
+  nightModeHint, nightModeIndex, nightModeOf, rhythmError
+} from 'feature';
 
 /**
  * 作息输入口径（阶段 1R / R2）：轮班与夜猫子的"就寝 00:30"必须能保存。
@@ -75,6 +78,26 @@ export default function rhythmRulesTest() {
       expect(greetingOf(18)).assertEqual('晚上好');
       expect(greetingOf(22)).assertEqual('晚上好');
       expect(greetingOf(23)).assertEqual('夜深了');
+    });
+    it('night_mode_round_trips_including_the_third_value', 0, () => {
+      // D-33：值 2（不触发夜班恢复）原来在编辑页被折成 0，下一次保存静默改掉它
+      expect(nightModeIndex(0)).assertEqual(0);
+      expect(nightModeIndex(1)).assertEqual(1);
+      expect(nightModeIndex(2)).assertEqual(2);
+      // 三档各自原值往返：编辑→保存→再读回来还是同一档
+      expect(nightModeOf(nightModeIndex(0))).assertEqual(0);
+      expect(nightModeOf(nightModeIndex(1))).assertEqual(1);
+      expect(nightModeOf(nightModeIndex(2))).assertEqual(2);
+      // 认不出的值（将来的新档、坏数据）落回自动档，而不是选中越界
+      expect(nightModeIndex(7)).assertEqual(0);
+      expect(nightModeIndex(-1)).assertEqual(0);
+      expect(nightModeOf(5)).assertEqual(0);
+      // 档位数量是"下标即值"这条不变量的前提，也是三行下拉文字的数量
+      expect(NIGHT_MODE_LABELS.length).assertEqual(3);
+      expect(NIGHT_MODE_LABELS[2]).assertEqual('不触发夜班恢复');
+      // 每一档都得有自己的说明，不能只有中间那档带解释
+      expect(nightModeHint(0) === nightModeHint(2)).assertFalse();
+      expect(nightModeHint(2).indexOf('不生成恢复块') >= 0).assertTrue();
     });
   });
 }

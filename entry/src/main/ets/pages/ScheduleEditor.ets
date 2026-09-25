@@ -7,7 +7,6 @@ import { DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHint, nightModeIndex, nightModeOf } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
-import { DesignTokens } from '../theme/DesignTokens';
 
 const COLORS: string[] = ['#E8833A', '#3AA6E8', '#8A63D2', '#D24A7E', '#2B4C9B', '#4E9A63', '#C9A227', '#7A7A7A'];
 
@@ -21,8 +20,6 @@ const NIGHT_MODE_OPTIONS: SelectOption[] = NIGHT_MODE_LABELS.map((label: string)
 @Entry
 @Component
 struct ScheduleEditor {
-  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
-  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State owner: string = OWNER_ME;
   @State types: ShiftType[] = [];
   @State editing: ShiftType | null = null;
@@ -190,12 +187,12 @@ struct ScheduleEditor {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
         }.onClick(() => router.back())
         Blank()
-        Text(this.owner === OWNER_ME ? '班次类型' : 'TA 的班次类型').fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold)
+        Text(this.owner === OWNER_ME ? '班次类型' : 'TA 的班次类型').fontSize(17).fontWeight(FontWeight.Bold)
         Blank()
-        Text('+ 新增').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.brand_pink')).onClick(() => this.newOne())
+        Text('+ 新增').fontSize(15).fontColor($r('app.color.brand_pink')).onClick(() => this.newOne())
       }
       .width('100%').padding(12)
 
@@ -205,16 +202,16 @@ struct ScheduleEditor {
             Row({ space: 10 }) {
               Circle().width(14).height(14).fill(st.color)
               Column({ space: 2 }) {
-                Text(st.name).fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
+                Text(st.name).fontSize(15).fontWeight(FontWeight.Medium)
                 Text(minToHHmm(st.startMin) + '–' + minToHHmm(st.endMin)
                   + (st.crossDay ? '（次日）' : '')
                   + ' · 通勤 ' + st.commuteInMin + '/' + st.commuteOutMin
                   + '分 · 恢复 ' + st.recoveryMin + '分')
-                  .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+                  .fontSize(11).fontColor($r('app.color.text_tertiary'))
               }.alignItems(HorizontalAlign.Start)
               Blank()
               // D-12：行内可见「删除」。左滑那条继续保留（与 CourseImport 并存），这里只补可发现性。
-              Text('删除').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.danger_red'))
+              Text('删除').fontSize(13).fontColor($r('app.color.danger_red'))
                 .accessibilityText('删除班次：' + st.name)
                 .onClick(() => this.askDeleteRow(st))
             }
@@ -234,35 +231,35 @@ struct ScheduleEditor {
         if (this.editing != null) {
           ListItem() {
             Column({ space: 8 }) {
-              Text('编辑：' + this.editing.name).fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
+              Text('编辑：' + this.editing.name).fontSize(13).fontColor($r('app.color.brand_pink'))
               Row({ space: 8 }) {
-                Text('名称').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('名称').fontSize(13)
                 TextInput({ text: this.name }).onChange((v: string) => this.name = v)
                   .layoutWeight(1).height(38)
               }.width('100%')
               Row({ space: 8 }) {
-                Text('上班').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('上班').fontSize(13)
                 TextInput({ text: this.startText }).onChange((v: string) => this.startText = v)
                   .width(76).height(38)
-                Text('下班').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('下班').fontSize(13)
                 TextInput({ text: this.endText }).onChange((v: string) => this.endText = v)
                   .width(76).height(38)
-                Text('跨天自动识别').fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_tertiary'))
+                Text('跨天自动识别').fontSize(10).fontColor($r('app.color.text_tertiary'))
               }.width('100%')
               Row({ space: 8 }) {
-                Text('前通勤(分)').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('前通勤(分)').fontSize(13)
                 TextInput({ text: this.commuteIn }).onChange((v: string) => this.commuteIn = v).width(56).height(38)
-                Text('后通勤(分)').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('后通勤(分)').fontSize(13)
                 TextInput({ text: this.commuteOut }).onChange((v: string) => this.commuteOut = v).width(56).height(38)
               }.width('100%')
               // D-35：三对「标签＋输入框」同排时 Row 不折行，第三枚被推到屏外只剩 5 px。
               // 恢复值是 recovery 分钟数的唯一入口，必须单独占一排才够得着。
               Row({ space: 8 }) {
-                Text('夜班恢复(分)').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('夜班恢复(分)').fontSize(13)
                 TextInput({ text: this.recovery }).onChange((v: string) => this.recovery = v).width(56).height(38)
               }.width('100%')
               Row({ space: 8 }) {
-                Text('夜班判定').fontSize(DesignTokens.fontCaption(this.senior))
+                Text('夜班判定').fontSize(13)
                 Select(NIGHT_MODE_OPTIONS)
                   .selected(this.nightIdx)
                   .value(NIGHT_MODE_LABELS[this.nightIdx])
@@ -272,7 +269,7 @@ struct ScheduleEditor {
                     this.nightIdx = idx;
                   })
                 Text(nightModeHint(this.nightIdx))
-                  .fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_tertiary')).layoutWeight(1)
+                  .fontSize(10).fontColor($r('app.color.text_tertiary')).layoutWeight(1)
               }.width('100%')
               Row({ space: 10 }) {
                 ForEach(COLORS, (c: string) => {
@@ -310,9 +307,9 @@ struct ScheduleEditor {
         ListItem() {
           Column({ space: 4 }) {
             Text('夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入；「不触发夜班恢复」即使相交也不生成恢复块。')
-              .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+              .fontSize(11).fontColor($r('app.color.text_hint'))
             Text('恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。')
-              .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+              .fontSize(11).fontColor($r('app.color.text_hint'))
           }
           .alignItems(HorizontalAlign.Start).width('100%').padding({ top: 4 })
         }
@@ -355,7 +352,7 @@ struct ScheduleEditor {
   @Builder
   deleteSwipe(st: ShiftType) {
     Row() {
-      Text('删除').fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFF')
+      Text('删除').fontSize(14).fontColor('#FFFFFF')
     }
     .width(72)
     .height('100%')

@@ -503,7 +503,7 @@ export struct WeekScheduleView {
       this.axisLine()
 
       if (this.loading) {
-        Text('加载中…').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+        Text('加载中…').fontSize(12).fontColor($r('app.color.text_tertiary'))
           .width('100%').textAlign(TextAlign.Center).padding({ top: 20, bottom: 20 })
       } else if (this.isCommon()) {
         this.commonHead()
@@ -511,14 +511,14 @@ export struct WeekScheduleView {
         this.busyLegendLine()
         this.commonLegend()
         Text(this.commonNote())
-          .fontSize(DesignTokens.fontTick(this.senior)).fontColor(DesignTokens.textHint)
+          .fontSize(11).fontColor(DesignTokens.textHint)
           .width('100%').textAlign(TextAlign.Center)
       } else {
         this.scheduleHead()
         this.scheduleCols()
         if (this.weekItems.length === 0) {
           Text('本周暂无班次 / 课程 / 计划')
-            .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+            .fontSize(11).fontColor($r('app.color.text_hint'))
             .width('100%').textAlign(TextAlign.Center)
         }
       }
@@ -537,7 +537,7 @@ export struct WeekScheduleView {
         .accessibilityText('查看上一周')
         .onClick(() => this.prevWeek())
       Text(DateLabel.md(this.weekStart) + ' – ' + DateLabel.md(this.weekStart + 6))
-        .fontSize(DesignTokens.fontCaption(this.senior)).fontWeight(FontWeight.Medium)
+        .fontSize(14).fontWeight(FontWeight.Medium)
         .layoutWeight(1).textAlign(TextAlign.Center)
         .accessibilityText('当前显示 ' + DateLabel.md(this.weekStart) + ' 至 ' + DateLabel.md(this.weekStart + 6))
         .onClick(() => this.goCurrentWeek())
@@ -560,14 +560,14 @@ export struct WeekScheduleView {
     Row({ space: 8 }) {
       Blank()
       Text('纵轴 ' + pad2(this.axisStart) + '–24')
-        .fontSize(DesignTokens.fontMicro(this.senior)).fontColor(DesignTokens.textHint)
+        .fontSize(8).fontColor(DesignTokens.textHint)
       this.currentWeekChip()
     }.width('100%')
   }
 
   @Builder
   currentWeekChip() {
-    Text('本周').fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.brand_pink'))
+    Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
       .padding({ left: 8, right: 8, top: 4, bottom: 4 })
       .borderRadius(10)
       .backgroundColor($r('app.color.brand_pink_bg'))
@@ -587,10 +587,10 @@ export struct WeekScheduleView {
       ForEach(this.weekDays(), (ed: number, idx: number) => {
         Column({ space: 1 }) {
           Text(DAY_HEADERS[idx])
-            .fontSize(DesignTokens.fontMicro(this.senior))
+            .fontSize(10)
             .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_tertiary'))
           Text('' + DateLabel.ymd(ed).d)
-            .fontSize(DesignTokens.fontTick(this.senior)).fontWeight(FontWeight.Medium)
+            .fontSize(11).fontWeight(FontWeight.Medium)
             .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
         }
         .width('14.28%')
@@ -612,7 +612,7 @@ export struct WeekScheduleView {
             // no 只能挂在这枚 Text 自己身上——挂在下面的 Column 上只摘掉容器，子节点照念（D-29）。
             if (this.showHourLabel(h)) {
               Text(pad2(h))
-                .fontSize(DesignTokens.fontMicro(this.senior)).fontColor($r('app.color.text_hint'))
+                .fontSize(8).fontColor($r('app.color.text_hint'))
                 .accessibilityLevel('no')
             }
           }
@@ -648,7 +648,7 @@ export struct WeekScheduleView {
             ForEach(this.dayItems(ed), (item: WeekBlock) => {
               Column() {
                 Text(item.name)
-                  .fontSize(DesignTokens.fontMicro(this.senior)).fontColor('#FFFFFF')
+                  .fontSize(9).fontColor('#FFFFFF')
                   .maxLines(2)
                   .width('100%').textAlign(TextAlign.Center)
               }
@@ -694,13 +694,13 @@ export struct WeekScheduleView {
       ForEach(this.weekDays(), (ed: number, idx: number) => {
         Column({ space: 1 }) {
           Text(DAY_HEADERS[idx])
-            .fontSize(DesignTokens.fontMicro(this.senior))
+            .fontSize(10)
             .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textTertiary)
           Text('' + DateLabel.ymd(ed).d)
-            .fontSize(DesignTokens.fontTick(this.senior)).fontWeight(FontWeight.Medium)
+            .fontSize(11).fontWeight(FontWeight.Medium)
             .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textSecondary)
           Text(this.isKnown(ed) ? this.dayTotalLabel(ed) : '·')
-            .fontSize(DesignTokens.fontMicro(this.senior))
+            .fontSize(8)
             .fontColor(this.isKnown(ed) ? DesignTokens.textSecondary : DesignTokens.textHint)
           Circle()
             .width(4).height(4)
@@ -743,7 +743,7 @@ export struct WeekScheduleView {
             if (this.showHourLabel(h)) {
               // 同 scheduleCols：静音要落在刻度自己身上，右上那行「纵轴 06–24」已经把轴说明念出来了
               Text(pad2(h % 24))
-                .fontSize(DesignTokens.fontMicro(this.senior)).fontColor(DesignTokens.textHint)
+                .fontSize(8).fontColor(DesignTokens.textHint)
                 .accessibilityLevel('no')
             }
           }
@@ -810,7 +810,7 @@ export struct WeekScheduleView {
             ForEach(this.dayFreeBlocks(ed), (b: FreeBlock) => {
               Column() {
                 Text(this.blockLabel(b))
-                  .fontSize(DesignTokens.fontMicro(this.senior)).fontColor(this.freeFg(b.end - b.start))
+                  .fontSize(9).fontColor(this.freeFg(b.end - b.start))
                   .maxLines(2)
                   .width('100%').textAlign(TextAlign.Center)
               }
@@ -855,7 +855,7 @@ export struct WeekScheduleView {
   legendDot(color: ResourceColor, label: string) {
     Row({ space: 4 }) {
       Circle().width(8).height(8).fill(color)
-      Text(label).fontSize(DesignTokens.fontMicro(this.senior)).fontColor(DesignTokens.textHint)
+      Text(label).fontSize(10).fontColor(DesignTokens.textHint)
     }
     .accessibilityGroup(true)
   }
@@ -869,7 +869,7 @@ export struct WeekScheduleView {
         .backgroundColor(fill)
         .border({ width: 0.5, color: edge })
         .borderRadius(2)
-      Text(label).fontSize(DesignTokens.fontMicro(this.senior)).fontColor(DesignTokens.textHint)
+      Text(label).fontSize(10).fontColor(DesignTokens.textHint)
     }
     .accessibilityGroup(true)
     .accessibilityText(label)
@@ -886,7 +886,7 @@ export struct WeekScheduleView {
       if (this.partnerLanes != null) {
         this.busySwatch(DesignTokens.busyPartnerGlass, DesignTokens.busyPartnerEdge, 'TA 在忙')
       } else {
-        Text('还没有 TA 的数据').fontSize(DesignTokens.fontMicro(this.senior)).fontColor(DesignTokens.textHint)
+        Text('还没有 TA 的数据').fontSize(10).fontColor(DesignTokens.textHint)
       }
     }
     .width('100%')

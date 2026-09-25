@@ -9,7 +9,6 @@ import { DateLabel } from 'commons';
 import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { toastCommand } from '../util/CommandToast';
-import { DesignTokens } from '../theme/DesignTokens';
 
 /**
  * 学期起点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -23,8 +22,6 @@ const MS_PER_DAY: number = 86400000;
 @Entry
 @Component
 struct CourseImport {
-  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
-  @StorageProp('crd_senior_mode') senior: boolean = false;
   @State owner: string = OWNER_ME;
   @State termStart: number = -1;
   @State pasteText: string = '';
@@ -209,10 +206,10 @@ struct CourseImport {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(DesignTokens.fontBody(this.senior)).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
         }.onClick(() => router.back())
         Blank()
-        Text(this.owner === OWNER_ME ? '课程表导入' : 'TA 的课程表导入').fontSize(DesignTokens.fontHead(this.senior)).fontWeight(FontWeight.Bold)
+        Text(this.owner === OWNER_ME ? '课程表导入' : 'TA 的课程表导入').fontSize(17).fontWeight(FontWeight.Bold)
         Blank()
       }.width('100%').padding(12)
 
@@ -220,27 +217,27 @@ struct CourseImport {
         // 学期配置
         ListItem() {
           Column({ space: 8 }) {
-            Text('学期起点（第一周周一）').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('学期起点（第一周周一）').fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             Row() {
-              Text(this.termStart > 0 ? DateLabel.mdw(this.termStart) : '未设置').fontSize(DesignTokens.fontBody(this.senior))
+              Text(this.termStart > 0 ? DateLabel.mdw(this.termStart) : '未设置').fontSize(15)
               Blank()
-              Text('选择 ›').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
+              Text('选择 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
             }
             .width('100%').padding(10).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
             .onClick(() => this.pickTermStart())
 
             // 节次模板（可编辑；默认上午 8:00 起、下午 14:00 起、晚上 19:00 起，每节 45+10 分钟）
             Row() {
-              Text('节次时间模板').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_secondary'))
+              Text('节次时间模板').fontSize(13).fontColor($r('app.color.text_secondary'))
               Blank()
-              Text(this.showSections ? '收起 ›' : '编辑 ›').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
+              Text(this.showSections ? '收起 ›' : '编辑 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
             }
             .width('100%')
             .onClick(() => this.showSections = !this.showSections)
 
             if (this.showSections) {
               TextArea({ text: this.sectionText, placeholder: '每行一节，形如 08:00-08:45' })
-                .height(120).fontSize(DesignTokens.fontCaption(this.senior)).width('100%')
+                .height(120).fontSize(12).width('100%')
                 .onChange((v: string) => this.sectionText = v)
               Row({ space: 10 }) {
                 Button('保存节次').backgroundColor($r('app.color.brand_pink')).height(34)
@@ -249,10 +246,10 @@ struct CourseImport {
                   .onClick(() => this.resetSections())
               }
               Text('第 N 节对应第 N 行；课程按"第 X-X 节"映射到这里的起止时间。')
-                .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+                .fontSize(11).fontColor($r('app.color.text_hint'))
             } else {
               Text('默认每节 45+10 分钟，08:00 / 14:00 / 19:00 起；点「编辑」可自定义。')
-                .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+                .fontSize(11).fontColor($r('app.color.text_hint'))
             }
           }
           .width('100%').padding(12).borderRadius(16)
@@ -264,9 +261,9 @@ struct CourseImport {
         ListItem() {
           Column({ space: 8 }) {
             Text('粘贴课表文本（每行一门：课程名 周X 第X-X节 周次范围 单/双周）')
-              .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
+              .fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.pasteText, placeholder: '高等数学 周一 第1-2节 1-16周 单周\n大学英语 周三 3,4节' })
-              .height(88).fontSize(DesignTokens.fontCaption(this.senior)).width('100%')
+              .height(88).fontSize(13).width('100%')
               .onChange((v: string) => this.pasteText = v)
             Row({ space: 10 }) {
               Button('解析预览').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
@@ -276,13 +273,13 @@ struct CourseImport {
             }
             ForEach(this.parsed, (p: ParsedCourseLine) => {
               Row() {
-                Text(p.ok ? '✓' : '✗').fontSize(DesignTokens.fontCaption(this.senior)).fontColor(p.ok ? $r('app.color.success_green') : $r('app.color.danger_red')).width(20)
+                Text(p.ok ? '✓' : '✗').fontSize(13).fontColor(p.ok ? $r('app.color.success_green') : $r('app.color.danger_red')).width(20)
                 Column({ space: 2 }) {
                   Text(p.ok ? p.name + ' · 周' + p.weekday + ' · 第' + p.sectionStart + '-' + p.sectionEnd
                     + '节 · ' + p.weekFrom + '-' + p.weekTo + '周' : p.rawLine)
-                    .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_primary'))
+                    .fontSize(13).fontColor($r('app.color.text_primary'))
                   if (!p.ok) {
-                    Text(p.error).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.danger_red'))
+                    Text(p.error).fontSize(11).fontColor($r('app.color.danger_red'))
                   }
                 }.alignItems(HorizontalAlign.Start)
                 Blank()
@@ -298,13 +295,13 @@ struct CourseImport {
         // 手动添加
         ListItem() {
           Column({ space: 8 }) {
-            Text('手动添加').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('手动添加').fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             TextInput({ text: this.manualName, placeholder: '课程名' })
               .height(38).width('100%')
               .onChange((v: string) => this.manualName = v)
             Row({ space: 6 }) {
               ForEach(['一', '二', '三', '四', '五', '六', '日'], (w: string, i: number) => {
-                Text('周' + w).fontSize(DesignTokens.fontTick(this.senior))
+                Text('周' + w).fontSize(12)
                   .padding({ left: 7, right: 7, top: 5, bottom: 5 })
                   .borderRadius(10)
                   .fontColor(this.manualWd === i + 1 ? $r('app.color.hero_fg') : $r('app.color.text_secondary'))
@@ -313,17 +310,17 @@ struct CourseImport {
               }, (w: string) => w)
             }
             Row({ space: 6 }) {
-              Text('第').fontSize(DesignTokens.fontCaption(this.senior))
+              Text('第').fontSize(13)
               TextInput({ text: '' + this.manualSecFrom }).width(40).height(36)
                 .onChange((v: string) => this.manualSecFrom = this.toInt(v, 1))
-              Text('—').fontSize(DesignTokens.fontCaption(this.senior))
+              Text('—').fontSize(13)
               TextInput({ text: '' + this.manualSecTo }).width(40).height(36)
                 .onChange((v: string) => this.manualSecTo = this.toInt(v, 2))
-              Text('节').fontSize(DesignTokens.fontCaption(this.senior))
-              Text('周次').fontSize(DesignTokens.fontCaption(this.senior)).margin({ left: 8 })
+              Text('节').fontSize(13)
+              Text('周次').fontSize(13).margin({ left: 8 })
               TextInput({ text: this.manualWeekFrom }).width(44).height(36)
                 .onChange((v: string) => this.manualWeekFrom = v)
-              Text('—').fontSize(DesignTokens.fontCaption(this.senior))
+              Text('—').fontSize(13)
               TextInput({ text: this.manualWeekTo }).width(44).height(36)
                 .onChange((v: string) => this.manualWeekTo = v)
             }
@@ -338,20 +335,20 @@ struct CourseImport {
 
         // 课程列表（左滑删除）
         ListItem() {
-          Text('已添加课程（' + this.courses.length + '）').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary')).width('100%')
+          Text('已添加课程（' + this.courses.length + '）').fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
         }
         ForEach(this.courses, (c: Course) => {
           ListItem() {
             Row() {
               Column({ space: 2 }) {
-                Text(c.name).fontSize(DesignTokens.fontCaption(this.senior)).fontWeight(FontWeight.Medium)
+                Text(c.name).fontSize(14).fontWeight(FontWeight.Medium)
                 Text('周' + c.weekday + ' · 第' + c.sectionStart + '-' + c.sectionEnd + '节 · '
                   + c.weekFrom + '-' + c.weekTo + '周'
                   + (c.parity === 1 ? ' · 单周' : c.parity === 2 ? ' · 双周' : ''))
-                  .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+                  .fontSize(11).fontColor($r('app.color.text_tertiary'))
               }.alignItems(HorizontalAlign.Start)
               Blank()
-              Text('删除').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.danger_red'))
+              Text('删除').fontSize(13).fontColor($r('app.color.danger_red'))
                 .onClick(() => this.removeCourse(c.id))
             }
             .width('100%').padding(10).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
@@ -381,7 +378,7 @@ struct CourseImport {
   @Builder
   termSheet() {
     Column({ space: 12 }) {
-      Text('选择学期起点（第一周周一）').fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
+      Text('选择学期起点（第一周周一）').fontSize(16).fontWeight(FontWeight.Medium)
       DatePicker({
         start: TERM_RANGE_START,
         end: TERM_RANGE_END,
@@ -411,7 +408,7 @@ struct CourseImport {
   @Builder
   courseDelete(c: Course) {
     Row() {
-      Text('删除').fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFF')
+      Text('删除').fontSize(14).fontColor('#FFFFFF')
     }
     .width(72)
     .height('100%')

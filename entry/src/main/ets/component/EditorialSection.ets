@@ -36,7 +36,7 @@ export struct EditorialSection {
       // 小标题本身已经把这一节是什么说清楚了
       if (hasLabel(this.eyebrow) && !this.senior) {
         Text(this.eyebrow)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.primary)
           .fontFamily(DesignTokens.fontSans)
           .letterSpacing(1)
@@ -44,7 +44,7 @@ export struct EditorialSection {
       }
       Row() {
         Text(this.title)
-          .fontSize(DesignTokens.fontTitle(this.senior))
+          .fontSize(DesignTokens.fontTitle)
           .fontColor(DesignTokens.textPrimary)
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
@@ -52,7 +52,7 @@ export struct EditorialSection {
           .layoutWeight(1)
         if (hasLabel(this.trailing)) {
           Text(this.trailing)
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(this.trailingAction ? DesignTokens.primary : DesignTokens.textTertiary)
             .textAlign(TextAlign.End)
             .constraintSize({

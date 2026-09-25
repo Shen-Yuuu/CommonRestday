@@ -39,11 +39,11 @@ export struct TodayOverview {
         // 我 / TA 已经在紧邻的文字里，圆点只是颜色分区，不再朗读一遍
         .accessibilityLevel('no')
       Text(row.who)
-        .fontSize(DesignTokens.fontCaption(this.senior))
+        .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textSecondary)
         .width(40)
       Text(row.text)
-        .fontSize(DesignTokens.fontCaption(this.senior))
+        .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textPrimary)
         .layoutWeight(1)
     }
@@ -56,14 +56,14 @@ export struct TodayOverview {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
       Row() {
         Text('今天')
-          .fontSize(DesignTokens.fontTitle(this.senior))
+          .fontSize(DesignTokens.fontTitle)
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
           .letterSpacing(-0.7)
           .layoutWeight(1)
         Text(this.weekdayText)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
       }
       .width('100%')
@@ -79,7 +79,7 @@ export struct TodayOverview {
       }
 
       Text(this.commonText)
-        .fontSize(DesignTokens.fontCaption(this.senior))
+        .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.primary)
         .fontWeight(600)
         .width('100%')
@@ -110,7 +110,7 @@ export struct TodayOverview {
   @Builder
   actionPill(idx: number, label: string, readAs: string, primary: boolean, onTap: () => void) {
     Text(label)
-      .fontSize(DesignTokens.fontCaption(this.senior))
+      .fontSize(DesignTokens.fontCaption)
       .fontColor(primary ? DesignTokens.heroText : DesignTokens.textSecondary)
       .fontWeight(600)
       .textAlign(TextAlign.Center)

@@ -80,17 +80,17 @@ export struct QuickAnswerRow {
           .accessibilityLevel('no')
         Column({ space: 2 }) {
           Text(this.question)
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
           Text(this.headline)
-            .fontSize(DesignTokens.fontBody(this.senior))
+            .fontSize(DesignTokens.fontBody)
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.headlineColor())
             .letterSpacing(-0.5)
           if (this.supporting !== '') {
             Text(this.supporting)
-              .fontSize(DesignTokens.fontCaption(this.senior))
+              .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textTertiary)
           }
         }
@@ -98,7 +98,7 @@ export struct QuickAnswerRow {
         .layoutWeight(1)
 
         Text('›')
-          .fontSize(DesignTokens.fontBody(this.senior))
+          .fontSize(DesignTokens.fontBody)
           .fontColor(DesignTokens.textHint)
           .accessibilityLevel('no')
       }

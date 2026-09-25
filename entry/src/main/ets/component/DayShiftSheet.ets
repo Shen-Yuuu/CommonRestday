@@ -174,13 +174,13 @@ export struct DayShiftSheet {
     Column({ space: DesignTokens.space4 }) {
       Column({ space: DesignTokens.space1 }) {
         Text(DateLabel.mdw(this.epochDay))
-          .fontSize(DesignTokens.fontTitle(this.senior))
+          .fontSize(DesignTokens.fontTitle)
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
           .letterSpacing(-0.7)
         Text('当前：' + this.currentNote())
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
       }
       .width('100%')
@@ -191,19 +191,19 @@ export struct DayShiftSheet {
 
       if (this.loading) {
         Text('加载中…')
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
           .width('100%').textAlign(TextAlign.Center)
           .padding({ top: DesignTokens.space5, bottom: DesignTokens.space5 })
       } else {
         Column({ space: DesignTokens.space2 }) {
           Text('这天算什么')
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
           Flex({ wrap: FlexWrap.Wrap }) {
             ForEach(this.types, (st: ShiftType) => {
               Text(this.chipLabel(st.id))
-                .fontSize(DesignTokens.fontBody(this.senior))
+                .fontSize(DesignTokens.fontBody)
                 .fontColor(this.chipFg(st.id))
                 .textAlign(TextAlign.Center)
                 .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
@@ -216,7 +216,7 @@ export struct DayShiftSheet {
                 .onClick(() => this.write(st.id))
             }, (st: ShiftType) => st.id)
             Text(this.chipLabel(REST_ID))
-              .fontSize(DesignTokens.fontBody(this.senior))
+              .fontSize(DesignTokens.fontBody)
               .fontColor(this.chipFg(REST_ID))
               .textAlign(TextAlign.Center)
               .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
@@ -231,7 +231,7 @@ export struct DayShiftSheet {
           .width('100%')
 
           Text('单日覆盖优先于循环模板，且会立刻重算共同时间；长期规律请到「循环模板」里改序列。')
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .margin({ top: DesignTokens.space2 })
         }

@@ -48,8 +48,6 @@ export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
-  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
-  @StorageProp('crd_senior_mode') senior: boolean = false;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
   // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页。
@@ -274,7 +272,7 @@ export struct AppNavigator {
         // 图标下面就是文字标签，读屏念两遍反而挡路
         .accessibilityLevel('no')
       Text(item.text)
-        .fontSize(DesignTokens.fontTick(this.senior))
+        .fontSize(11)
         .fontColor(this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
         .fontWeight(this.activeTab === item.tab ? FontWeight.Bold : FontWeight.Normal)
     }

@@ -4,7 +4,6 @@ import { SettingsStore } from 'data';
 import { Logger } from 'commons';
 import { PrivacyPolicySheet } from './PrivacyPolicySheet';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
-import { DesignTokens } from '../theme/DesignTokens';
 
 const TAG = 'PrivacyDialog';
 
@@ -81,8 +80,8 @@ export struct PrivacyDialog {
       // 顶部标题区
       Column({ space: 8 }) {
         Text('🤝').fontSize(40).accessibilityLevel('no')
-        Text($r('app.string.privacy_welcome_title')).fontSize(DesignTokens.fontTitle(this.senior)).fontWeight(FontWeight.Bold)
-        Text($r('app.string.privacy_welcome_subtitle')).fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary'))
+        Text($r('app.string.privacy_welcome_title')).fontSize(22).fontWeight(FontWeight.Bold)
+        Text($r('app.string.privacy_welcome_subtitle')).fontSize(13).fontColor($r('app.color.text_tertiary'))
       }
       .alignItems(HorizontalAlign.Center)
       .width('100%')
@@ -94,13 +93,13 @@ export struct PrivacyDialog {
           ForEach(this.privacyPoints(), (p: PrivacyPoint) => {
             Row({ space: 10 }) {
               Text(p.icon).fontSize(18).accessibilityLevel('no')
-              Text(p.text).fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_primary')).layoutWeight(1).lineHeight(19)
+              Text(p.text).fontSize(13).fontColor($r('app.color.text_primary')).layoutWeight(1).lineHeight(19)
             }.width('100%').alignItems(VerticalAlign.Top)
           }, (p: PrivacyPoint) => p.icon)
 
           // 《隐私政策》全文：随包出厂的半模态，不依赖浏览器与联网权限
           Text($r('app.string.privacy_link_fulltext'))
-            .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
+            .fontSize(13).fontColor($r('app.color.brand_pink'))
             .margin({ top: 6 })
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
@@ -118,7 +117,7 @@ export struct PrivacyDialog {
             })
 
           Text($r('app.string.privacy_level_hint'))
-            .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint')).margin({ top: 4 })
+            .fontSize(11).fontColor($r('app.color.text_hint')).margin({ top: 4 })
         }
         .width('100%')
         .padding({ left: 24, right: 24 })

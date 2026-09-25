@@ -69,7 +69,7 @@ export struct StatePanel {
           .accessibilityText('正在加载')
       } else {
         Text(this.markGlyph())
-          .fontSize(DesignTokens.fontBody(this.senior))
+          .fontSize(DesignTokens.fontBody)
           .fontColor(this.markFg())
           .fontFamily(DesignTokens.fontSerif)
           .textAlign(TextAlign.Center)
@@ -82,7 +82,7 @@ export struct StatePanel {
       }
       if (hasLabel(this.title)) {
         Text(this.title)
-          .fontSize(DesignTokens.fontBody(this.senior))
+          .fontSize(DesignTokens.fontBody)
           .fontColor(DesignTokens.textSecondary)
           .fontWeight(FontWeight.Medium)
           .textAlign(TextAlign.Center)
@@ -90,7 +90,7 @@ export struct StatePanel {
       }
       if (hasLabel(this.description)) {
         Text(this.description)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
           .textAlign(TextAlign.Center)
           .lineHeight(DesignTokens.space5)
@@ -105,7 +105,7 @@ export struct StatePanel {
           .padding({ left: DesignTokens.space5, right: DesignTokens.space5 })
           .backgroundColor(DesignTokens.primary)
           .fontColor(DesignTokens.heroText)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontWeight(600)
           .scale(this.isActionPressed
             ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }

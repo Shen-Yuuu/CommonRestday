@@ -162,7 +162,7 @@ export struct ScheduleHub {
   @Builder
   sidePill(label: string, partner: boolean) {
     Text(label)
-      .fontSize(DesignTokens.fontCaption(this.senior))
+      .fontSize(DesignTokens.fontCaption)
       .fontWeight(this.isPartnerSide() === partner ? FontWeight.Medium : FontWeight.Normal)
       .fontColor(this.isPartnerSide() === partner ? DesignTokens.heroText : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
@@ -194,11 +194,11 @@ export struct ScheduleHub {
         .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(item.title)
-          .fontSize(DesignTokens.fontBody(this.senior))
+          .fontSize(DesignTokens.fontBody)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
         Text(this.descOf(item))
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
       }
       .alignItems(HorizontalAlign.Start)
@@ -230,20 +230,20 @@ export struct ScheduleHub {
       Column({ space: DesignTokens.space3 }) {
         Row() {
           Text(this.sideTitle())
-            .fontSize(DesignTokens.fontTitle(this.senior))
+            .fontSize(DesignTokens.fontTitle)
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.textPrimary)
             .letterSpacing(-0.7)
             .layoutWeight(1)
           if (this.statusFailed) {
-            Text('读取失败').fontSize(DesignTokens.fontCaption(this.senior))
+            Text('读取失败').fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.warn)
           } else if (this.isConfigured()) {
-            Text('已录入').fontSize(DesignTokens.fontCaption(this.senior))
+            Text('已录入').fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.success)
           } else {
-            Text('待录入').fontSize(DesignTokens.fontCaption(this.senior))
+            Text('待录入').fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textTertiary)
           }
         }
@@ -259,7 +259,7 @@ export struct ScheduleHub {
 
         if (this.statusFailed) {
           Text('统计暂时读不到，已录入的班表没有受影响；退出这一页重进即可重试。')
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
             .width('100%')
         }
@@ -273,12 +273,12 @@ export struct ScheduleHub {
   stat(cell: StatCell) {
     Column({ space: 2 }) {
       Text(cell.value)
-        .fontSize(DesignTokens.fontBody(this.senior))
+        .fontSize(DesignTokens.fontBody)
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
       Text(cell.label)
-        .fontSize(DesignTokens.fontCaption(this.senior))
+        .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
     }
     .layoutWeight(1)
@@ -311,7 +311,7 @@ export struct ScheduleHub {
           // 箭头和"返回"是一回事，念两遍不如合成一句
           .accessibilityLevel('no')
         Text('返回')
-          .fontSize(DesignTokens.fontBody(this.senior)).fontColor(DesignTokens.primary)
+          .fontSize(15).fontColor(DesignTokens.primary)
       }
       .padding({ left: 2, top: DesignTokens.space3, bottom: DesignTokens.space3 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -322,7 +322,7 @@ export struct ScheduleHub {
 
       Blank()
       Text('日程录入')
-        .fontSize(DesignTokens.fontHead(this.senior))
+        .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor(DesignTokens.textPrimary)
       Blank()
@@ -387,7 +387,7 @@ export struct ScheduleHub {
                     }
                   })
                   Text('点周历里的某一天，可直接改这天的班')
-                    .fontSize(DesignTokens.fontCaption(this.senior))
+                    .fontSize(DesignTokens.fontCaption)
                     .fontColor(DesignTokens.textHint)
                     .width('100%').textAlign(TextAlign.Center)
                 }

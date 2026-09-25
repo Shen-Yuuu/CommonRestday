@@ -44,7 +44,7 @@ export struct NoticeBar {
   build() {
     Row({ space: DesignTokens.space2 }) {
       Text(this.mark())
-        .fontSize(DesignTokens.fontCaption(this.senior))
+        .fontSize(DesignTokens.fontCaption)
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(600)
         .fontColor(this.accent())
@@ -57,12 +57,12 @@ export struct NoticeBar {
         .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(this.title)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontWeight(600)
           .fontColor(this.accent())
         if (this.body !== '') {
           Text(this.body)
-            .fontSize(DesignTokens.fontCaption(this.senior))
+            .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
         }
       }
@@ -71,7 +71,7 @@ export struct NoticeBar {
 
       if (this.actionLabel !== '') {
         Text(this.actionLabel)
-          .fontSize(DesignTokens.fontCaption(this.senior))
+          .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.primary)
           .fontWeight(600)
           .textAlign(TextAlign.Center)

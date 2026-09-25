@@ -303,7 +303,7 @@ export struct PlansView {
       List({ space: 12 }) {
         if (this.loading) {
           ListItem() {
-            Text('加载中…').fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
+            Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
           }
         } else if (this.plans.length === 0) {
           // 空态引导（US5：窗口 → 计划的转化出口）
@@ -313,9 +313,9 @@ export struct PlansView {
                 .fontSize(44)
                 .fontColor([$r('app.color.brand_pink_muted')])
                 .accessibilityLevel('no')
-              Text('还没有计划').fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
+              Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
               Text($r('app.string.plans_empty_desc'))
-                .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
+                .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
               Button('去选一个窗口创建计划')
                 .backgroundColor($r('app.color.brand_pink'))
                 .borderRadius(22)
@@ -359,10 +359,10 @@ export struct PlansView {
   headerRow() {
     Row() {
       Text('共 ' + this.plans.length + ' 条')
-        .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+        .fontSize(12).fontColor($r('app.color.text_tertiary'))
       Blank()
       Text('＋ 在下一个窗口计划')
-        .fontSize(DesignTokens.fontCaption(this.senior)).fontColor($r('app.color.brand_pink'))
+        .fontSize(13).fontColor($r('app.color.brand_pink'))
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
         .borderRadius(18)
         .backgroundColor($r('app.color.brand_pink_bg'))
@@ -382,7 +382,7 @@ export struct PlansView {
   @Builder
   cancelSwipe(arg: PlanCardArg) {
     Row() {
-      Text('取消计划').fontSize(DesignTokens.fontCaption(this.senior)).fontColor('#FFFFFF')
+      Text('取消计划').fontSize(14).fontColor('#FFFFFF')
     }
     .width(88)
     .height('100%')
@@ -407,7 +407,7 @@ export struct PlansView {
         this.cardHead({ p: arg.p })
 
         Text(this.subLabel(arg.p))
-          .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+          .fontSize(12).fontColor($r('app.color.text_tertiary'))
 
         if (arg.p.conflict != null) {
           this.conflictBlock({ p: arg.p, c: arg.p.conflict })
@@ -432,17 +432,17 @@ export struct PlansView {
   cardHead(arg: PlanCardArg) {
     Row({ space: 6 }) {
       Text(arg.p.title)
-        .fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
+        .fontSize(15).fontWeight(FontWeight.Medium)
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         .flexShrink(1)
       Text(this.statusLabel(arg.p.status))
-        .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.hero_fg'))
+        .fontSize(11).fontColor($r('app.color.hero_fg'))
         .padding({ left: 8, right: 8, top: 2, bottom: 2 })
         .borderRadius(6)
         .backgroundColor(this.statusColor(arg.p.status))
       Blank()
       if (this.kindName(arg.p) !== arg.p.title) {
-        Text(this.kindName(arg.p)).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+        Text(this.kindName(arg.p)).fontSize(11).fontColor($r('app.color.text_tertiary'))
       }
     }
     .width('100%')
@@ -458,13 +458,13 @@ export struct PlansView {
   planFooter(arg: PlanCardArg) {
     Row({ space: 8 }) {
       Text(this.footerBadge(arg.p))
-        .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_secondary'))
+        .fontSize(11).fontColor($r('app.color.text_secondary'))
         .padding({ left: 8, right: 8, top: 3, bottom: 3 })
         .borderRadius(6)
         .backgroundColor($r('app.color.fill_weak'))
       Blank()
       Text('取消计划')
-        .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.danger_red'))
+        .fontSize(12).fontColor($r('app.color.danger_red'))
         .padding({ left: 4, right: 4, top: DesignTokens.space1, bottom: DesignTokens.space1 })
         .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
         .focusable(true)
@@ -479,22 +479,22 @@ export struct PlansView {
   @Builder
   conflictBlock(arg: ConflictBlockArg) {
     Column({ space: 6 }) {
-      Text(arg.c.reasonText).fontSize(DesignTokens.fontTick(this.senior)).fontWeight(FontWeight.Medium).fontColor($r('app.color.danger_red'))
+      Text(arg.c.reasonText).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.danger_red'))
       if (arg.c.affectedText !== '') {
-        Text(arg.c.affectedText).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_tertiary'))
+        Text(arg.c.affectedText).fontSize(11).fontColor($r('app.color.text_tertiary'))
       }
       if (arg.c.kept) {
         Text('已按原时间保留，你们的安排再变动时会重新提示')
-          .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+          .fontSize(11).fontColor($r('app.color.text_hint'))
       } else if (arg.c.altText !== '') {
-        Text(arg.c.altText).fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.brand_pink'))
+        Text(arg.c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
       } else {
         Text('未来暂无合适的替代窗口，可以保留原计划或另找时间')
-          .fontSize(DesignTokens.fontTick(this.senior)).fontColor($r('app.color.text_hint'))
+          .fontSize(11).fontColor($r('app.color.text_hint'))
       }
       Row({ space: 10 }) {
         if (!arg.c.kept && arg.c.altStart > 0) {
-          Button('改到替代时间').fontSize(DesignTokens.fontTick(this.senior))
+          Button('改到替代时间').fontSize(12)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor($r('app.color.brand_pink'))
             .onClick(() => this.askAcceptAlternative(arg.p))
@@ -564,7 +564,7 @@ export struct PlansView {
   @Builder
   linkAction(arg: LinkActionArg) {
     Text(arg.label)
-      .fontSize(DesignTokens.fontCaption(this.senior)).fontColor(arg.tone)
+      .fontSize(12).fontColor(arg.tone)
       .padding({ right: DesignTokens.space4, top: DesignTokens.space1, bottom: DesignTokens.space1 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .focusable(true)

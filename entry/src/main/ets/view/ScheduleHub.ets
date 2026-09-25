@@ -162,7 +162,7 @@ export struct ScheduleHub {
   @Builder
   sidePill(label: string, partner: boolean) {
     Text(label)
-      .fontSize(DesignTokens.fontCaption)
+      .fontSize(DesignTokens.fontCaption(this.senior))
       .fontWeight(this.isPartnerSide() === partner ? FontWeight.Medium : FontWeight.Normal)
       .fontColor(this.isPartnerSide() === partner ? DesignTokens.heroText : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
@@ -194,11 +194,11 @@ export struct ScheduleHub {
         .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(item.title)
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
         Text(this.descOf(item))
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textTertiary)
       }
       .alignItems(HorizontalAlign.Start)
@@ -230,20 +230,20 @@ export struct ScheduleHub {
       Column({ space: DesignTokens.space3 }) {
         Row() {
           Text(this.sideTitle())
-            .fontSize(DesignTokens.fontTitle)
+            .fontSize(DesignTokens.fontTitle(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.textPrimary)
             .letterSpacing(-0.7)
             .layoutWeight(1)
           if (this.statusFailed) {
-            Text('读取失败').fontSize(DesignTokens.fontCaption)
+            Text('读取失败').fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.warn)
           } else if (this.isConfigured()) {
-            Text('已录入').fontSize(DesignTokens.fontCaption)
+            Text('已录入').fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.success)
           } else {
-            Text('待录入').fontSize(DesignTokens.fontCaption)
+            Text('待录入').fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textTertiary)
           }
         }
@@ -259,7 +259,7 @@ export struct ScheduleHub {
 
         if (this.statusFailed) {
           Text('统计暂时读不到，已录入的班表没有受影响；退出这一页重进即可重试。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textTertiary)
             .width('100%')
         }
@@ -273,12 +273,12 @@ export struct ScheduleHub {
   stat(cell: StatCell) {
     Column({ space: 2 }) {
       Text(cell.value)
-        .fontSize(DesignTokens.fontBody)
+        .fontSize(DesignTokens.fontBody(this.senior))
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
       Text(cell.label)
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textTertiary)
     }
     .layoutWeight(1)
@@ -387,7 +387,7 @@ export struct ScheduleHub {
                     }
                   })
                   Text('点周历里的某一天，可直接改这天的班')
-                    .fontSize(DesignTokens.fontCaption)
+                    .fontSize(DesignTokens.fontCaption(this.senior))
                     .fontColor(DesignTokens.textHint)
                     .width('100%').textAlign(TextAlign.Center)
                 }

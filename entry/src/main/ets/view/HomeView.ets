@@ -58,6 +58,8 @@ export struct HomeView {
   @State private bp: Breakpoint = Breakpoint.COMPACT;
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
     this.load(true);
@@ -398,13 +400,13 @@ export struct HomeView {
     Row() {
       Column({ space: 2 }) {
         Text(this.greeting())
-          .fontSize(DesignTokens.fontTitle)
+          .fontSize(DesignTokens.fontTitle(this.senior))
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
           .letterSpacing(-0.9)
         Text(this.subtitle())
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(this.isSolo() ? DesignTokens.textTertiary : DesignTokens.primary)
       }
       .alignItems(HorizontalAlign.Start)
@@ -416,12 +418,12 @@ export struct HomeView {
       // 日期印章：编辑感的页眉落款，轻微旋转像盖上去的
       Column() {
         Text(this.sealDay())
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.primary)
         Text(this.sealMonth())
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.primary)
           .opacity(0.8)
       }

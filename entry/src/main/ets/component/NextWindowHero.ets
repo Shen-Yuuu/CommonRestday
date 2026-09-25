@@ -25,6 +25,8 @@ export struct NextWindowHero {
   @Prop winDuration: number = 0;
   /** 分类摘要（如"旅行窗口 · 完整同休日"），由查询服务给出，页面不再映射标签。 */
   @Prop winSubtitle: string = '';
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   onTapHero: () => void = () => {};
 
   /** 距今天数口语化：0=就在今天，1=明天，其余报天数（D-17 定稿：不写「就在明天」）。 */
@@ -55,11 +57,11 @@ export struct NextWindowHero {
       // 没有窗口时不占 Hero：纸面卡片说明事实与下一步，不假装"很快会有"
       EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
         Text('近期没有可安排的共同时间')
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontFamily(DesignTokens.fontSerif)
           .fontColor(DesignTokens.textSecondary)
         Text('双方班表可能完全错开。检查班次与作息参数，或到共同时间页放宽筛选。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textTertiary)
           .lineHeight(DesignTokens.space5)
           .margin({ top: DesignTokens.space2 })
@@ -75,16 +77,16 @@ export struct NextWindowHero {
         if (this.variant === HeroVariant.WINDOW) {
           Row() {
             Text(this.daysWord() + ' · ' + DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.heroText)
               .opacity(0.9)
               .layoutWeight(1)
             Text('去计划')
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.heroText)
               .fontWeight(600)
             Text('↗')
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.heroText)
               .textAlign(TextAlign.Center)
               .width(DesignTokens.space5)
@@ -99,39 +101,39 @@ export struct NextWindowHero {
           .alignItems(VerticalAlign.Center)
 
           Text(DateLabel.duration(this.winDuration))
-            .fontSize(DesignTokens.fontDisplay)
+            .fontSize(DesignTokens.fontDisplay(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
             .letterSpacing(-1.2)
             .margin({ top: DesignTokens.space2 })
           Text(DateLabel.endLabel(this.winStart, this.winEnd))
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.heroText)
             .opacity(0.95)
             .margin({ top: DesignTokens.space1 })
           if (this.winSubtitle !== '') {
             Text(this.winSubtitle)
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.heroText)
               .opacity(0.8)
               .margin({ top: DesignTokens.space3 })
           }
         } else {
           Text(this.needTitle())
-            .fontSize(DesignTokens.fontTitle)
+            .fontSize(DesignTokens.fontTitle(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
             .letterSpacing(-0.7)
           Text(this.needBody())
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.heroText)
             .opacity(0.92)
             .lineHeight(DesignTokens.space5)
             .margin({ top: DesignTokens.space2 })
           Text(this.experience === ExperienceMode.SOLO ? '去添加 ›' : '去看看 ›')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.heroText)
             .fontWeight(600)
             // 朗读里不念尾随的箭头符号

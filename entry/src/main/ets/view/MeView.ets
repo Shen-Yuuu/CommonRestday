@@ -582,7 +582,7 @@ export struct MeView {
   cardHead(title: string, action: string, onAction: () => void) {
     Row() {
       Text(title)
-        .fontSize(DesignTokens.fontBody)
+        .fontSize(DesignTokens.fontBody(this.senior))
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.textPrimary)
@@ -590,7 +590,7 @@ export struct MeView {
       Blank()
       if (action !== '') {
         Text(action)
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.primary)
           .textAlign(TextAlign.End)
           .padding({ left: DesignTokens.space2, top: DesignTokens.space1, bottom: DesignTokens.space1 })
@@ -616,11 +616,11 @@ export struct MeView {
         .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(title)
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontWeight(FontWeight.Medium)
           .fontColor(danger ? DesignTokens.danger : DesignTokens.textPrimary)
         Text(desc)
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textTertiary)
       }
       .alignItems(HorizontalAlign.Start)
@@ -653,7 +653,7 @@ export struct MeView {
           // 「我」字徽标只是装饰，标题文案已经说明了同一件事。no 挂在 Text 自己身上才摘得掉——
           // 挂在外层 Column 上只摘容器，这枚字照样进读屏树（D-29）
           Text('我')
-            .fontSize(DesignTokens.fontBody)
+            .fontSize(DesignTokens.fontBody(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
@@ -667,13 +667,13 @@ export struct MeView {
 
         Column({ space: 2 }) {
           Text(this.identityTitle())
-            .fontSize(DesignTokens.fontTitle)
+            .fontSize(DesignTokens.fontTitle(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.heroText)
             .letterSpacing(-0.9)
           Text(this.identitySub())
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.heroText)
             .opacity(0.82)
         }
@@ -681,7 +681,7 @@ export struct MeView {
         .layoutWeight(1)
 
         Text('共同时间')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.heroText)
           .padding({
             left: DesignTokens.space3,
@@ -711,14 +711,14 @@ export struct MeView {
       Column({ space: DesignTokens.space4 }) {
         Row() {
           Text('伴侣与同步')
-            .fontSize(DesignTokens.fontBody)
+            .fontSize(DesignTokens.fontBody(this.senior))
             .fontFamily(DesignTokens.fontSerif)
             .fontWeight(FontWeight.Medium)
             .fontColor(DesignTokens.textPrimary)
             .letterSpacing(-0.4)
           Blank()
           Text(this.pairStateText())
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(this.pairState === PAIRED ? DesignTokens.primary : DesignTokens.textTertiary)
             .padding({ left: DesignTokens.space2, right: DesignTokens.space2 })
             .constraintSize({ minHeight: DesignTokens.hitMin })
@@ -751,16 +751,16 @@ export struct MeView {
   partnerBlock() {
     Column({ space: DesignTokens.space3 }) {
       Text('伴侣（本机代录）')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textTertiary)
 
       if (this.partnerEditing) {
         Column({ space: DesignTokens.space2 }) {
           Row({ space: DesignTokens.space2 }) {
-            Text('昵称').fontSize(DesignTokens.fontCaption)
+            Text('昵称').fontSize(DesignTokens.fontCaption(this.senior))
             TextInput({ text: this.pNick, placeholder: 'TA 的昵称（如：阿明）' })
               .layoutWeight(1).constraintSize({ minHeight: DesignTokens.hitMin })
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .accessibilityText('TA 的昵称')
               .onChange((v: string) => this.pNick = v)
           }.width('100%')
@@ -768,10 +768,10 @@ export struct MeView {
           // 三对"标签+输入框"各自成组再换行：钉死宽度的单行在 2 倍字号下会横向溢出
           Flex({ wrap: FlexWrap.Wrap }) {
             Row({ space: DesignTokens.space2 }) {
-              Text('起床').fontSize(DesignTokens.fontCaption)
+              Text('起床').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.pWake })
                 .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('TA 的起床时间，格式 HH:MM')
                 .onChange((v: string) => this.pWake = v)
             }
@@ -779,10 +779,10 @@ export struct MeView {
             .accessibilityGroup(true)
 
             Row({ space: DesignTokens.space2 }) {
-              Text('就寝').fontSize(DesignTokens.fontCaption)
+              Text('就寝').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.pBed })
                 .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('TA 的就寝时间，格式 HH:MM')
                 .onChange((v: string) => this.pBed = v)
             }
@@ -790,11 +790,11 @@ export struct MeView {
             .accessibilityGroup(true)
 
             Row({ space: DesignTokens.space2 }) {
-              Text('收整(分)').fontSize(DesignTokens.fontCaption)
+              Text('收整(分)').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.pWind })
                 .constraintSize({ minWidth: 56, minHeight: DesignTokens.hitMin })
                 .type(InputType.Number)
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('TA 的收整缓冲分钟数')
                 .onChange((v: string) => this.pWind = v)
             }
@@ -804,7 +804,7 @@ export struct MeView {
           .width('100%')
 
           Text('作息格式 HH:MM。TA 的起床/就寝/收整独立参与计算；就寝早于起床即次日凌晨睡。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
           Row({ space: DesignTokens.space3 }) {
             Button('保存').layoutWeight(1)
@@ -821,7 +821,7 @@ export struct MeView {
         .width('100%')
       } else if (!this.partnerExists) {
         Text('还没有伴侣。添加后就能在这台手机上代录 TA 的课表/班表，自动算出你们的共同时间。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textSecondary)
         Button('添加伴侣（本机代录）')
           .width('100%')
@@ -832,15 +832,15 @@ export struct MeView {
         Row() {
           Column({ space: 2 }) {
             Text(this.pNick)
-              .fontSize(DesignTokens.fontBody)
+              .fontSize(DesignTokens.fontBody(this.senior))
               .fontWeight(FontWeight.Medium)
               .fontColor(DesignTokens.textPrimary)
             Text('起床 ' + this.pWake + ' · 就寝 ' + this.pBed + ' · 收整 ' + this.pWind + ' 分钟')
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textTertiary)
             if (this.bedNote(this.pWake, this.pBed) !== '') {
               Text(this.bedNote(this.pWake, this.pBed))
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .fontColor(DesignTokens.textSecondary)
             }
           }
@@ -848,7 +848,7 @@ export struct MeView {
           .layoutWeight(1)
 
           Text('编辑')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.primary)
             .padding(DesignTokens.space2)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -856,7 +856,7 @@ export struct MeView {
             .accessibilityText('编辑 TA 的作息参数')
             .onClick(() => this.startEditPartner())
           Text('删除')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.danger)
             .padding(DesignTokens.space2)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -874,17 +874,17 @@ export struct MeView {
   pairingBlock() {
     Column({ space: DesignTokens.space3 }) {
       Text('两台手机配对同步')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textTertiary)
 
       if (!FeatureFlags.cloudPairing) {
         // 关闭态一格云入口都不摆（阶段 6R.2，验收报告 B1）：没有生成邀请码、没有输码、没有扫码、
         // 没有二维码也没有分享。真正的拒绝在 ProfileSettingsService 那一层，这里只是不给人试探的机会。
         Text(FeatureFlags.cloudClosedMessage)
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textSecondary)
         Text('现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textHint)
         // 退出通道留着：上一版原型可能在单机上留下 WAITING/PAIRED 标记，藏了入口就不能再撤了
         if (this.pairState === PAIRED) {
@@ -904,7 +904,7 @@ export struct MeView {
         }
       } else if (this.pairState === PAIRED) {
         Text(this.pairedNote())
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textSecondary)
         Button('解除配对')
           .width('100%')
@@ -930,7 +930,7 @@ export struct MeView {
           .justifyContent(FlexAlign.Center)
 
           Text('让对方点「扫码配对」对准这个二维码，或直接把链接分享过去。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
             .width('100%')
@@ -952,7 +952,7 @@ export struct MeView {
             .accessibilityText(this.codeRead())
           Text('对方在 TA 的「我的 · 伴侣与同步」输入此码即可。'
             + '二维码与分享链接只承载服务端签发的一次性凭据，云端配对开通后自动出现。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
             .width('100%')
@@ -964,7 +964,7 @@ export struct MeView {
             .onClick(() => this.copyPairCode())
         } else {
           Text('配对码已生成（本次进入页面未显示）。如对方未收到，可重新生成。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
         }
         Row({ space: DesignTokens.space3 }) {
@@ -980,11 +980,11 @@ export struct MeView {
         }.width('100%')
 
         Text('这个按钮只改本机显示：云端未开通时不会有任何数据同步过去。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textHint)
       } else {
         Text('一端生成 6 位配对码，另一端输入后按隐私等级加密同步。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textSecondary)
         Row({ space: DesignTokens.space3 }) {
           Button(this.pairingBusy ? '生成中…' : '生成邀请码').layoutWeight(1)
@@ -1014,19 +1014,19 @@ export struct MeView {
 
         if (this.channels.emphasizeCode) {
           Text('这台设备不支持扫码：配对以 6 位短码为准，让对方手动输入。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
         }
 
         if (this.showJoinInput) {
           Row({ space: DesignTokens.space2 }) {
-            Text('配对码').fontSize(DesignTokens.fontCaption)
+            Text('配对码').fontSize(DesignTokens.fontCaption(this.senior))
             TextInput({ text: this.joinCode, placeholder: '6 位数字' })
               .layoutWeight(1)
               .constraintSize({ minHeight: DesignTokens.hitMin })
               .type(InputType.Number)
               .maxLength(6)
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .accessibilityText('输入 6 位配对码')
               .onChange((v: string) => this.joinCode = v)
             Button(this.pairingBusy ? '加入中…' : '加入')
@@ -1038,7 +1038,7 @@ export struct MeView {
         }
 
         Text('需开通 AGC 云服务；没开通时这里只会提示改用本机代录，上面的代录照常可用。')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textHint)
       }
     }
@@ -1050,7 +1050,7 @@ export struct MeView {
   levelBlock() {
     Column({ space: DesignTokens.space2 }) {
       Text('共享等级（配对后对方可见内容）')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textTertiary)
       ForEach([1, 2, 3], (lv: number) => {
         Row({ space: DesignTokens.space3 }) {
@@ -1065,12 +1065,12 @@ export struct MeView {
           Column({ space: 2 }) {
             Row({ space: DesignTokens.space1 }) {
               Text(this.levelTitle(lv))
-                .fontSize(DesignTokens.fontBody)
+                .fontSize(DesignTokens.fontBody(this.senior))
                 .fontColor(this.shareLevel === lv ? DesignTokens.primary : DesignTokens.textPrimary)
                 .fontWeight(this.shareLevel === lv ? FontWeight.Medium : FontWeight.Normal)
               if (lv === 2) {
                 Text('默认')
-                  .fontSize(DesignTokens.fontCaption)
+                  .fontSize(DesignTokens.fontCaption(this.senior))
                   .fontColor(DesignTokens.heroText)
                   .padding({ left: DesignTokens.space2, right: DesignTokens.space2 })
                   .borderRadius(DesignTokens.radiusPill)
@@ -1079,7 +1079,7 @@ export struct MeView {
             }.alignItems(VerticalAlign.Center)
 
             Text(this.levelDesc(lv))
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textTertiary)
           }
           .alignItems(HorizontalAlign.Start)
@@ -1128,10 +1128,10 @@ export struct MeView {
           // 与 partnerBlock 同一口径：单行钉死宽度在 2 倍字号下会横向溢出，三对各自成组后换行
           Flex({ wrap: FlexWrap.Wrap }) {
             Row({ space: DesignTokens.space2 }) {
-              Text('起床').fontSize(DesignTokens.fontCaption)
+              Text('起床').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.myWake })
                 .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('我的起床时间，格式 HH:MM')
                 .onChange((v: string) => this.myWake = v)
             }
@@ -1139,10 +1139,10 @@ export struct MeView {
             .accessibilityGroup(true)
 
             Row({ space: DesignTokens.space2 }) {
-              Text('就寝').fontSize(DesignTokens.fontCaption)
+              Text('就寝').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.myBed })
                 .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('我的就寝时间，格式 HH:MM')
                 .onChange((v: string) => this.myBed = v)
             }
@@ -1150,11 +1150,11 @@ export struct MeView {
             .accessibilityGroup(true)
 
             Row({ space: DesignTokens.space2 }) {
-              Text('收整(分)').fontSize(DesignTokens.fontCaption)
+              Text('收整(分)').fontSize(DesignTokens.fontCaption(this.senior))
               TextInput({ text: this.myWind })
                 .constraintSize({ minWidth: 56, minHeight: DesignTokens.hitMin })
                 .type(InputType.Number)
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .accessibilityText('我的收整时长，单位分钟')
                 .onChange((v: string) => this.myWind = v)
             }
@@ -1188,21 +1188,21 @@ export struct MeView {
 
           if (this.bedNote(this.myWake, this.myBed) !== '') {
             Text(this.bedNote(this.myWake, this.myBed))
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textSecondary)
           }
 
           Text('决定你的睡眠与收整如何参与计算，改完立刻重算共同时间。')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textHint)
 
           this.advancedHead()
           if (this.advanced) {
             Text('视界 ' + this.myHorizon + ' 天 · 最短共同时段 ' + this.minSlotLabel(this.myMinSlot))
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textSecondary)
             Text('其余阈值（夜班窗口、半天/整日/可出行判定）用引擎默认值。')
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.textHint)
           }
         }
@@ -1216,12 +1216,12 @@ export struct MeView {
   paramStat(row: ParamStatArg) {
     Column({ space: 2 }) {
       Text(row.value)
-        .fontSize(DesignTokens.fontBody)
+        .fontSize(DesignTokens.fontBody(this.senior))
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.primary)
       Text(row.label)
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textTertiary)
     }
     .layoutWeight(1)
@@ -1235,7 +1235,7 @@ export struct MeView {
   advancedHead() {
     Row({ space: DesignTokens.space1 }) {
       Text('高级设置（视界 / 最短时段）')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textSecondary)
         .layoutWeight(1)
       SymbolGlyph(this.advanced ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
@@ -1257,22 +1257,22 @@ export struct MeView {
   advancedForm() {
     Column({ space: DesignTokens.space2 }) {
       Row({ space: DesignTokens.space2 }) {
-        Text('计算视界(天)').fontSize(DesignTokens.fontCaption)
+        Text('计算视界(天)').fontSize(DesignTokens.fontCaption(this.senior))
         TextInput({ text: this.myHorizon })
           .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
           .type(InputType.Number)
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .accessibilityText('计算视界，未来多少天参与计算，7 到 366')
           .onChange((v: string) => this.myHorizon = v)
         Text('未来多少天参与计算（7–366）')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textHint)
       }.width('100%')
 
       Flex({ wrap: FlexWrap.Wrap }) {
         ForEach(MIN_SLOT_STEPS, (v: number) => {
           Text(this.minSlotLabel(v))
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(this.myMinSlot === v ? DesignTokens.heroText : DesignTokens.textSecondary)
             .textAlign(TextAlign.Center)
             .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
@@ -1288,7 +1288,7 @@ export struct MeView {
       .width('100%')
 
       Text('短于此段的共同空闲会被直接丢掉，不算成一个窗口。')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textHint)
     }
     .width('100%')

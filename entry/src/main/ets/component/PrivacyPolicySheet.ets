@@ -46,11 +46,11 @@ export struct PrivacyPolicySheet {
     Column() {
       Row() {
         Text($r('app.string.privacy_policy_title'))
-          .fontSize(DesignTokens.fontTitle).fontWeight(FontWeight.Bold)
+          .fontSize(DesignTokens.fontTitle(this.senior)).fontWeight(FontWeight.Bold)
           .fontColor(DesignTokens.textPrimary)
         Blank()
         Button('关闭')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .borderRadius(DesignTokens.radiusPill)
           .backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textSecondary)
@@ -64,10 +64,10 @@ export struct PrivacyPolicySheet {
           ForEach(this.sections(), (sec: PolicySection) => {
             Column({ space: 4 }) {
               Text(sec.title)
-                .fontSize(DesignTokens.fontBody).fontWeight(FontWeight.Medium)
+                .fontSize(DesignTokens.fontBody(this.senior)).fontWeight(FontWeight.Medium)
                 .fontColor(DesignTokens.textPrimary)
               Text(sec.body)
-                .fontSize(DesignTokens.fontCaption)
+                .fontSize(DesignTokens.fontCaption(this.senior))
                 .fontColor(DesignTokens.textSecondary).lineHeight(20)
             }
             .width('100%')
@@ -78,12 +78,12 @@ export struct PrivacyPolicySheet {
           Row({ space: 4 }) {
             if (AppConst.PRIVACY_POLICY_URL === '') {
               Text($r('app.string.pp_link_none'))
-                .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
+                .fontSize(DesignTokens.fontCaption(this.senior)).fontColor(DesignTokens.textHint)
             } else {
               Text($r('app.string.pp_link_prefix'))
-                .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
+                .fontSize(DesignTokens.fontCaption(this.senior)).fontColor(DesignTokens.textHint)
               Text(AppConst.PRIVACY_POLICY_URL)
-                .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
+                .fontSize(DesignTokens.fontCaption(this.senior)).fontColor(DesignTokens.textHint)
             }
           }
           .width('100%')

@@ -98,7 +98,7 @@ export struct CoTimeView {
   // 跨 Tab 导航广播（首页冲突条、计划页空态引导）：切 Tab 由壳层做，分段由本页认领
   @StorageProp('navToCoTimeCount') @Watch('onNavRequest') navToCoTimeCount: number = 0;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
-  @StorageProp('crd_senior_mode') senior: boolean = false;
+  @StorageProp('crd_senior_mode') @Watch('onSeniorChanged') senior: boolean = false;
 
   aboutToAppear(): void {
     this.buildChips();
@@ -118,7 +118,7 @@ export struct CoTimeView {
       chips.push(new ChipV2Options({
         label: new ChipV2Label({
           text: f.label,
-          fontSize: DesignTokens.chipFontSize(),
+          fontSize: DesignTokens.chipFontSize(this.senior),
           fontColor: DesignTokens.chipText(),
           activatedFontColor: DesignTokens.chipTextOn()
         }),
@@ -145,6 +145,16 @@ export struct CoTimeView {
 
   onNavRequest(): void {
     this.applySegmentRequest();
+  }
+
+  /**
+   * 关怀模式切档时改写 Chip 字号。ChipV2Options/ChipV2Label 都是 @ObservedV2 且 fontSize 带 @Trace，
+   * 逐项写回即可生效——不换数组、不换对象，避免整行 Chip 重建（与上面 buildChips 的取舍同一条）。
+   */
+  onSeniorChanged(): void {
+    for (let i = 0; i < this.chips.length; i++) {
+      this.chips[i].label.fontSize = DesignTokens.chipFontSize(this.senior);
+    }
   }
 
   private applySegmentRequest(): void {
@@ -476,13 +486,13 @@ export struct CoTimeView {
   header() {
     Column({ space: 2 }) {
       Text('共同时间')
-        .fontSize(DesignTokens.fontTitle)
+        .fontSize(DesignTokens.fontTitle(this.senior))
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.textPrimary)
         .letterSpacing(-0.9)
       Text(this.subtitle())
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(this.subtitleColor())
     }
     .width('100%')
@@ -515,7 +525,7 @@ export struct CoTimeView {
 
         if (this.viewMode === VIEW_LIST && this.page != null) {
           Text('共 ' + this.rows().length + ' 段')
-            .fontSize(DesignTokens.fontCaption)
+            .fontSize(DesignTokens.fontCaption(this.senior))
             .fontColor(DesignTokens.textTertiary)
         }
       }
@@ -570,7 +580,7 @@ export struct CoTimeView {
   @Builder
   viewPill(label: string, mode: string) {
     Text(label)
-      .fontSize(DesignTokens.fontCaption)
+      .fontSize(DesignTokens.fontCaption(this.senior))
       .fontWeight(this.viewMode === mode ? FontWeight.Medium : FontWeight.Normal)
       .fontColor(this.viewMode === mode ? DesignTokens.heroText : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)

@@ -21,6 +21,8 @@ export struct WindowCard {
   @Prop displayTags: string = '';
   @Prop todayEpoch: number = 0;
   @Prop cutTopLeft: boolean = true;
+  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
+  @StorageProp('crd_senior_mode') senior: boolean = false;
   onTapCard: () => void = () => {};
 
   private startDay(): number {
@@ -63,18 +65,18 @@ export struct WindowCard {
     }) {
       Row() {
         Text(DateLabel.mdw(this.startDay()))
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
           .letterSpacing(-0.4)
         Text(this.daysWord())
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textTertiary)
           .margin({ left: DesignTokens.space2 })
           .layoutWeight(1)
         Text(DateLabel.duration(this.winDuration))
-          .fontSize(DesignTokens.fontBody)
+          .fontSize(DesignTokens.fontBody(this.senior))
           .fontFamily(DesignTokens.fontSerif)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.primary)
@@ -83,7 +85,7 @@ export struct WindowCard {
       .alignItems(VerticalAlign.Center)
 
       Text(DateLabel.endLabel(this.winStart, this.winEnd))
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontColor(DesignTokens.textSecondary)
         .margin({ top: DesignTokens.space1 })
 
@@ -109,7 +111,7 @@ export struct WindowCard {
         Row({ space: DesignTokens.space2 }) {
           ForEach(this.tagList(), (t: string) => {
             Text(displayTagLabel(t))
-              .fontSize(DesignTokens.fontCaption)
+              .fontSize(DesignTokens.fontCaption(this.senior))
               .fontColor(DesignTokens.heroText)
               .padding({
                 left: DesignTokens.space2,

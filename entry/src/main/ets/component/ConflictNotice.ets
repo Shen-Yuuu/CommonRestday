@@ -30,7 +30,7 @@ export struct ConflictNotice {
   build() {
     Row({ space: DesignTokens.space2 }) {
       Text('!')
-        .fontSize(DesignTokens.fontCaption)
+        .fontSize(DesignTokens.fontCaption(this.senior))
         .fontFamily(DesignTokens.fontSerif)
         .fontWeight(600)
         .fontColor(DesignTokens.danger)
@@ -42,18 +42,18 @@ export struct ConflictNotice {
         .accessibilityLevel('no')
       Column({ space: 2 }) {
         Text(this.conflictCount + ' 个计划的时间需要处理')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontWeight(600)
           .fontColor(DesignTokens.danger)
         Text(this.reason !== '' ? this.reason + ' · 去共同时间的计划分段处理' : '去共同时间的计划分段处理')
-          .fontSize(DesignTokens.fontCaption)
+          .fontSize(DesignTokens.fontCaption(this.senior))
           .fontColor(DesignTokens.textTertiary)
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
       Text('›')
-        .fontSize(DesignTokens.fontBody)
+        .fontSize(DesignTokens.fontBody(this.senior))
         .fontColor(DesignTokens.textTertiary)
         .accessibilityLevel('no')
     }

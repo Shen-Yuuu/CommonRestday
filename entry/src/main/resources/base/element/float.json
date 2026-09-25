@@ -45,6 +45,26 @@
       "value": "30fp"
     },
     {
+      "name": "font_display_senior",
+      "value": "38fp"
+    },
+    {
+      "name": "font_micro",
+      "value": "10fp"
+    },
+    {
+      "name": "font_micro_senior",
+      "value": "12fp"
+    },
+    {
+      "name": "font_tick",
+      "value": "12fp"
+    },
+    {
+      "name": "font_tick_senior",
+      "value": "14fp"
+    },
+    {
       "name": "radius_card",
       "value": "21vp"
     },

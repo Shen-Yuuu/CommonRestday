@@ -90,10 +90,55 @@ export class DesignTokens {
   static readonly space6: Resource = $r('app.float.space_6');
 
   // ---- 字号：说明/正文/小标题/展示标题 ----
-  static readonly fontCaption: Resource = $r('app.float.font_caption');
-  static readonly fontBody: Resource = $r('app.float.font_body');
-  static readonly fontTitle: Resource = $r('app.float.font_title');
-  static readonly fontDisplay: Resource = $r('app.float.font_display');
+  /**
+   * 基准四档。长辈模式不另立一套字号，而是整条阶梯向上挪一档：caption 的 senior 值就是 body 的基准值。
+   * 复用而不是复制，"提高一级"才是定义本身——调 font_body 会同时调到 senior 的 caption。
+   * 只有最高档没有现成的上一档可用，单独给它一档 38fp。
+   */
+  static readonly fontCaptionBase: Resource = $r('app.float.font_caption');
+  static readonly fontBodyBase: Resource = $r('app.float.font_body');
+  static readonly fontTitleBase: Resource = $r('app.float.font_title');
+  static readonly fontDisplayBase: Resource = $r('app.float.font_display');
+  static readonly fontDisplaySenior: Resource = $r('app.float.font_display_senior');
+  /**
+   * 密集标注两档：周历/时间轴刻度、色块里的字数、图例这一类，整档跳会把网格顶散，
+   * 所以 senior 只加 2fp，并守住 10fp 地板（历史上散在页面上的 8fp、9fp 裸数字一律并进 micro）。
+   */
+  static readonly fontMicroBase: Resource = $r('app.float.font_micro');
+  static readonly fontMicroSenior: Resource = $r('app.float.font_micro_senior');
+  static readonly fontTickBase: Resource = $r('app.float.font_tick');
+  static readonly fontTickSenior: Resource = $r('app.float.font_tick_senior');
+
+  /**
+   * 字号取值。senior 由调用方在自己的 @StorageProp('crd_senior_mode') 成员上读，写在属性表达式里，
+   * 这样关怀模式切换会走状态驱动的重新布局，不需要重启应用。
+   * 做成方法而不是静态字段：字段拿不到状态；而漏传参的写法（把方法本身当字号值用）会编译失败，
+   * 所以覆盖面由编译器保证，不靠人工数"改了多少处"。
+   */
+  static fontCaption(senior: boolean): Resource {
+    return senior ? DesignTokens.fontBodyBase : DesignTokens.fontCaptionBase;
+  }
+
+  static fontBody(senior: boolean): Resource {
+    return senior ? DesignTokens.fontTitleBase : DesignTokens.fontBodyBase;
+  }
+
+  static fontTitle(senior: boolean): Resource {
+    return senior ? DesignTokens.fontDisplayBase : DesignTokens.fontTitleBase;
+  }
+
+  static fontDisplay(senior: boolean): Resource {
+    return senior ? DesignTokens.fontDisplaySenior : DesignTokens.fontDisplayBase;
+  }
+
+  static fontMicro(senior: boolean): Resource {
+    return senior ? DesignTokens.fontMicroSenior : DesignTokens.fontMicroBase;
+  }
+
+  static fontTick(senior: boolean): Resource {
+    return senior ? DesignTokens.fontTickSenior : DesignTokens.fontTickBase;
+  }
+
 
   // ---- 圆角与热区 ----
   static readonly radiusCard: Resource = $r('app.float.radius_card');
@@ -176,8 +221,8 @@ export class DesignTokens {
     return ColorMetrics.resourceColor(DesignTokens.primary);
   }
 
-  static chipFontSize(): LengthMetrics {
-    return LengthMetrics.resource(DesignTokens.fontCaption);
+  static chipFontSize(senior: boolean): LengthMetrics {
+    return LengthMetrics.resource(DesignTokens.fontCaption(senior));
   }
 
   static chipRadius(): LengthMetrics {

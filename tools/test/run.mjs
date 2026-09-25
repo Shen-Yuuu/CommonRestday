@@ -8,7 +8,8 @@
  * 退出码：0 类型编译、用例、文案口径审计**都**干净 / 1 有用例失败或文案口径冲突 /
  * 2 环境不满足（缺 tsc）/ 3 类型编译失败。完整输出同时写在 tools/test/out/last-run.log。
  *
- * 只有 `typecheck: 0 errors` + `copy: PASS` + `tests: passed` + 退出码 0 才可以写成"全绿"：
+ * 只有 `typecheck: 0 errors` + `copy: PASS` + `a11y: PASS` + `font: PASS` + `tests: passed` +
+ * 退出码 0 才可以写成"全绿"：
  * 转译有类型错误时不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），
  * 所以不存在"用例通过但工程编不过"的假绿。`copy` 见 tools/test/copy-audit.mjs。
  *
@@ -21,6 +22,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { auditPrivacyCopy } from './copy-audit.mjs';
 import { auditAccessibility } from './a11y-audit.mjs';
+import { auditFonts } from './font-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -534,6 +536,13 @@ function main() {
   for (const v of a11yViolations) {
     say('  - ' + v);
   }
+  const fontViolations = auditFonts(REPO);
+  say('font: ' + (fontViolations.length === 0
+    ? 'PASS（裸数字字号未超台账 + senior 不进 @Builder 形参 + AppStorage 键不漂移）'
+    : 'FAILED（' + fontViolations.length + ' 项字号状态链问题）'));
+  for (const v of fontViolations) {
+    say('  - ' + v);
+  }
   prepare();
   const tsc = findTsc();
   if (tsc === null) {
@@ -565,7 +574,7 @@ function main() {
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
   // 两条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
-  const auditViolations = copyViolations.length + a11yViolations.length;
+  const auditViolations = copyViolations.length + a11yViolations.length + fontViolations.length;
   if (testsPassed && auditViolations > 0) {
     say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }

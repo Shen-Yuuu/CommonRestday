@@ -67,7 +67,9 @@ export class DesignTokens {
   static readonly success: Resource = $r('app.color.success_green');
   static readonly successDeep: Resource = $r('app.color.success_deep');
   static readonly successBg: Resource = $r('app.color.success_bg');
-  /** 双方忙碌标识色：我=青灰，TA=驼色（今日概览的圆点，与周视图同一套色）。 */
+  /** 双方忙碌标识色：我=淡蓝 #A9C4F5，TA=琥珀 #FFC970（今日概览的圆点，与周视图同一套色）。
+   *  深色档故意不另写值：02 的深色块没有覆盖这两个，原型里它们是从 01 深色块漏下来的
+   *  #91A7A8/#C7A777（getComputedStyle 实测），跟 02 的紫调深色不是一套语言。 */
   static readonly busyMine: Resource = $r('app.color.my_busy');
   static readonly busyPartner: Resource = $r('app.color.partner_busy');
   /**
@@ -236,8 +238,10 @@ export class DesignTokens {
 
   /**
    * 页面底：原型 #screen 的那条竖向渐变（浅色 暖白→页色，深色 亮紫→沉黑）。
-   * 档位在 0/45%/100%：原型浅色把页色写在 66%，深色写在 100%，取一条两边都成立的折中，
-   * 浅色端点差不到两个色阶，肉眼分不出。铺在页面根节点上，滚动时它不动（原型也是画在 #screen）。
+   * 两档的档位在原型里本来就不重合：深色是 0/45%/100%，浅色是 0/34%/66%（末段持平）。
+   * 这里按深色那一组写死，因为浅色三个端点本身重合在页色上，改用 0/45%/100% 后最大偏差
+   * 落在 66% 那一屏的 G 通道上，约 4/255；深色则逐点命中。铺在页面根节点上，
+   * 滚动时它不动——原型也是画在 #screen，不是画在滚动内容上。
    */
   static pageGradient(): LinearGradientOptions {
     return {

@@ -35,6 +35,30 @@ export struct EditorialCard {
     return this.hero ? DesignTokens.space5 : DesignTokens.space4;
   }
 
+  /**
+   * Hero 光晕画在内容层上，而不是当 Stack 的子节点。
+   * 圆形子节点会参与 Stack 测量：148vp 的圆把矮卡（「我的」身份卡）顶成 148vp 高，
+   * 而 Stack 是 BottomEnd 对齐，于是内容沉底、卡顶空出一条约 43vp 的无内容带。
+   * 渐变跟随内容盒尺寸，卡片高度重新由内容决定；非 hero 卡退化成全透明。
+   */
+  private glowOf(): RadialGradientOptions {
+    if (!this.hero) {
+      return {
+        center: [0, 0],
+        radius: 0,
+        colors: [[Color.Transparent, 0], [Color.Transparent, 1]]
+      };
+    }
+    // 圆心按首页 Hero（338×161vp）反解：原来那颗 148vp 圆盘 BottomEnd 对齐后再 translate(34,55)，
+    // 圆心落在卡片局部 (298,142)，即内容盒的 88%/88%（内容盒就是卡片盒，padding 在盒内）。
+    // 0.9 之后才淡出，保留旧圆盘那道硬边扇形。
+    return {
+      center: ['88%', '88%'],
+      radius: 74,
+      colors: [[DesignTokens.heroGlow, 0], [DesignTokens.heroGlow, 0.9], [Color.Transparent, 1]]
+    };
+  }
+
   private surfaceFill(): ResourceColor {
     if (!this.glass) {
       return this.hero ? DesignTokens.hero : DesignTokens.card;
@@ -81,20 +105,13 @@ export struct EditorialCard {
 
   build() {
     Stack({ alignContent: Alignment.BottomEnd }) {
-      if (this.hero) {
-        Circle()
-          .width(148)
-          .height(148)
-          .fill(DesignTokens.heroGlow)
-          .translate({ x: 34, y: 55 })
-          .accessibilityLevel('no')
-      }
       Column() {
         this.content()
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
       .padding(this.innerPadding())
+      .radialGradient(this.glowOf())
     }
     .width('100%')
     .clip(true)

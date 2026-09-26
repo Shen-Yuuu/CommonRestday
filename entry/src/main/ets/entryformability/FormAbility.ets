@@ -92,7 +92,7 @@ export default class FormAbility extends FormExtensionAbility {
   /** 占位数据（添加瞬间展示，随后被异步回填覆盖）。 */
   static placeholder(): CardModel {
     const m: CardModel = {
-      state: STATE_LOADING, question: '同休日', hero: '正在计算…', heroNote: '',
+      state: STATE_LOADING, question: '两人份', hero: '正在计算…', heroNote: '',
       second: '', footer: '', route: CardRoutes.HOME
     };
     return m;
@@ -106,7 +106,7 @@ export default class FormAbility extends FormExtensionAbility {
    */
   static disabled(): CardModel {
     const m: CardModel = {
-      state: CardState.STALE, question: '同休日', hero: '桌面卡片已停用',
+      state: CardState.STALE, question: '两人份', hero: '桌面卡片已停用',
       heroNote: '当前版本未开启卡片内容，打开 App 查看共同时间', second: '', footer: '',
       route: CardRoutes.HOME
     };

@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.0.1",
-  "description": "同休日：共同休息日应用工程（多模块：commons/domain/data/cloud/feature/entry）",
+  "description": "两人份（For Two）：共同时间应用工程（多模块：commons/domain/data/cloud/feature/entry）",
   "dependencies": {
   },
   "devDependencies": {

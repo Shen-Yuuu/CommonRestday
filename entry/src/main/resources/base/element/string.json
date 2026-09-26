@@ -2,15 +2,15 @@
     "string":  [
                    {
                        "name":  "module_desc",
-                       "value":  "同休日主模块"
+                       "value":  "两人份主模块"
                    },
                    {
                        "name":  "EntryAbility_desc",
-                       "value":  "情侣共同休息日助手"
+                       "value":  "两人份：发现彼此的共同时间"
                    },
                    {
                        "name":  "EntryAbility_label",
-                       "value":  "同休日"
+                       "value":  "两人份"
                    },
                    {
                        "name":  "calendar_perm_reason",
@@ -18,7 +18,7 @@
                    },
                    {
                        "name":  "privacy_welcome_title",
-                       "value":  "欢迎使用同休日"
+                       "value":  "欢迎使用两人份"
                    },
                    {
                        "name":  "privacy_welcome_subtitle",
@@ -74,7 +74,7 @@
                    },
                    {
                        "name":  "pp_head_b",
-                       "value":  "「同休日」是一款离线的班表/课表与共同休息日工具。这里说明它在你手机上读写什么、存在哪里、能删掉什么。当前安装包不联网，本页面所示就是全文，没有另一个在线版本。"
+                       "value":  "「两人份」是一款离线的班表/课表与共同休息日工具。这里说明它在你手机上读写什么、存在哪里、能删掉什么。当前安装包不联网，本页面所示就是全文，没有另一个在线版本。"
                    },
                    {
                        "name":  "pp_data_t",

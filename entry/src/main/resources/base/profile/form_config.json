@@ -2,7 +2,7 @@
   "forms": [
     {
       "name": "RestCard2x2",
-      "displayName": "同休日",
+      "displayName": "两人份",
       "description": "今晚与下个完整同休日的结论摘要",
       "src": "./ets/widget/RestCard2x2.ets",
       "uiSyntax": "arkts",

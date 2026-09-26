@@ -1,6 +1,6 @@
 /** 应用级常量。 */
 export class AppConst {
-  static readonly APP_NAME: string = '同休日';
+  static readonly APP_NAME: string = '两人份';
   static readonly TAG_PREFIX: string = 'CRD.';
   /** 引擎默认计算视界（天）。 */
   static readonly HORIZON_DAYS: number = 120;

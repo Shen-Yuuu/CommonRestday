@@ -1,7 +1,7 @@
 {
   "name": "data",
   "version": "1.0.0",
-  "description": "同休日 数据层：RDB/Preferences/Repository",
+  "description": "两人份 数据层：RDB/Preferences/Repository",
   "main": "Index.ets",
   "author": "",
   "license": "",

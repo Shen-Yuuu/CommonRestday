@@ -16,7 +16,7 @@ let storage = new LocalStorage();
 @Component
 struct RestCard2x2 {
   @LocalStorageProp('state') state: string = '';
-  @LocalStorageProp('question') question: string = '同休日';
+  @LocalStorageProp('question') question: string = '两人份';
   @LocalStorageProp('hero') hero: string = '正在计算…';
   @LocalStorageProp('heroNote') heroNote: string = '';
   @LocalStorageProp('second') second: string = '';
@@ -82,7 +82,9 @@ struct RestCard2x2 {
     .justifyContent(FlexAlign.Start)
     .linearGradient({
       angle: 135,
-      colors: [['#D24A7E', 0.0], ['#E8833A', 1.0]]
+      // 与首页 hero 同一条三段粉→珊瑚（DesignTokens.sunsetFrom/primary/sunsetTo）。
+      // 卡片是独立进程，加载不到 entry 的 DesignTokens，所以这里只能写死同一组值。
+      colors: [['#FF8FAE', 0.0], ['#FF7EA5', 0.48], ['#FFA88A', 1.0]]
     })
     .onClick(() => {
       // route 由卡片数据下发（只可能是 NavRoutes 白名单里的名字）：

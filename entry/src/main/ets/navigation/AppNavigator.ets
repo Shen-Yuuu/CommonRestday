@@ -11,6 +11,7 @@ import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
 import { navParamsFrom, routeNameFromParams, takePendingRoute } from '../util/NavUtil';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
+import { Breakpoints } from '../responsive/Breakpoints';
 
 const TAG = 'AppNavigator';
 /**
@@ -19,10 +20,14 @@ const TAG = 'AppNavigator';
  */
 const BAR_BAND = 52;
 /**
- * 岛宽：HdsTabs 只肯按断点档给宽度（默认手机档 236vp，实测与条目宽无关），barSideMargin 收不住它，
- * 所以要一个百分比。原型 30/384 的内缩折成 84%，本机 373.7vp 下算出 313.9vp（内缩 29.9vp）。
+ * 岛宽：HdsTabs 的悬浮玻璃底板只认数值档。给它百分比会摆错位——
+ * 实测 `barWidth:'84%'` 时条目容器在 [104,2565][1203,2747]，玻璃底板却在
+ * origBounds [654,2565][1753,2747]：宽度对，左沿落在父宽 50% 处，正好右移半个岛宽。
+ * 所以宽度自己算：容器宽 − 两侧内缩（原型 .tabbar 的 margin 左右 30），量到之前先按
+ * HdsTabs 自己的手机档 236 兜底（实测默认档就是这个数，摆位正确、只是比原型窄）。
  */
-const DOCK_BAND_WIDTH = '84%';
+const DOCK_SIDE_MARGIN = 30;
+const DOCK_BAND_FALLBACK = 236;
 /** 浮岛底部留白（原型 .tabbar 的 margin:-40px 30px 10px）。 */
 const DOCK_BOTTOM_MARGIN = 10;
 /** 岛的圆角（原型 .tabbar/.dock-fx 都是 22）：粒子层要按同一个圆角裁，边缘才不漏光。 */
@@ -68,6 +73,8 @@ export struct AppNavigator {
   private pathStack: NavPathStack = new NavPathStack();
   /** 悬浮底栏由 HdsTabs 自持控制器；切页仍走 activeTab，控制器只用于组件挂载。 */
   private tabsController: HdsTabsController = new HdsTabsController();
+  /** 岛宽（vp）：onAreaChange 量到容器宽之前先用兜底值，量到后一起改岛与粒子层的宽。 */
+  @State private bandVp: number = DOCK_BAND_FALLBACK;
   /** 冷启动深链：aboutToAppear 时 Navigation 尚未挂载，先记下，挂载后再消费。 */
   private pendingRoute: string = '';
   private pendingRaw: Object | undefined = undefined;
@@ -165,6 +172,17 @@ export struct AppNavigator {
     });
   }
 
+  /**
+   * 量宽：容器宽减去原型那 30vp 的两侧内缩就是岛宽。写回前先比一次，同宽不写状态，
+   * 免得「写入→重排→再写入」转成布局回环（与 ResponsiveContainer 的幂等口径同一个写法）。
+   */
+  private measureBand(area: Area): void {
+    const w: number = Breakpoints.widthOf(area) - DOCK_SIDE_MARGIN * 2;
+    if (w > 0 && Math.abs(w - this.bandVp) > 0.5) {
+      this.bandVp = w;
+    }
+  }
+
   build() {
     Navigation(this.pathStack) {
       // 光感粒子层要精确压在悬浮岛上，所以岛和它放进同一个 Stack：Stack 是 Navigation 的内容，
@@ -212,7 +230,7 @@ export struct AppNavigator {
         .barHeight(BAR_BAND)
         // 悬浮底栏 + 沉浸光感材质（API 23 起）：岛的面与模糊交给系统，应用侧不再自绘玻璃
         .barFloatingStyle({
-          barWidth: { smallWidth: DOCK_BAND_WIDTH, mediumWidth: DOCK_BAND_WIDTH, largeWidth: DOCK_BAND_WIDTH },
+          barWidth: { smallWidth: this.bandVp, mediumWidth: this.bandVp, largeWidth: this.bandVp },
           barBottomMargin: DOCK_BOTTOM_MARGIN,
           gradientMask: { maskColor: $r('app.color.dock_mask') },
           systemMaterialEffect: {
@@ -227,7 +245,7 @@ export struct AppNavigator {
         })
 
         DockFx({
-          bandWidth: DOCK_BAND_WIDTH,
+          bandWidth: this.bandVp,
           bottom: DOCK_BOTTOM_MARGIN,
           bandHeight: BAR_BAND,
           radius: DOCK_RADIUS
@@ -235,6 +253,9 @@ export struct AppNavigator {
       }
       .width('100%')
       .height('100%')
+      .onAreaChange((_oldValue: Area, newValue: Area) => {
+        this.measureBand(newValue);
+      })
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)

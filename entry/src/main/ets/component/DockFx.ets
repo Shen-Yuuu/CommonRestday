@@ -3,8 +3,8 @@ import { DesignTokens } from '../theme/DesignTokens';
 /**
  * Dock 光感粒子层（原型 `.dock-fx`）：悬浮岛之上的三层装饰——贴底的品牌粉光池、
  * 6.5s 扫过一次的柔光带、12 颗上升的糖粒（含两颗心）。
- * 这层是纯装饰：命中测试整层关掉（`pointer-events:none` 的等价物），底栏三项照常落点；
- * 挂在 Navigation 内容里，所以 push 班表页时它跟着页签栏一起被盖掉。
+ * 这层是纯装饰：整层 `HitTestMode.Transparent`，命中测试放行给底下的悬浮岛（见 build 里的说明），
+ * 底栏三项照常落点；挂在 Navigation 内容里，所以 push 班表页时它跟着页签栏一起被盖掉。
  * 开「减少动态效果」时只留光池：柔光带与糖粒只剩动效，静帧会是一道钉在岛上的亮带。
  */
 
@@ -153,8 +153,12 @@ struct SparkGrain {
 
 @Component
 export struct DockFx {
-  /** 带宽与悬浮岛共用同一个百分比：岛宽只能按百分比要，两侧留固定 30vp 的话在大屏上会比岛宽，粒子就从岛沿漏出去。 */
-  bandWidth: string = '84%';
+  /**
+   * 带宽（vp）：由壳层量出来的岛宽传进来，两层同宽才对得齐。
+   * 必须是 @Prop：壳层的 bandVp 是 onAreaChange 之后才从兜底值改成真宽的，
+   * 普通成员只在子组件创建时初始化一次，实测粒子层会一直停在兜底宽上。
+   */
+  @Prop bandWidth: number = 236;
   bottom: number = 10;
   bandHeight: number = 52;
   radius: number = 22;
@@ -228,8 +232,10 @@ export struct DockFx {
     .width('100%')
     .justifyContent(FlexAlign.Center)
     .padding({ bottom: this.bottom })
-    // 整层不吃点击：HitTestMode.None 连子节点一起排除，底栏三项的落点不受影响。
-    .hitTestBehavior(HitTestMode.None)
+    // 装饰层不吞点击：Stack 里两节点重叠时，顶层节点的子节点被命中就只测顶层（枚举说明·HitTestMode）。
+    // None 只关掉自身的响应，改变不了这条限制——实测三项落点全部 Touch test result is empty。
+    // 只有 Transparent 会放行兄弟节点，底下的悬浮岛才重新收得到点击。
+    .hitTestBehavior(HitTestMode.Transparent)
     .accessibilityLevel('no')
   }
 }

@@ -6,6 +6,7 @@ import { HomeView } from '../view/HomeView';
 import { CoTimeView } from '../view/CoTimeView';
 import { MeView } from '../view/MeView';
 import { ScheduleHub } from '../view/ScheduleHub';
+import { DockFx } from '../component/DockFx';
 import { NavRoutes, RouteKind, RouteTarget } from './NavRoutes';
 import { navParamsFrom, routeNameFromParams, takePendingRoute } from '../util/NavUtil';
 import { ownerFromParams } from '../model/RouteParams';
@@ -13,16 +14,22 @@ import { DesignTokens } from '../theme/DesignTokens';
 
 const TAG = 'AppNavigator';
 /**
- * 底栏留白带高度：悬浮岛画在这一段里，内容从它下面穿过（barOverlap 是悬浮样式的硬约束）。
- * 页面底部因此必须自己留出这段呼吸空间，否则末屏内容会被岛压住。
+ * 底栏留白带高度：实测就等于悬浮岛的高度（这一值 78 时 dumpLayout 的 TabBar 节点高 273px=78vp）。
+ * 原型 02 的 .tabbar 是 52 高、左右各内缩 30、底部 10，条目 flex:1（384 屏宽下每项约 103）。
  */
-const BAR_BAND = 78;
-/** 浮岛与左右/底部留白（原型 .tabbar 的 margin:-40px 30px 10px）。 */
-const DOCK_SIDE_MARGIN = 30;
+const BAR_BAND = 52;
+/**
+ * 岛宽：HdsTabs 只肯按断点档给宽度（默认手机档 236vp，实测与条目宽无关），barSideMargin 收不住它，
+ * 所以要一个百分比。原型 30/384 的内缩折成 84%，本机 373.7vp 下算出 313.9vp（内缩 29.9vp）。
+ */
+const DOCK_BAND_WIDTH = '84%';
+/** 浮岛底部留白（原型 .tabbar 的 margin:-40px 30px 10px）。 */
 const DOCK_BOTTOM_MARGIN = 10;
-/** 单项热区：不小于 48vp，不用视觉胶囊大小代替真实热区。 */
-const ITEM_HEIGHT = 50;
-const ITEM_WIDTH = 74;
+/** 岛的圆角（原型 .tabbar/.dock-fx 都是 22）：粒子层要按同一个圆角裁，边缘才不漏光。 */
+const DOCK_RADIUS = 22;
+/** 单项热区：原型 .t 是 flex:1（铺满岛内宽），52 高的岛上下内衬 4/6 后内容区 42；48vp 的无障碍底线由 100vp 宽天然满足。 */
+const ITEM_HEIGHT = 42;
+const ITEM_WIDTH = 100;
 
 interface NavItem {
   icon: Resource;
@@ -160,59 +167,74 @@ export struct AppNavigator {
 
   build() {
     Navigation(this.pathStack) {
-      HdsTabs({ controller: this.tabsController, index: this.activeTab }) {
-        TabContent() {
-          // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
-          HomeView({
-            onOpenRoute: (name: string): void => {
-              this.openRoute(name, undefined);
-            }
-          })
-        }
-        .tabBar(this.tabBarItem(NavRoutes.TAB_HOME))
+      // 光感粒子层要精确压在悬浮岛上，所以岛和它放进同一个 Stack：Stack 是 Navigation 的内容，
+      // push 班表页时整块内容一起被 NavDestination 盖掉，粒子不会浮到子页上。
+      Stack({ alignContent: Alignment.BottomStart }) {
+        HdsTabs({ controller: this.tabsController, index: this.activeTab }) {
+          TabContent() {
+            // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
+            HomeView({
+              onOpenRoute: (name: string): void => {
+                this.openRoute(name, undefined);
+              }
+            })
+          }
+          .tabBar(this.tabBarItem(NavRoutes.TAB_HOME))
 
-        TabContent() {
-          // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
-          CoTimeView({
-            onOpenRoute: (name: string): void => {
-              this.openRoute(name, undefined);
-            }
-          })
-        }
-        .tabBar(this.tabBarItem(NavRoutes.TAB_COMMON_TIME))
+          TabContent() {
+            // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
+            CoTimeView({
+              onOpenRoute: (name: string): void => {
+                this.openRoute(name, undefined);
+              }
+            })
+          }
+          .tabBar(this.tabBarItem(NavRoutes.TAB_COMMON_TIME))
 
-        TabContent() {
-          // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
-          MeView({
-            onOpenRoute: (name: string, params?: Object): void => {
-              this.openRoute(name, params);
-            }
-          })
+          TabContent() {
+            // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
+            MeView({
+              onOpenRoute: (name: string, params?: Object): void => {
+                this.openRoute(name, params);
+              }
+            })
+          }
+          .tabBar(this.tabBarItem(NavRoutes.TAB_ME))
         }
-        .tabBar(this.tabBarItem(NavRoutes.TAB_ME))
+        .width('100%')
+        .height('100%')
+        .vertical(false)
+        .barPosition(BarPosition.End)
+        // 悬浮样式的第一条约束：页签栏要叠在内容之上，系统才会画那层悬浮背板；
+        // 不打开时只有整条 band 的底色，岛本身什么都不画（官方「设置页签栏的悬浮样式」约束条件）。
+        .barOverlap(true)
+        .scrollable(false)
+        .barHeight(BAR_BAND)
+        // 悬浮底栏 + 沉浸光感材质（API 23 起）：岛的面与模糊交给系统，应用侧不再自绘玻璃
+        .barFloatingStyle({
+          barWidth: { smallWidth: DOCK_BAND_WIDTH, mediumWidth: DOCK_BAND_WIDTH, largeWidth: DOCK_BAND_WIDTH },
+          barBottomMargin: DOCK_BOTTOM_MARGIN,
+          gradientMask: { maskColor: $r('app.color.dock_mask') },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.IMMERSIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          }
+        })
+        .onChange((idx: number) => {
+          this.activeTab = idx;
+          // 切页就是一次「重进」：看不见的那几分钟钟是不走的，切回来要重取值（K-4③）
+          ScheduleUseCase.notifyClockTick();
+        })
+
+        DockFx({
+          bandWidth: DOCK_BAND_WIDTH,
+          bottom: DOCK_BOTTOM_MARGIN,
+          bandHeight: BAR_BAND,
+          radius: DOCK_RADIUS
+        })
       }
-      .vertical(false)
-      .barPosition(BarPosition.End)
-      // 悬浮样式的第一条约束：页签栏要叠在内容之上，系统才会画那层悬浮背板；
-      // 不打开时只有整条 band 的底色，岛本身什么都不画（官方「设置页签栏的悬浮样式」约束条件）。
-      .barOverlap(true)
-      .scrollable(false)
-      .barHeight(BAR_BAND)
-      // 悬浮底栏 + 沉浸光感材质（API 23 起）：岛的面与模糊交给系统，应用侧不再自绘玻璃
-      .barFloatingStyle({
-        barSideMargin: DOCK_SIDE_MARGIN,
-        barBottomMargin: DOCK_BOTTOM_MARGIN,
-        gradientMask: { maskColor: $r('app.color.dock_mask') },
-        systemMaterialEffect: {
-          materialType: hdsMaterial.MaterialType.IMMERSIVE,
-          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-        }
-      })
-      .onChange((idx: number) => {
-        this.activeTab = idx;
-        // 切页就是一次「重进」：看不见的那几分钟钟是不走的，切回来要重取值（K-4③）
-        ScheduleUseCase.notifyClockTick();
-      })
+      .width('100%')
+      .height('100%')
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)

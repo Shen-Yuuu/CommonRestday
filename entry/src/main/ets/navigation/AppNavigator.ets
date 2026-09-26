@@ -232,6 +232,8 @@ export struct AppNavigator {
         .barFloatingStyle({
           barWidth: { smallWidth: this.bandVp, mediumWidth: this.bandVp, largeWidth: this.bandVp },
           barBottomMargin: DOCK_BOTTOM_MARGIN,
+          // 背板蒙层必须留着并显式给全透明色：删掉这行会回落系统默认 #66F1F3F5（深色 #33000000），
+          // 而它按整条页签栏宽铺开、高度约 96vp，四周都比悬浮岛（52vp 高、两侧各内缩 30vp）大一圈。
           gradientMask: { maskColor: $r('app.color.dock_mask') },
           systemMaterialEffect: {
             materialType: hdsMaterial.MaterialType.IMMERSIVE,

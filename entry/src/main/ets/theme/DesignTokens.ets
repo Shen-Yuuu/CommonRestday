@@ -55,18 +55,20 @@ export class DesignTokens {
   /**
    * 半模态背后那层暗化（原型 .scrim，rgba(74,36,54,.42)）：接 SheetOptions.maskColor。
    * 深浅两档同值——原型 02 的 .scrim 就是一条不带主题前缀的规则，本来也不分档。
-   * 弹窗那层（.dlgwrap，.48）接不上：本 SDK 里只有 SheetOptions.maskColor、
-   * CustomDialogControllerOptions.maskColor 与 CustomPopupOptions.mask.color 能改遮罩色，
-   * 而 showAlertDialog 的 AlertDialogParam 和 promptAction.showDialog 的 ShowDialogOptions
-   * 都只有 maskRect（遮罩范围）没有 maskColor（遮罩颜色）。全仓 10 处确认框走的是前者。
    */
   static readonly scrim: Resource = $r('app.color.scrim');
+  /**
+   * 确认框背后那层暗化（原型 .dlgwrap，rgba(74,36,54,.48)）：接 BaseDialogOptions.maskColor。
+   * 比 .scrim 深一档、且不分深浅档，理由同 scrim——02 里它也是一条不带主题前缀的规则。
+   * 这层只有换成 openCustomDialog(ComponentContent) 才接得上：showAlertDialog 的
+   * AlertDialogParam 只有 maskRect（遮罩范围）没有 maskColor（遮罩颜色），
+   * 所以全仓十处确认框走 util/AppConfirm.ets 的 askConfirm()。
+   */
+  static readonly dlgScrim: Resource = $r('app.color.dlg_scrim');
 
   // ---- Dock 光感粒子（原型 .dock-fx）----
   /** 光池：原型只在深色主题画（`.dock-glow` 浅色被 `display:none`），所以浅色档做成全透明。 */
   static readonly dockGlowPool: Resource = $r('app.color.dock_glow_pool');
-  /** 扫过岛面的那道柔光（rgba(255,255,255,.30)）。 */
-  static readonly dockSheen: Resource = $r('app.color.dock_sheen');
   static readonly sparkBlush: Resource = $r('app.color.spark_blush');
   static readonly sparkAmber: Resource = $r('app.color.spark_amber');
   static readonly sparkLilac: Resource = $r('app.color.spark_lilac');

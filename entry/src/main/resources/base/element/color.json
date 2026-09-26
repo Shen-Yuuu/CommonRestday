@@ -274,11 +274,15 @@
     },
     {
       "name": "dock_mask",
-      "value": "#66FFF6F3"
+      "value": "#00FFF6F3"
     },
     {
       "name": "scrim",
       "value": "#6B4A2436"
+    },
+    {
+      "name": "dlg_scrim",
+      "value": "#7A4A2436"
     },
     {
       "name": "card_sheen",
@@ -291,10 +295,6 @@
     {
       "name": "dock_glow_pool",
       "value": "#00FF7EA5"
-    },
-    {
-      "name": "dock_sheen",
-      "value": "#4DFFFFFF"
     },
     {
       "name": "spark_blush",

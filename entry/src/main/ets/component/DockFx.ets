@@ -1,11 +1,10 @@
 import { DesignTokens } from '../theme/DesignTokens';
 
 /**
- * Dock 光感粒子层（原型 `.dock-fx`）：悬浮岛之上的三层装饰——贴底的品牌粉光池、
- * 6.5s 扫过一次的柔光带、12 颗上升的糖粒（含两颗心）。
+ * Dock 光感粒子层（原型 `.dock-fx`）：悬浮岛之上的两层装饰——贴底的品牌粉光池、12 颗上升的糖粒（含两颗心）。
  * 这层是纯装饰：整层 `HitTestMode.Transparent`，命中测试放行给底下的悬浮岛（见 build 里的说明），
  * 底栏三项照常落点；挂在 Navigation 内容里，所以 push 班表页时它跟着页签栏一起被盖掉。
- * 开「减少动态效果」时只留光池：柔光带与糖粒只剩动效，静帧会是一道钉在岛上的亮带。
+ * 开「减少动态效果」时只留光池：糖粒只剩动效，静帧会是一排钉在岛上的亮带。
  */
 
 /** 单颗糖粒的规格，字段一一对应原型 CSS 的 --s/--c/--d/--dl/--dx/--o。 */
@@ -38,9 +37,6 @@ const RISE_IN: number = 0.14;
 const RISE_HOLD: number = 0.6;
 /** 原型 bottom:4px。 */
 const SPARK_BOTTOM: number = 4;
-const SHEEN_PERIOD_MS: number = 6500;
-/** 原型 dockSheen：0%→58% 停在原位，58%→100% 走完 330%。 */
-const SHEEN_DWELL_RATIO: number = 0.58;
 const GLOW_RADIUS: number = 120;
 const HEART_SIZE: number = 10;
 
@@ -162,7 +158,6 @@ export struct DockFx {
   bottom: number = 10;
   bandHeight: number = 52;
   radius: number = 22;
-  @State private sheenX: string = '0%';
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
 
@@ -175,26 +170,6 @@ export struct DockFx {
     };
   }
 
-  private startSheen(): void {
-    const dwell: number = Math.round(SHEEN_PERIOD_MS * SHEEN_DWELL_RATIO);
-    this.getUIContext().keyframeAnimateTo({ iterations: -1 }, [
-      {
-        duration: dwell,
-        curve: Curve.Linear,
-        event: () => {
-          this.sheenX = '0%';
-        }
-      },
-      {
-        duration: SHEEN_PERIOD_MS - dwell,
-        curve: Curve.EaseInOut,
-        event: () => {
-          this.sheenX = '330%';
-        }
-      }
-    ]);
-  }
-
   build() {
     Row() {
       Stack({ alignContent: Alignment.BottomStart }) {
@@ -205,20 +180,6 @@ export struct DockFx {
           .radialGradient(this.glowOf())
 
         if (!this.reduceMotion) {
-          // 柔光带：本体比岛高（原型 top/bottom 各溢出 20%），靠岛的 overflow 裁成一条斜扫的光。
-          Column()
-            .width('60%')
-            .height('140%')
-            .position({ x: '-40%', y: '-20%' })
-            .linearGradient({
-              angle: 105,
-              colors: [[Color.Transparent, 0.2], [DesignTokens.dockSheen, 0.5], [Color.Transparent, 0.8]]
-            })
-            .translate({ x: this.sheenX })
-            .onAppear(() => {
-              this.startSheen();
-            })
-
           ForEach(SPARKS, (spec: SparkSpec, index: number) => {
             SparkGrain({ spec: spec, bandHeight: this.bandHeight })
           }, (spec: SparkSpec, index: number) => 'dock-spark-' + index)

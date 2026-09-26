@@ -1,4 +1,4 @@
-import { promptAction, router } from '@kit.ArkUI';
+import { router } from '@kit.ArkUI';
 import { HdsColorPicker, HdsColorPickerTabType } from '@kit.UIDesignKit';
 import { util } from '@kit.ArkTS';
 import { OWNER_ME, ShiftType, hhmmToMin, minToHHmm } from 'domain';
@@ -8,8 +8,14 @@ import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHi
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
+import { appToast } from '../util/AppToast';
 
-const COLORS: string[] = ['#E8833A', '#3AA6E8', '#8A63D2', '#D24A7E', '#2B4C9B', '#4E9A63', '#C9A227', '#7A7A7A'];
+/**
+ * 班次调色板：02「Q糖」的糖果八色。存库的是这里的字面值，不是资源键，所以取值要一次定对——
+ * 月历格子（PaintMonth.DayCellView）与循环预览都在色块上直接写白字，八色的白字对比度
+ * 全部按 WCAG 相对亮度核过 ≥2.99:1（旧那一组最低只有 2.42），换色时按同一口径挑。
+ */
+const COLORS: string[] = ['#EF6F42', '#4E97DB', '#9A6BDC', '#F0568C', '#5B6ACF', '#3A9E6E', '#C08A2A', '#8E8397'];
 
 /** 夜班判定三档（D-33）：文字与档位来自 feature/model/RhythmRules，顺序即存库值。 */
 const NIGHT_MODE_OPTIONS: SelectOption[] = NIGHT_MODE_LABELS.map((label: string): SelectOption => {
@@ -155,7 +161,7 @@ struct ScheduleEditor {
     const start = hhmmToMin(this.startText);
     const end = hhmmToMin(this.endText);
     if (this.name === '' || start < 0 || end < 0) {
-      promptAction.showToast({ message: '请检查名称与时间格式（HH:MM）' });
+      appToast('请检查名称与时间格式（HH:MM）');
       return;
     }
     const st: ShiftType = {
@@ -297,10 +303,12 @@ struct ScheduleEditor {
                     .onClick(() => this.color = c)
                 }, (c: string) => c)
                 // 自定义颜色：打开 HdsColorPicker（网格 / 光谱 / 滑块）
+                // Circle 默认 fill 是纯黑，不显式置透明会盖住 linearGradient（实测岛心 #000000）。
                 Circle().width(26).height(26)
+                  .fill(Color.Transparent)
                   .linearGradient({
                     angle: 135,
-                    colors: [['#D24A7E', 0], ['#3AA6E8', 0.5], ['#4E9A63', 1]]
+                    colors: [['#F0568C', 0], ['#4E97DB', 0.5], ['#3A9E6E', 1]]
                   })
                   .stroke($r('app.color.text_disabled')).strokeWidth(2)
                   .onClick(() => {
@@ -350,7 +358,8 @@ struct ScheduleEditor {
       showClose: true,
       // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
       radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-      blurStyle: BlurStyle.Thick
+      blurStyle: BlurStyle.Thick,
+      maskColor: DesignTokens.scrim
     })
   }
 

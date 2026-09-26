@@ -3,6 +3,7 @@ import { SettingsStore } from 'data';
 import { Logger } from 'commons';
 import { PrivacyPolicySheet } from './PrivacyPolicySheet';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
 
 const TAG = 'PrivacyDialog';
@@ -111,7 +112,7 @@ export struct PrivacyDialog {
               // 底色/圆角由 PrivacyPolicySheet 自己画，系统层再铺一次就是两层不透明背景
               backgroundColor: Color.Transparent,
               blurStyle: BlurStyle.NONE,
-              maskColor: $r('app.color.scrim')
+              maskColor: DesignTokens.scrim
             })
             .onClick(() => {
               this.policyOpen = true;

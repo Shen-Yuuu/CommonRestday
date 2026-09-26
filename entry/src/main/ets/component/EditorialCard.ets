@@ -82,18 +82,32 @@ export struct EditorialCard {
   }
 
   /** 焦点环优先级高于表面描边：键盘用户任何时候都要能看出这张卡被选中。 */
-  private surfaceBorderWidth(): number {
+  private surfaceBorderWidths(): EdgeWidths {
     if (this.hasFocus) {
-      return 2;
+      return { top: 2, right: 2, bottom: 2, left: 2 };
     }
-    return this.glass ? GlassStyle.borderWidth() : 0;
+    const side: number = this.glass ? GlassStyle.borderWidth() : 0;
+    // 原型那条 inset 高光只落在顶沿，ArkUI 没有 inset box-shadow，
+    // 就借描边的「只有上边有宽度」画出一条贴着圆角走 1vp 的亮线。
+    return { top: 1, right: side, bottom: side, left: side };
   }
 
-  private surfaceBorderColor(): ResourceColor {
+  private surfaceBorderColors(): EdgeColors {
     if (this.hasFocus) {
-      return DesignTokens.focusRing;
+      return {
+        top: DesignTokens.focusRing,
+        right: DesignTokens.focusRing,
+        bottom: DesignTokens.focusRing,
+        left: DesignTokens.focusRing
+      };
     }
-    return this.glass ? DesignTokens.glassBorder : Color.Transparent;
+    const side: ResourceColor = this.glass ? DesignTokens.glassBorder : Color.Transparent;
+    return {
+      top: this.hero ? DesignTokens.heroSheen : DesignTokens.cardSheen,
+      right: side,
+      bottom: side,
+      left: side
+    };
   }
 
   private surfaceShadow(): ShadowOptions {
@@ -139,8 +153,8 @@ export struct EditorialCard {
     .shadow(this.surfaceShadow())
     // 焦点环常驻透明边，避免聚焦时布局跳动。
     .border({
-      width: this.surfaceBorderWidth(),
-      color: this.surfaceBorderColor(),
+      width: this.surfaceBorderWidths(),
+      color: this.surfaceBorderColors(),
       radius: this.surfaceRadius()
     })
     .scale(this.isPressed

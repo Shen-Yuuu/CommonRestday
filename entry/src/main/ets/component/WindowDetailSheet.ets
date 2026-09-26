@@ -14,6 +14,29 @@ const STEP_MIN = DRAFT_GRID_MIN;
 const TAG = 'WindowDetailSheet';
 
 /**
+ * 探头休休（原型 `.sheet-peek`，7 分甜的签名动作）：
+ * CSS `width:96px` 配 viewBox 0 0 120 78 得 96×62.4；`bottom: sheetHeight-26` 把它的下沿
+ * 压在 sheet 上沿之内 26vp，于是 62.4−26=36.4vp 探到面外。
+ *
+ * 系统半模态**按自己的窗口矩形裁内容**（设备实测：负 margin 抬出去那截，
+ * `dumpLayout` 里 `origBounds` 高 218px 而 `bounds` 只剩 90px，被切掉的 128px=36.6vp
+ * 正好等于外溢量），所以外溢不能靠负 margin 硬顶，得把窗口自己垫高——
+ * 根 Stack 让出顶部 36.4vp 的透明带（sheet 的 `backgroundColor` 已是 Transparent、
+ * 面由本组件画，见批次 Q·Q2），休休落在这条带里，压住面沿 26vp 的就是它自己的下沿。
+ */
+const PEEK_W: number = 96;
+const PEEK_H: number = 62.4;
+/** 下沿压进 sheet 内的量：CSS `bottom: sheetHeight - 26`。 */
+const PEEK_IN: number = 26;
+/** 探到面外的量，也就是根 Stack 顶部那条透明带的高。 */
+const PEEK_OUT: number = PEEK_H - PEEK_IN;
+const PEEK_MARGIN_TOP: number = -PEEK_OUT;
+const PEEK_LEFT: number = 22;
+/** 起点 CSS `transform:translateY(130%)`，落位 0，.5s spring。 */
+const PEEK_RISE_Y: number = PEEK_H * 1.3;
+const PEEK_MS: number = 500;
+
+/**
  * 窗口详情半模态（US5 / FR-009）：
  * - 顶部：日期 + 窗口起止 + 时长 + 标签；
  * - 时间轴可视化：窗口横条 + 计划区间高亮预览（Row 比例布局）；条下方两端是窗口起止
@@ -57,6 +80,9 @@ export struct WindowDetailSheet {
   private timeTouched: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
+  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  /** 探头休休是否已落位：false 是 CSS 的 translateY(130%) 起点，onAppear 里 animateTo 推到 true。 */
+  @State private peekRisen: boolean = false;
 
   aboutToAppear(): void {
     this.resetDraft();
@@ -251,19 +277,62 @@ export struct WindowDetailSheet {
       // 卡片底而不是玻璃：详情栏是常驻面板，不是浮层
       .backgroundColor(DesignTokens.card)
     } else {
-      // 面由本组件自己画（与 PrivacyPolicySheet 同一份配方）：02 的 .sheet 是一条
-      // 顶亮下页色的不透明渐变，本来就不是玻璃。走 GlassSurface 的材质路径时，
-      // bindSheet 里那一层只留下透明填充，底下的周历格直接透上来（批次 Q·Q2）。
-      Column() {
-        this.formBody(true)
+      // 顶部那条透明带是窗口自己让出来的：面画在带下面，休休站在带上，压住面沿 26vp。
+      Stack({ alignContent: Alignment.TopStart }) {
+        // 面由本组件自己画（与 PrivacyPolicySheet 同一份配方）：02 的 .sheet 是一条
+        // 顶亮下页色的不透明渐变，本来就不是玻璃。走 GlassSurface 的材质路径时，
+        // bindSheet 里那一层只留下透明填充，底下的周历格直接透上来（批次 Q·Q2）。
+        Column() {
+          this.formBody(true)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(DesignTokens.page)
+        .linearGradient(DesignTokens.sheetGradient())
+        .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })
+        .clip(true)
+
+        // 透明带在 sheet 窗口之内，系统不把它当遮罩：不垫这一层，上沿多出来的 36.4vp
+        // 就从"点一下就收起"变成点了没反应的死区（改之前那一行像素属于遮罩）。
+        Column()
+          .width('100%')
+          .height(PEEK_OUT)
+          .margin({ top: -PEEK_OUT })
+          .onClick(() => {
+            this.onClose();
+          })
+
+        Image($r('app.media.mascot_peek_bunny'))
+          .width(PEEK_W)
+          .height(PEEK_H)
+          .margin({ left: PEEK_LEFT, top: PEEK_MARGIN_TOP })
+          .translate({ y: this.peekRisen ? 0 : PEEK_RISE_Y })
+          .shadow({ radius: 8, type: ShadowType.COLOR, color: '#245A1E37', offsetX: 0, offsetY: -3 })
+          // 系统给 sheet 里的每个节点都挂了拖拽/长按识别器，所以这张图是"活跃节点"：
+          // 默认档会阻塞兄弟，实测点在它占的那截透明带上收不起半模态（t20），
+          // Transparent 才既让它跟着拖 sheet、又把点击放行给下面的垫片。
+          .hitTestBehavior(HitTestMode.Transparent)
+          // 签名动作，不承载信息；sheet 里的读数才是内容
+          .accessibilityLevel('no')
+          .onAppear(() => {
+            this.risePeek();
+          })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(DesignTokens.page)
-      .linearGradient(DesignTokens.sheetGradient())
-      .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })
-      .clip(true)
+      .padding({ top: PEEK_OUT })
+      .hitTestBehavior(HitTestMode.Transparent)
     }
+  }
+
+  /** 探头落位：CSS `.sheet-peek` 的 translateY(130%)→0，spring 500ms；减少动效时时长归 0 直接落位。 */
+  private risePeek(): void {
+    this.getUIContext().animateTo({
+      duration: DesignTokens.motion(this.reduceMotion, PEEK_MS),
+      curve: DesignTokens.curve
+    }, () => {
+      this.peekRisen = true;
+    });
   }
 
   /** 表单体：withHandle 决定要不要半模态的顶部句柄与贴底留白。 */

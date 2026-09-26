@@ -1,4 +1,4 @@
-import { promptAction, router } from '@kit.ArkUI';
+import { router } from '@kit.ArkUI';
 import {
   OWNER_ME, CycleTemplate, ScheduleOverride, ShiftType, epochDayOf, expandCycle, todayEpochDay
 } from 'domain';
@@ -6,6 +6,8 @@ import { ScheduleRepo } from 'data';
 import { Logger } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { DesignTokens } from '../theme/DesignTokens';
+import { appToast } from '../util/AppToast';
 
 /** 日历格数据（@Observed：涂抹时原地修改属性，子组件 @ObjectLink 精准刷新，不重建组件、不打断拖动手势）。 */
 @Observed
@@ -153,10 +155,27 @@ struct PaintMonth {
 
   // ---------- 乐观更新 + 防抖批量持久化 ----------
 
+  /** 点按：与当前覆盖同色再点一次 = 清除（回到循环层）；异色或无覆盖 = 标记。 */
+  togglePaint(epochDay: number): void {
+    if (this.brushId === '') {
+      appToast('先在顶部选择画笔（班次/休息）');
+      return;
+    }
+    const over: string | null = this.brushId === REST_KEY ? null : this.brushId;
+    const cur = this.overMap.get(epochDay);
+    const has = this.overMap.has(epochDay);
+    const same = has && ((over === null && cur === null) || (over !== null && cur === over));
+    if (same) {
+      this.clearCell(epochDay);
+    } else {
+      this.paint(epochDay);
+    }
+  }
+
   /** 涂抹：立即更新内存单元格（乐观 UI），覆盖写入进入防抖队列批量落库。 */
   paint(epochDay: number): void {
     if (this.brushId === '') {
-      promptAction.showToast({ message: '先在顶部选择画笔（班次/休息）' });
+      appToast('先在顶部选择画笔（班次/休息）');
       return;
     }
     const over: string | null = this.brushId === REST_KEY ? null : this.brushId;
@@ -239,11 +258,11 @@ struct PaintMonth {
     const r = await ScheduleCommandService.paintDays(delArr, overrides, this.owner);
     if (r.errorCode === 'WRITE_FAILED') {
       // 整批回滚：画面上仍是用户涂的样子，但库里没动，说清楚免得以为已保存
-      promptAction.showToast({ message: '保存失败，请重试' });
+      appToast('保存失败，请重试');
       Logger.warn('PaintMonth', 'paint batch rolled back: ' + delArr.length + ' del / '
         + overrides.length + ' set');
     } else if (r.errorCode === 'RECOMPUTE_FAILED') {
-      promptAction.showToast({ message: '班表已保存，但共同时间暂未刷新' });
+      appToast('班表已保存，但共同时间暂未刷新');
     }
   }
 
@@ -340,7 +359,7 @@ struct PaintMonth {
         }, (w: string) => w)
       }.width('100%').padding({ left: 6, right: 6 })
 
-      // 日历网格（支持拖动连刷）
+      // 日历网格（支持拖动连刷；点按同色再点一次清除）
       Column() {
         ForEach(this.weekRows(), (rowCells: (DayCell | null)[], rowIdx: number) => {
           Row() {
@@ -351,15 +370,14 @@ struct PaintMonth {
                 DayCellView({
                   cell: cell,
                   isToday: cell.epochDay === todayEpochDay(),
-                  onTap: (ed: number) => this.paint(ed),
+                  onTap: (ed: number) => this.togglePaint(ed),
                   onPanStart: (ed: number) => this.onPanStart(ed),
-                  onPanMove: (ed: number, dx: number, dy: number) => this.onPanMove(ed, dx, dy),
-                  onLongPress: (ed: number) => this.clearCell(ed)
+                  onPanMove: (ed: number, dx: number, dy: number) => this.onPanMove(ed, dx, dy)
                 })
               }
-            }, (cell: DayCell | null, i: number) => rowIdx + '-' + i + '-' + (cell != null ? '' + cell.day : 'x'))
+            }, (cell: DayCell | null, i: number) => rowIdx + '-' + i + '-' + (cell != null ? '' + cell.epochDay : 'x'))
           }.width('100%')
-        }, (rowCells: (DayCell | null)[], rowIdx: number) => 'row' + rowIdx)
+        }, (rowCells: (DayCell | null)[], rowIdx: number) => '' + this.monthStart + '-row' + rowIdx)
       }
       .width('100%')
       .padding({ left: 6, right: 6 })
@@ -367,12 +385,12 @@ struct PaintMonth {
         this.gridW = Number(newArea.width) - 12;
       })
 
-      Text('拖动连续标记 · 点按单日标记 · 长按清除（带“改”角的为手动覆盖）')
+      Text('点按标记 · 同色再点一次清除 · 拖动连续标记（带“改”角的为手动覆盖）')
         .fontSize(11).fontColor($r('app.color.text_hint')).padding(10)
 
       Blank()
     }
-    .width('100%').height('100%').backgroundColor($r('app.color.page_bg_warm'))
+    .width('100%').height('100%').linearGradient(DesignTokens.pageGradient())
   }
 
   weekRows(): (DayCell | null)[][] {
@@ -405,8 +423,6 @@ struct DayCellView {
   };
   onPanMove: (epochDay: number, dx: number, dy: number) => void = () => {
   };
-  onLongPress: (epochDay: number) => void = () => {
-  };
 
   isRestColor(): boolean {
     return this.cell.color === '#B8C4CE' || this.cell.color === '#CCCCCC';
@@ -418,7 +434,9 @@ struct DayCellView {
         .fontSize(13)
         .fontColor(this.isRestColor() ? $r('app.color.text_secondary') : '#FFFFFF')
       if (this.cell.label !== '') {
-        Text(this.cell.label).fontSize(9).fontColor('#FFFFFF')
+        // 休息格铺的是 fill_weak 浅色底，标签跟日期数字同色，否则白字压在浅灰上读不出来
+        Text(this.cell.label).fontSize(9)
+          .fontColor(this.isRestColor() ? $r('app.color.text_secondary') : '#FFFFFF')
       }
       if (this.cell.overId !== null) {
         Circle().width(4).height(4).fill($r('app.color.danger_red'))
@@ -438,10 +456,6 @@ struct DayCellView {
       })
       .onActionUpdate((e: GestureEvent) => {
         this.onPanMove(this.cell.epochDay, Number(e.offsetX), Number(e.offsetY));
-      }))
-    .parallelGesture(LongPressGesture({ duration: 450 })
-      .onAction(() => {
-        this.onLongPress(this.cell.epochDay);
       }))
   }
 }

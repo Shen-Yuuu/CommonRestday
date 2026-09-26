@@ -277,6 +277,50 @@
       "value": "#66FFF6F3"
     },
     {
+      "name": "scrim",
+      "value": "#6B4A2436"
+    },
+    {
+      "name": "card_sheen",
+      "value": "#A6FFFFFF"
+    },
+    {
+      "name": "hero_sheen",
+      "value": "#59FFFFFF"
+    },
+    {
+      "name": "dock_glow_pool",
+      "value": "#00FF7EA5"
+    },
+    {
+      "name": "dock_sheen",
+      "value": "#4DFFFFFF"
+    },
+    {
+      "name": "spark_blush",
+      "value": "#FFC9DB"
+    },
+    {
+      "name": "spark_amber",
+      "value": "#FFD9A0"
+    },
+    {
+      "name": "spark_lilac",
+      "value": "#E5C8FF"
+    },
+    {
+      "name": "spark_pink",
+      "value": "#FFB7CC"
+    },
+    {
+      "name": "spark_white",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "spark_heart",
+      "value": "#FF8FB0"
+    },
+    {
       "name": "page_grad_top",
       "value": "#FFF0E7"
     },

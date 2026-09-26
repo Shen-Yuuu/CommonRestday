@@ -28,6 +28,13 @@ export class DesignTokens {
   static readonly hero: Resource = $r('app.color.hero_bg');
   static readonly heroText: Resource = $r('app.color.hero_fg');
   static readonly heroGlow: Resource = $r('app.color.hero_glow');
+  /**
+   * 卡片顶沿那条 1vp 内高光（原型 .card 的 `inset 0 1px 0 rgba(255,255,255,.65)`，
+   * 深色覆盖 `:226` 是 .045；ArkUI 没有 inset box-shadow，走描边的上边一段）。
+   */
+  static readonly cardSheen: Resource = $r('app.color.card_sheen');
+  /** Hero 的同一条高光，原型 `.hero` 是 .35 且深色档没有覆盖规则，所以两档同值。 */
+  static readonly heroSheen: Resource = $r('app.color.hero_sheen');
   /** Hero 斜向渐变的两个端点（粉→珊瑚），中间一档用 primary。 */
   static readonly sunsetFrom: Resource = $r('app.color.sunset_from');
   static readonly sunsetTo: Resource = $r('app.color.sunset_to');
@@ -45,6 +52,27 @@ export class DesignTokens {
   /** 实色回退底：系统材质不可用或算力不足时的近实色（92%–96% 暖白）。 */
   static readonly glassFallback: Resource = $r('app.color.glass_fallback');
   static readonly glassShadow: Resource = $r('app.color.glass_shadow');
+  /**
+   * 半模态背后那层暗化（原型 .scrim，rgba(74,36,54,.42)）：接 SheetOptions.maskColor。
+   * 深浅两档同值——原型 02 的 .scrim 就是一条不带主题前缀的规则，本来也不分档。
+   * 弹窗那层（.dlgwrap，.48）接不上：本 SDK 里只有 SheetOptions.maskColor、
+   * CustomDialogControllerOptions.maskColor 与 CustomPopupOptions.mask.color 能改遮罩色，
+   * 而 showAlertDialog 的 AlertDialogParam 和 promptAction.showDialog 的 ShowDialogOptions
+   * 都只有 maskRect（遮罩范围）没有 maskColor（遮罩颜色）。全仓 10 处确认框走的是前者。
+   */
+  static readonly scrim: Resource = $r('app.color.scrim');
+
+  // ---- Dock 光感粒子（原型 .dock-fx）----
+  /** 光池：原型只在深色主题画（`.dock-glow` 浅色被 `display:none`），所以浅色档做成全透明。 */
+  static readonly dockGlowPool: Resource = $r('app.color.dock_glow_pool');
+  /** 扫过岛面的那道柔光（rgba(255,255,255,.30)）。 */
+  static readonly dockSheen: Resource = $r('app.color.dock_sheen');
+  static readonly sparkBlush: Resource = $r('app.color.spark_blush');
+  static readonly sparkAmber: Resource = $r('app.color.spark_amber');
+  static readonly sparkLilac: Resource = $r('app.color.spark_lilac');
+  static readonly sparkPink: Resource = $r('app.color.spark_pink');
+  static readonly sparkWhite: Resource = $r('app.color.spark_white');
+  static readonly sparkHeart: Resource = $r('app.color.spark_heart');
 
   // ---- 文本 ----
   static readonly textPrimary: Resource = $r('app.color.text_primary');
@@ -126,10 +154,10 @@ export class DesignTokens {
   /** 冲突提示条比正文卡收一档、且不留切角：原型 .conflict-card 的 22px。 */
   static readonly conflictRadius: number = 22;
   /**
-   * 悬浮底栏的滚动净空：底栏 barOverlap 后内容会一路铺到窗口底，岛顶约在 88vp 处，
-   * 末屏内容要能整体升到岛上面（原型 .page 的 padding-bottom 就是为这条留白带画的）。
+   * 悬浮底栏的滚动净空：岛高 52 + 底部留白 10 = 62，末屏内容要能整体升到岛上面。
+   * 导航指示器那 28vp 不用算：Navigation 的内容区本身就止于指示器之上（实测内容 Stack 底边 2782 = 屏底 - 28vp）。
    */
-  static readonly dockClearance: number = 96;
+  static readonly dockClearance: number = 72;
 
   // ---- 玻璃层几何：1vp 描边 + 大半径低透明环境阴影，圆角仍复用 radius* ----
   static readonly glassBorderWidth: number = 1;

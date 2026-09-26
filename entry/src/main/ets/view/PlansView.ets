@@ -3,6 +3,7 @@ import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult
   isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
 import { DateLabel } from 'commons';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { SleepBunny } from '../component/StatePanel';
 import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
@@ -292,10 +293,8 @@ export struct PlansView {
           // 空态引导（US5：窗口 → 计划的转化出口）
           ListItem() {
             Column({ space: 12 }) {
-              SymbolGlyph($r('sys.symbol.heart'))
-                .fontSize(44)
-                .fontColor([$r('app.color.brand_pink_muted')])
-                .accessibilityLevel('no')
+              // 原型 emptyCard() 被三个空态共用，App 此前只有共同页接了它，计划页画的是心形符号
+              SleepBunny()
               Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
               Text($r('app.string.plans_empty_desc'))
                 .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)

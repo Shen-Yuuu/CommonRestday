@@ -15,6 +15,32 @@ function hasLabel(v: ResourceStr): boolean {
 }
 
 /**
+ * 睡觉的休休：7 分甜把空态当情绪位，用它替掉 ○ 记号，静立不动效（原型 .empty-bunny）。
+ * 空态在 StatePanel 和各页自绘卡片里都有，所以单独成件，两处共用同一份几何。
+ */
+@Component
+export struct SleepBunny {
+  build() {
+    Stack({ alignContent: Alignment.TopEnd }) {
+      Image($r('app.media.mascot_bunny_sleep'))
+        .width(76)
+        .height(76)
+        // 吉祥物是装饰，下面两行文字才是状态说明
+        .accessibilityLevel('no')
+      Text('Z z…')
+        .fontSize(DesignTokens.fontCaption)
+        .fontFamily(DesignTokens.fontRound)
+        .fontWeight(FontWeight.Bolder)
+        .fontColor(DesignTokens.primary)
+        // 拟声词不承载信息，念出来只是噪音
+        .accessibilityLevel('no')
+    }
+    .width(76)
+    .height(76)
+  }
+}
+
+/**
  * 统一状态面板：加载、空、错误、降级四种页面级状态共用一个位置与排版。
  * 状态不只靠颜色区分——每种状态有独立符号，且标题/说明始终给出文字；
  * 动作按钮是胶囊主按钮，热区不小于 44vp，支持键盘焦点环与按压反馈。
@@ -68,23 +94,7 @@ export struct StatePanel {
           .color(DesignTokens.textTertiary)
           .accessibilityText('正在加载')
       } else if (this.kind === StatePanelKind.EMPTY) {
-        // 7 分甜把空态当情绪位：睡着的休休替掉 ○ 记号，静立不动效（原型 .empty-bunny）
-        Stack({ alignContent: Alignment.TopEnd }) {
-          Image($r('app.media.mascot_bunny_sleep'))
-            .width(76)
-            .height(76)
-            // 吉祥物是装饰，下面两行文字才是状态说明
-            .accessibilityLevel('no')
-          Text('Z z…')
-            .fontSize(DesignTokens.fontCaption)
-            .fontFamily(DesignTokens.fontRound)
-            .fontWeight(FontWeight.Bolder)
-            .fontColor(DesignTokens.primary)
-            // 拟声词不承载信息，念出来只是噪音
-            .accessibilityLevel('no')
-        }
-        .width(76)
-        .height(76)
+        SleepBunny()
       } else {
         Text(this.markGlyph())
           .fontSize(DesignTokens.fontBody)

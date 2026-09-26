@@ -9,6 +9,7 @@ import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
+import { askConfirm } from '../util/AppConfirm';
 
 /**
  * 班次调色板：02「Q糖」的糖果八色。存库的是这里的字面值，不是资源键，所以取值要一次定对——
@@ -112,38 +113,22 @@ struct ScheduleEditor {
       return;
     }
     const target = this.editing;
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       message: '删除班次「' + target.name + '」？循环模板中引用该班次的格子会显示为空。',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.brand_pink'),
-        action: () => {
-          this.doDelete(target.id);
-        }
+      confirmText: '删除',
+      onConfirm: () => {
+        this.doDelete(target.id);
       }
     });
   }
 
   /** 删除班次二次确认（列表行级入口，与编辑表单内删除并行）。 */
   askDeleteRow(st: ShiftType): void {
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       message: '删除班次「' + st.name + '」？循环模板中引用该班次的格子会显示为空。',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.brand_pink'),
-        action: () => {
-          this.doDelete(st.id);
-        }
+      confirmText: '删除',
+      onConfirm: () => {
+        this.doDelete(st.id);
       }
     });
   }

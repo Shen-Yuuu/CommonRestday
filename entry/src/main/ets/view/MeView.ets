@@ -13,6 +13,7 @@ import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { appToast } from '../util/AppToast';
+import { askConfirm } from '../util/AppConfirm';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
@@ -143,22 +144,16 @@ export struct MeView {
    * token 只露首尾，整条凭据不进屏幕文本、不进日志。
    */
   confirmPair(offer: PairOffer): void {
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: '确认配对请求',
       message: '收到一次性配对凭据 ' + PairLink.mask(offer.token)
         + '。接受后由云端确认，本应用不会自动绑定。',
-      primaryButton: {
-        value: '忽略',
-        fontColor: DesignTokens.textSecondary,
-        action: () => {
-          PairingShareGateway.ignoreOffer();
-        }
+      cancelText: '忽略',
+      confirmText: '接受',
+      onCancel: () => {
+        PairingShareGateway.ignoreOffer();
       },
-      secondaryButton: {
-        value: '接受',
-        fontColor: DesignTokens.primary,
-        action: () => this.acceptPairOffer()
-      }
+      onConfirm: () => this.acceptPairOffer()
     });
   }
 
@@ -221,18 +216,12 @@ export struct MeView {
   }
 
   confirmDeletePartner(): void {
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: '删除伴侣档案',
       message: '将同时清除 TA 的全部班表/课表数据，并回退到单人模式。确定删除？',
-      primaryButton: {
-        value: '删除',
-        action: () => this.doDeletePartner()
-      },
-      secondaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      }
+      confirmText: '删除',
+      danger: true,
+      onConfirm: () => this.doDeletePartner()
     });
   }
 
@@ -342,18 +331,11 @@ export struct MeView {
 
   /** 解除配对（二次确认）：云端尽力解绑，本地配对标记一律清干净。 */
   askUnpair(): void {
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       message: '解除配对后不再同步 TA 的加密快照（本机代录数据不受影响）。确定解除？',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '解除配对',
-        fontColor: DesignTokens.danger,
-        action: () => this.doUnpair()
-      }
+      confirmText: '解除配对',
+      danger: true,
+      onConfirm: () => this.doUnpair()
     });
   }
 
@@ -374,20 +356,13 @@ export struct MeView {
     if (this.clearing) {
       return;
     }
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: '清空全部数据',
       message: '将删除本机全部班表/课表/计划/窗口/伴侣档案与设置项，并清除本应用写入「同休日」日历的日程，且不可恢复。'
         + '导出到系统日历的日程删不动，需要你自己在系统日历里删除。确定清空？',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-        }
-      },
-      secondaryButton: {
-        value: '清空',
-        fontColor: DesignTokens.danger,
-        action: () => this.doClearAll()
-      }
+      confirmText: '清空',
+      danger: true,
+      onConfirm: () => this.doClearAll()
     });
   }
 

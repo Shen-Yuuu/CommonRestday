@@ -5,6 +5,7 @@ import { DateLabel } from 'commons';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
+import { askConfirm } from '../util/AppConfirm';
 
 /** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
 function joinNote(main: string, note: string): string {
@@ -141,22 +142,16 @@ export struct PlansView {
   /** 点击计划 → 操作弹窗（冲突条目额外给"改到替代时间"）。 */
   onPlanTap(p: PlanSummary): void {
     const alt = p.conflict != null && p.conflict.altStart > 0;
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: p.title,
       message: this.subLabel(p),
-      primaryButton: {
-        value: alt ? '改到替代时间' : '取消计划',
-        action: () => {
-          if (alt) {
-            this.askAcceptAlternative(p);
-          } else {
-            this.confirmCancel(p);
-          }
-        }
-      },
-      secondaryButton: {
-        value: '关闭',
-        action: () => {
+      cancelText: '关闭',
+      confirmText: alt ? '改到替代时间' : '取消计划',
+      onConfirm: () => {
+        if (alt) {
+          this.askAcceptAlternative(p);
+        } else {
+          this.confirmCancel(p);
         }
       }
     });
@@ -164,18 +159,12 @@ export struct PlansView {
 
   /** 取消计划二次确认：能说"日历上那条会一并删掉"的只有应用受管的那份。 */
   confirmCancel(p: PlanSummary): void {
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: '取消计划',
       message: '确定取消「' + p.title + '」？该时段将恢复空闲。' + this.cancelCalendarNote(p.calendarState),
-      primaryButton: {
-        value: '确定取消',
-        action: () => this.doCancel(p)
-      },
-      secondaryButton: {
-        value: '暂不',
-        action: () => {
-        }
-      }
+      cancelText: '暂不',
+      confirmText: '确定取消',
+      onConfirm: () => this.doCancel(p)
     });
   }
 
@@ -210,20 +199,14 @@ export struct PlansView {
     const when = c != null && c.landedStart > 0
       ? DateLabel.mdw(Math.floor(c.landedStart / 1440)) + ' ' + DateLabel.endLabel(c.landedStart, c.landedEnd)
       : '';
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       title: '改到替代时间',
       message: (when !== '' ? '新时间：' + when + '。' : '')
         + (isAppManagedEvent(p.calendarState) ? '系统日历日程会一并更新。'
           : '计划会改到新时间；' + this.cancelCalendarNote(p.calendarState)),
-      primaryButton: {
-        value: '确认改期',
-        action: () => this.doAcceptAlternative(p)
-      },
-      secondaryButton: {
-        value: '暂不',
-        action: () => {
-        }
-      }
+      cancelText: '暂不',
+      confirmText: '确认改期',
+      onConfirm: () => this.doAcceptAlternative(p)
     });
   }
 

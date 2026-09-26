@@ -7,6 +7,7 @@ import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
+import { askConfirm } from '../util/AppConfirm';
 
 /**
  * 锚点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -97,20 +98,14 @@ struct CycleEditor {
       appToast('已重置编辑区');
       return;
     }
-    this.getUIContext().showAlertDialog({
+    askConfirm(this.getUIContext(), {
       message: '删除已保存的循环模板？删除后按循环展开的班表会全部消失。',
-      primaryButton: {
-        value: '取消',
-        action: () => {
-          this.reloadTemplate();
-        }
+      confirmText: '删除',
+      onCancel: () => {
+        this.reloadTemplate();
       },
-      secondaryButton: {
-        value: '删除',
-        fontColor: $r('app.color.brand_pink'),
-        action: () => {
-          this.doClearTemplate();
-        }
+      onConfirm: () => {
+        this.doClearTemplate();
       }
     });
   }

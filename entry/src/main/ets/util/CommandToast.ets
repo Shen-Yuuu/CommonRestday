@@ -1,5 +1,5 @@
-import { promptAction } from '@kit.ArkUI';
 import { ScheduleCommandResult } from 'feature';
+import { appToast } from './AppToast';
 
 /**
  * 日程命令结果的统一提示。
@@ -7,10 +7,8 @@ import { ScheduleCommandResult } from 'feature';
  */
 export function toastCommand(r: ScheduleCommandResult, done: string): void {
   if (r.ok) {
-    promptAction.showToast({ message: done });
+    appToast(done);
     return;
   }
-  promptAction.showToast({
-    message: r.errorCode === 'RECOMPUTE_FAILED' ? done + '，但共同时间暂未刷新' : '保存失败，请重试'
-  });
+  appToast(r.errorCode === 'RECOMPUTE_FAILED' ? done + '，但共同时间暂未刷新' : '保存失败，请重试');
 }

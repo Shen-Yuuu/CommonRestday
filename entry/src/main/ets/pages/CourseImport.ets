@@ -1,4 +1,4 @@
-import { promptAction, router } from '@kit.ArkUI';
+import { router } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import {
   OWNER_ME, Course, ParsedCourseLine, SectionTime, hhmmToMin, minToHHmm,
@@ -10,6 +10,7 @@ import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermCon
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
+import { appToast } from '../util/AppToast';
 
 /**
  * 学期起点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -90,12 +91,12 @@ struct CourseImport {
   /** 保存自定义节次模板（需先设置学期起点；节次与学期锚点同存 term_config 单行）。 */
   async saveSections(): Promise<void> {
     if (this.termStart <= 0) {
-      promptAction.showToast({ message: '请先设置学期起点' });
+      appToast('请先设置学期起点');
       return;
     }
     const times = this.parseSectionText(this.sectionText);
     if (times == null) {
-      promptAction.showToast({ message: '节次格式有误：每行一节，形如 08:00-08:45' });
+      appToast('节次格式有误：每行一节，形如 08:00-08:45');
       return;
     }
     const r = await ScheduleCommandService.saveTerm(this.termStart, times);
@@ -111,7 +112,7 @@ struct CourseImport {
   doParse(): void {
     this.parsed = parseCourseText(this.pasteText);
     if (this.parsed.length === 0) {
-      promptAction.showToast({ message: '没有可解析的内容' });
+      appToast('没有可解析的内容');
     }
   }
 
@@ -140,7 +141,7 @@ struct CourseImport {
 
   async saveManual(): Promise<void> {
     if (this.manualName === '') {
-      promptAction.showToast({ message: '请填写课程名' });
+      appToast('请填写课程名');
       return;
     }
     const wf = Number.parseInt(this.manualWeekFrom, 10);
@@ -400,7 +401,8 @@ struct CourseImport {
       showClose: false,
       // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
       radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-      blurStyle: BlurStyle.Thick
+      blurStyle: BlurStyle.Thick,
+      maskColor: DesignTokens.scrim
     })
   }
 

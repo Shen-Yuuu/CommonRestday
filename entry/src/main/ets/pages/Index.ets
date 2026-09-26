@@ -8,6 +8,7 @@ import { Breakpoint } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { bindToastHost } from '../util/AppToast';
 
 /** 展开档下整壳的最大宽度：再宽只加留白，不把三 Tab 底栏拉到屏幕两头。 */
 const SHELL_MAX: number = 800;
@@ -34,6 +35,8 @@ struct Index {
     this.checkPrivacy();
     // 系统无障碍状态（长辈模式/屏幕朗读/减少动态效果）只在壳层订阅一次，页面读 AppStorage
     AccessibilityPolicy.attach();
+    // 自绘提示条要 UIContext 才能挂上浮层：绑一次全站共用（router 页同属一个窗口）
+    bindToastHost(this.getUIContext());
   }
 
   aboutToDisappear(): void {

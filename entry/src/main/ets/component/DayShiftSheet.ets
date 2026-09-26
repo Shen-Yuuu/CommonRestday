@@ -1,4 +1,3 @@
-import { promptAction } from '@kit.ArkUI';
 import { OWNER_ME, ShiftType } from 'domain';
 import { DateLabel } from 'commons';
 import {
@@ -6,6 +5,7 @@ import {
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { appToast } from '../util/AppToast';
 
 /** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
 const REST_ID = '';
@@ -116,12 +116,12 @@ export struct DayShiftSheet {
       this.owner).then((res: ScheduleCommandResult) => {
       this.saving = false;
       if (!res.ok) {
-        promptAction.showToast({ message: this.failNote(res) });
+        appToast(this.failNote(res));
         return;
       }
       this.hasOv = true;
       this.ovId = shiftId;
-      promptAction.showToast({ message: DateLabel.md(this.epochDay) + ' 已改为' + this.nameOf(shiftId) });
+      appToast(DateLabel.md(this.epochDay) + ' 已改为' + this.nameOf(shiftId));
     });
   }
 
@@ -134,12 +134,12 @@ export struct DayShiftSheet {
       .then((res: ScheduleCommandResult) => {
         this.saving = false;
         if (!res.ok) {
-          promptAction.showToast({ message: this.failNote(res) });
+          appToast(this.failNote(res));
           return;
         }
         this.hasOv = false;
         this.ovId = REST_ID;
-        promptAction.showToast({ message: '已恢复模板排班' });
+        appToast('已恢复模板排班');
       });
   }
 

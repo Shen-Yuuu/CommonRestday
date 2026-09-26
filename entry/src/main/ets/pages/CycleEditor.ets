@@ -1,4 +1,4 @@
-import { LengthMetrics, promptAction, router } from '@kit.ArkUI';
+import { LengthMetrics, router } from '@kit.ArkUI';
 import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
 import { ScheduleRepo } from 'data';
 import { AppConst, DateLabel } from 'commons';
@@ -6,6 +6,7 @@ import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
+import { appToast } from '../util/AppToast';
 
 /**
  * 锚点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -74,7 +75,7 @@ struct CycleEditor {
 
   async save(): Promise<void> {
     if (this.seq.length === 0) {
-      promptAction.showToast({ message: '请至少加入一天班次' });
+      appToast('请至少加入一天班次');
       return;
     }
     const tpl: CycleTemplate = {
@@ -93,7 +94,7 @@ struct CycleEditor {
     this.seq = [];
     if (!this.hasTemplate) {
       this.anchor = todayEpochDay();
-      promptAction.showToast({ message: '已重置编辑区' });
+      appToast('已重置编辑区');
       return;
     }
     this.getUIContext().showAlertDialog({
@@ -255,7 +256,8 @@ struct CycleEditor {
       showClose: false,
       // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
       radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-      blurStyle: BlurStyle.Thick
+      blurStyle: BlurStyle.Thick,
+      maskColor: DesignTokens.scrim
     })
   }
 

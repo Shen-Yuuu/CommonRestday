@@ -456,7 +456,8 @@ export struct CoTimeView {
           showClose: false,
           // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
           radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-          blurStyle: BlurStyle.Thick
+          blurStyle: BlurStyle.Thick,
+          maskColor: DesignTokens.scrim
         })
       }
       .width('100%')
@@ -469,7 +470,8 @@ export struct CoTimeView {
         // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
         // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
         backgroundColor: Color.Transparent,
-        blurStyle: BlurStyle.NONE
+        blurStyle: BlurStyle.NONE,
+        maskColor: DesignTokens.scrim
       })
     }
   }

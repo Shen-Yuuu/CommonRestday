@@ -1,4 +1,3 @@
-import { promptAction } from '@kit.ArkUI';
 import { OWNER_ME, PairLink, PairOffer } from 'domain';
 import { PAIRED, PAIR_NONE, PAIR_WAITING, SettingsStore } from 'data';
 import {
@@ -13,6 +12,7 @@ import { EditorialCard } from '../component/EditorialCard';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { appToast } from '../util/AppToast';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
@@ -117,24 +117,24 @@ export struct MeView {
         return;
       }
       if (res.message !== '') {
-        promptAction.showToast({ message: res.message });
+        appToast(res.message);
       }
     });
   }
 
   sharePairLink(): void {
     PairingShareGateway.shareLink(this.pairLink()).then((res: PairOpResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
     });
   }
 
   copyPairCode(): void {
     if (this.myCode === '') {
-      promptAction.showToast({ message: '还没有配对码，先点「生成邀请码」' });
+      appToast('还没有配对码，先点「生成邀请码」');
       return;
     }
     PairingShareGateway.copyText(this.myCode).then((res: PairOpResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
     });
   }
 
@@ -164,7 +164,7 @@ export struct MeView {
 
   acceptPairOffer(): void {
     PairingShareGateway.acceptOffer().then((res: PairOpResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
     });
   }
 
@@ -212,7 +212,7 @@ export struct MeView {
       nick: this.pNick, wakeText: this.pWake, bedText: this.pBed, windText: this.pWind
     };
     ProfileSettingsService.savePartner(input).then((res: SettingsResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.partnerEditing = false;
         this.reloadPartner();
@@ -238,7 +238,7 @@ export struct MeView {
 
   doDeletePartner(): void {
     ProfileSettingsService.deletePartner().then((res: SettingsResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.partnerEditing = false;
         this.reloadPartner();
@@ -295,7 +295,7 @@ export struct MeView {
     this.pairingBusy = true;
     ProfileSettingsService.createInvite().then((res: InviteResult) => {
       this.pairingBusy = false;
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.myCode = res.code;
         this.joinCode = '';
@@ -313,7 +313,7 @@ export struct MeView {
     this.pairingBusy = true;
     ProfileSettingsService.joinByCode(this.joinCode).then((res: SettingsResult) => {
       this.pairingBusy = false;
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.pairState = PAIRED;
         this.showJoinInput = false;
@@ -328,7 +328,7 @@ export struct MeView {
       if (res.ok) {
         this.pairState = PAIRED;
       }
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
     });
   }
 
@@ -359,7 +359,7 @@ export struct MeView {
 
   doUnpair(): void {
     ProfileSettingsService.unpair().then((res: SettingsResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.pairState = PAIR_NONE;
         this.myCode = '';
@@ -395,7 +395,7 @@ export struct MeView {
     this.clearing = true;
     ProfileSettingsService.clearAllData().then((res: SettingsResult) => {
       this.clearing = false;
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (res.ok) {
         this.pairState = PAIR_NONE;
         this.myCode = '';
@@ -436,7 +436,7 @@ export struct MeView {
       horizonText: this.myHorizon, minSlotMin: this.myMinSlot
     };
     ProfileSettingsService.saveMyRhythm(input).then((res: SettingsResult) => {
-      promptAction.showToast({ message: res.message });
+      appToast(res.message);
       if (!res.ok) {
         return;
       }
@@ -514,9 +514,7 @@ export struct MeView {
     }
     this.shareLevel = level;
     ProfileSettingsService.setShareLevel(level).then((res: SettingsResult) => {
-      promptAction.showToast({
-        message: res.ok ? '已切换到' + this.levelTitle(level) + '，重启后仍保持' : res.message
-      });
+      appToast(res.ok ? '已切换到' + this.levelTitle(level) + '，重启后仍保持' : res.message);
       if (!res.ok) {
         this.shareLevel = ProfileSettingsService.getShareLevel();
       }
@@ -1377,7 +1375,8 @@ export struct MeView {
         showClose: false,
         // 底色/圆角由 PrivacyPolicySheet 自己画，系统层再铺一次就是两层不透明背景
         backgroundColor: Color.Transparent,
-        blurStyle: BlurStyle.NONE
+        blurStyle: BlurStyle.NONE,
+        maskColor: DesignTokens.scrim
       })
     }
   }

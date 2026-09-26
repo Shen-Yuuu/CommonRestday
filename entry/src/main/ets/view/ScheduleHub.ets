@@ -417,7 +417,8 @@ export struct ScheduleHub {
         showClose: false,
         // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
         radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-        blurStyle: BlurStyle.Thick
+        blurStyle: BlurStyle.Thick,
+        maskColor: DesignTokens.scrim
       })
     }
   }

@@ -1,4 +1,4 @@
-import { promptAction, router } from '@kit.ArkUI';
+import { router } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import { camera } from '@kit.CameraKit';
 import { cameraPicker } from '@kit.CameraKit';
@@ -11,6 +11,7 @@ import { ScheduleCommandService } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
+import { appToast } from '../util/AppToast';
 
 const TAG = 'OcrCourse';
 
@@ -32,7 +33,7 @@ struct OcrCourse {
     try {
       const ctx = this.getUIContext().getHostContext();
       if (ctx == null) {
-        promptAction.showToast({ message: '无法获取上下文' });
+        appToast('无法获取上下文');
         return;
       }
       const result = await cameraPicker.pick(ctx, [cameraPicker.PickerMediaType.PHOTO], {
@@ -43,7 +44,7 @@ struct OcrCourse {
       }
     } catch (e) {
       Logger.error(TAG, 'takePhoto failed: ' + (e as Error).message);
-      promptAction.showToast({ message: '拍照失败，可用相册选图' });
+      appToast('拍照失败，可用相册选图');
     }
   }
 
@@ -60,7 +61,7 @@ struct OcrCourse {
       }
     } catch (e) {
       Logger.error(TAG, 'pickImage failed: ' + (e as Error).message);
-      promptAction.showToast({ message: '选图失败' });
+      appToast('选图失败');
     }
   }
 
@@ -76,11 +77,11 @@ struct OcrCourse {
       pixelMap.release();
       source.release();
       if (this.parsed.length === 0) {
-        promptAction.showToast({ message: '未识别到课表行，可手动核对文本后解析' });
+        appToast('未识别到课表行，可手动核对文本后解析');
       }
     } catch (e) {
       Logger.error(TAG, 'ocr failed: ' + (e as Error).message);
-      promptAction.showToast({ message: '识别失败：' + (e as Error).message });
+      appToast('识别失败：' + (e as Error).message);
     }
     this.busy = false;
   }

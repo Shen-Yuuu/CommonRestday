@@ -1,4 +1,4 @@
-import { promptAction, Chip } from '@kit.ArkUI';
+import { Chip } from '@kit.ArkUI';
 import { Interval, MIN_PER_DAY, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
 import {
@@ -8,6 +8,7 @@ import {
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { appToast } from '../util/AppToast';
 
 const STEP_MIN = DRAFT_GRID_MIN;
 const TAG = 'WindowDetailSheet';
@@ -220,7 +221,7 @@ export struct WindowDetailSheet {
     // 越界在按钮上是禁用的，这里兜住"草稿还开着但窗口变了"的情况
     const invalid = planDraftError(draft, this.winStart, this.winEnd);
     if (invalid !== '') {
-      promptAction.showToast({ message: invalid });
+      appToast(invalid);
       return;
     }
     this.saving = true;
@@ -228,13 +229,11 @@ export struct WindowDetailSheet {
     const r = await PlanUseCase.createPlan(this.winStart, this.winEnd, draft.title, draft.kind,
       draft.start, draft.end, options);
     if (!r.ok) {
-      promptAction.showToast({ message: r.error });
+      appToast(r.error);
       this.saving = false;
       return;
     }
-    promptAction.showToast({
-      message: isOnSystemCalendar(r.calendarState) ? '计划已创建，并写入系统日历' : '计划已创建（' + LOCAL_ONLY_NOTE + '）'
-    });
+    appToast(isOnSystemCalendar(r.calendarState) ? '计划已创建，并写入系统日历' : '计划已创建（' + LOCAL_ONLY_NOTE + '）');
     // 成功即由父页收回，saving 保持 true 直到关闭：期间不再接受第二次提交
     this.onClose();
   }

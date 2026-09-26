@@ -1,10 +1,10 @@
-import { promptAction } from '@kit.ArkUI';
 import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult, PlanSummary,
   PlanUseCase, calendarBadgeOf, canExportToCalendar, canRetryCalendarSync, canRetryCleanup,
   isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
 import { DateLabel } from 'commons';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DesignTokens } from '../theme/DesignTokens';
+import { appToast } from '../util/AppToast';
 
 /** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
 function joinNote(main: string, note: string): string {
@@ -135,7 +135,7 @@ export struct PlansView {
   }
 
   private say(msg: string): void {
-    promptAction.showToast({ message: msg });
+    appToast(msg);
   }
 
   /** 点击计划 → 操作弹窗（冲突条目额外给"改到替代时间"）。 */

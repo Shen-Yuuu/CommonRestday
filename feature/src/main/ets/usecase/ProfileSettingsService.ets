@@ -13,6 +13,7 @@ import {
   addCleanupReport, clearAllMessageOf, emptyCleanupReport
 } from '../model/PlanFlow';
 import { horizonError, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
+import { decodeSyncState, SYNC_STATE_OK, SyncState } from '../model/CloudSyncRules';
 
 const TAG = 'ProfileSettingsService';
 
@@ -214,6 +215,19 @@ export class ProfileSettingsService {
   }
 
   /**
+   * 云同步三态（协议 §3.4 末行）：「我的 · 伴侣与同步」的提示条与「今天还排不排得动推送」共用的读入口。
+   * 偏好没就绪或串是脏值都回「已同步」= 提示条不出——假警报比漏报更贵，见 `decodeSyncState`。
+   */
+  static getCloudSyncState(): SyncState {
+    try {
+      return decodeSyncState(SettingsStore.getCloudSyncState());
+    } catch (e) {
+      const clean: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
+      return clean;
+    }
+  }
+
+  /**
    * 加入方拿到的一次性确认凭据，等 TA 把它交回发起方（分享/二维码）。
    * 只活在进程内存：落 Preferences 就违反"一次性凭据不持久化"（门禁 §4 第 3 条），
    * 而宿主必须是比页面长寿的静态位，否则用户切个 Tab 回来就分享不出去了。
@@ -399,8 +413,11 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 本机配对痕迹的一次性清理：pairId、对方快照游标、HUKS 协商别名、内存里的确认凭据。
+   * 本机配对痕迹的一次性清理：pairId、对方快照游标、云同步三态、HUKS 协商别名、内存里的确认凭据。
    * 身份别名（`crd-id-<uid>`）留着——它是这台设备的长期身份，下一轮配对还要用同一把公钥。
+   *
+   * 三态必须跟着清：「已降级」的语义是"排不动推送，直到某次拉成功"，留着它，
+   * 下一轮配对从第一版快照起就静默不推——而界面上那条提示说的是上一个配对的事。
    */
   private static async forgetPair(): Promise<void> {
     ScheduleUseCase.cancelMergedSync();
@@ -408,6 +425,7 @@ export class ProfileSettingsService {
     await SettingsStore.savePairId('');
     await SettingsStore.clearPairKey();
     await SettingsStore.setPartnerSnapVer(0);
+    await SettingsStore.setCloudSyncState('');
     await SettingsStore.setPairState(PAIR_NONE, '');
     ProfileSettingsService.outboundToken = '';
   }

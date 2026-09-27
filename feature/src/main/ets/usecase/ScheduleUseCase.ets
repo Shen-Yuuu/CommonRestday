@@ -8,9 +8,14 @@ import {
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import {
-  aadOf, AgcSnapshotSync, newRequestId, PairKeyStore, partnerIntervalsFromSnapshot, SNAPSHOT_SCHEMA_VERSION
+  aadOf, AgcSnapshotSync, CloudApiError, newRequestId, PairKeyStore,
+  partnerIntervalsFromSnapshot, SNAPSHOT_SCHEMA_VERSION
 } from 'cloud';
 import { FeatureFlags } from '../config/FeatureFlags';
+import {
+  decodeSyncState, encodeSyncState, outcomeOfFailure, pushBlockedToday,
+  SYNC_CODE_LOCAL, SYNC_STATE_OK
+} from '../model/CloudSyncRules';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { AppConst, Logger } from 'commons';
 
@@ -239,12 +244,17 @@ export class ScheduleUseCase {
       const sync = new AgcSnapshotSync();
       const snap = await sync.getSnapshot(pairId, await SettingsStore.getOrCreateUid(),
         SettingsStore.getPartnerSnapVer());
+      // 走到这里这次云往返是通的：把可能挂着的降级结论清回「已同步」。
+      // "没有更新"（snap 缺席）也算通——协议 §4.8 明说那是常态，不是失败。
+      ScheduleUseCase.noteSyncOk();
       if (snap == null) {
         return null;
       }
       const ivs = await partnerIntervalsFromSnapshot(snap, pairId);
       if (ivs == null) {
         Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
+        // 解密/解码炸了不是网络问题，重试同一份只会再炸一次：按不可重试落「已降级」（协议 §7 的解密失败行）
+        ScheduleUseCase.noteSyncFailure(new Error('SNAPSHOT_UNDECODEABLE'));
         return null;
       }
       await SettingsStore.setPartnerSnapVer(snap.version);
@@ -261,6 +271,7 @@ export class ScheduleUseCase {
     } catch (e) {
       // CloudApiError（网络/配额/服务端语义码）等：云端路径不可用，静默降级本机代录
       Logger.warn('ScheduleUseCase', 'pull snapshot degraded: ' + (e as Error).message);
+      ScheduleUseCase.noteSyncFailure(e);
       return null;
     }
   }
@@ -290,11 +301,57 @@ export class ScheduleUseCase {
       const stored = await new AgcSnapshotSync().putSnapshot(pairId, uid, version, shareLevel, payload, newRequestId());
       Logger.info('ScheduleUseCase', 'snapshot pushed v' + version + ' level=' + shareLevel
         + ' stored=' + stored);
+      ScheduleUseCase.noteSyncOk();
       return true;
     } catch (e) {
       Logger.warn('ScheduleUseCase', 'push snapshot degraded: ' + (e as Error).message);
+      ScheduleUseCase.noteSyncFailure(e);
       return false;
     }
+  }
+
+  /**
+   * 把一次云端失败写进三态（协议 §3.4：`retryable` → 待重试，其余 → 已降级）。
+   * 语义码只用来挑文案，不显示给用户；不是 `CloudApiError` 的（HUKS 拒绝、解密/解码炸了）
+   * 按不可重试处理，并记成 `LOCAL` 那一格——§7 给那三行开的处置是"提示重新配对"，
+   * 兜底那句（"不是网络问题"）说不到点上。
+   */
+  private static noteSyncFailure(e: Object): void {
+    const err = e as CloudApiError;
+    const isCloud = err.name === 'CloudApiError';
+    ScheduleUseCase.writeSyncState(outcomeOfFailure(isCloud && err.retryable),
+      isCloud ? err.semantic : SYNC_CODE_LOCAL);
+  }
+
+  /**
+   * 一次**通了**的云往返把结论清回「已同步」——这是「已降级」唯一的自愈出口：
+   * 不可重试的失败不排任何重试，只有下一次按需拉成功才说明云端真的活了。
+   *
+   * 已经在「已同步」时一个字节都不写。拉是高频路径（首页、共同时间、冲突解释都走它），
+   * 每次成功都 flush 一遍偏好，等于把只读的计算路径接到磁盘上。
+   */
+  private static noteSyncOk(): void {
+    let raw = '';
+    try {
+      raw = SettingsStore.getCloudSyncState();
+    } catch (e) {
+      // 偏好没就绪：这一次没什么可清的，写入也一样会失败
+      return;
+    }
+    if (decodeSyncState(raw).outcome === SYNC_STATE_OK) {
+      return;
+    }
+    ScheduleUseCase.writeSyncState(SYNC_STATE_OK, '');
+  }
+
+  /**
+   * 三态落偏好：写失败只留一行 warn——它只是界面的一条提示条与当天的排程依据，
+   * 绝不允许因为它把本机主流程带崩（门禁 §4 第 4 条：云端任何失败都不得阻断本机）。
+   */
+  private static writeSyncState(outcome: string, code: string): void {
+    SettingsStore.setCloudSyncState(encodeSyncState(outcome, todayEpochDay(), code)).catch((e: Error) => {
+      Logger.warn('ScheduleUseCase', 'sync state write failed: ' + e.message);
+    });
   }
 
   /** owner='PARTNER' 是否存在任何班表数据。 */
@@ -439,6 +496,13 @@ export class ScheduleUseCase {
       return;
     }
     if (ScheduleUseCase.syncTimer >= 0) {
+      return;
+    }
+    // 协议 §7 末行：可重试的失败**当天不再重排**，不可重试的一直排不动，直到某次拉成功清回「已同步」。
+    // 拦在这里而不是 `pushMySnapshot` 里面，是为了让 `nextSnapshotVersion()` 一次都不被消费：
+    // 版本号是本机单调游标，白烧一格不写坏数据（§3.3 已经算过这笔），但会让日志里的版本对不上实际落库的那一版。
+    // 这里也不排任何"稍后再试"的定时器（§3.3：端侧没有自动退避重试循环）——真正的再试由日切后的下一次保存带起。
+    if (pushBlockedToday(SettingsStore.getCloudSyncState(), todayEpochDay())) {
       return;
     }
     ScheduleUseCase.syncTimer = setTimeout(() => {

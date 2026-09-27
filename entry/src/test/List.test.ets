@@ -7,6 +7,7 @@ import scheduleCommandServiceTest from './ScheduleCommandServiceTest';
 import planUseCaseTest from './PlanUseCaseTest';
 import cardSummaryServiceTest from './CardSummaryServiceTest';
 import planKindsTest from './PlanKindsTest';
+import cloudSyncRulesTest from './CloudSyncRulesTest';
 import profileSettingsGuardTest from './ProfileSettingsGuardTest';
 import dateLabelTest from './DateLabelTest';
 
@@ -20,6 +21,7 @@ export default function testsuite() {
   planUseCaseTest();
   cardSummaryServiceTest();
   planKindsTest();
+  cloudSyncRulesTest();
   profileSettingsGuardTest();
   dateLabelTest();
 }

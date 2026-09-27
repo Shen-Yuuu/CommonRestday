@@ -347,6 +347,13 @@ export class SettingsStore {
   static async setPartnerSnapVer(v: number): Promise<void> {
     settingsRows.set('partner_snap_ver', v);
   }
+  /** 云同步三态的编码串（设备侧同名）：桩同样把 setter 露出来，用例据此摆出待重试/已降级两种形状。 */
+  static getCloudSyncState(): string {
+    return settingOf('cloud_sync_state', '') as string;
+  }
+  static async setCloudSyncState(raw: string): Promise<void> {
+    settingsRows.set('cloud_sync_state', raw);
+  }
   /** 心跳游标（设备侧同名）：桩把 setter 露出来，用例据此摆出"上周跳过/这周不该跳"两种形状。 */
   static getLastHeartbeatAt(): number {
     return Number(settingOf('last_heartbeat_at', 0));
@@ -534,6 +541,7 @@ function prepare() {
     + "export * from './feature/main/ets/model/RhythmRules';\n"
     + "export * from './feature/main/ets/model/PlanKinds';\n"
     + "export * from './feature/main/ets/model/PlanFlow';\n"
+    + "export * from './feature/main/ets/model/CloudSyncRules';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
     + "export * from './feature/main/ets/usecase/CardSummaryService';\n"

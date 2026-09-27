@@ -22,6 +22,7 @@ const KEY_DEVICE_UID = 'device_uid';
 const KEY_PAIR_KEY = 'pair_key';
 const KEY_PAIR_ID = 'pair_id';
 const KEY_PARTNER_SNAP_VER = 'partner_snap_ver';
+const KEY_CLOUD_SYNC_STATE = 'cloud_sync_state';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
 const KEY_LAST_HEARTBEAT_AT = 'last_heartbeat_at';
 
@@ -229,6 +230,19 @@ export class SettingsStore {
 
   static async setPartnerSnapVer(v: number): Promise<void> {
     await SettingsStore.p().put(KEY_PARTNER_SNAP_VER, v);
+    await SettingsStore.p().flush();
+  }
+
+  /**
+   * 云同步最近一次结论的编码串（`已同步/待重试/已降级|epochDay|语义码`，见 feature 的 `CloudSyncRules`）；
+   * 空串 = 这台设备还没试过同步。协议 §3.4 末行的三态与 §7 末行的"当天不再重排"都读这一格。
+   */
+  static getCloudSyncState(): string {
+    return SettingsStore.p().getSync(KEY_CLOUD_SYNC_STATE, '') as string;
+  }
+
+  static async setCloudSyncState(raw: string): Promise<void> {
+    await SettingsStore.p().put(KEY_CLOUD_SYNC_STATE, raw);
     await SettingsStore.p().flush();
   }
 

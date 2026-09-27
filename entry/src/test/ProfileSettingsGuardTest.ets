@@ -2,8 +2,8 @@ import { describe, it, expect } from '@ohos/hypium';
 import { PAIRED, PAIR_NONE, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { AgcPairingClient, PairKeyStore } from 'cloud';
 import {
-  CalendarCapability, CalendarOutcome, CalendarWriteResult, FeatureFlags, PlanCapabilities,
-  ProfileSettingsService, ReminderCapability, RemoveOutcome
+  CalendarCapability, CalendarOutcome, CalendarWriteResult, encodeSyncState, FeatureFlags,
+  PlanCapabilities, ProfileSettingsService, ReminderCapability, RemoveOutcome, SYNC_STATE_BLOCKED
 } from 'feature';
 
 /**
@@ -198,6 +198,9 @@ export default function profileSettingsGuardTest() {
       await SettingsStore.savePairId('session-left-by-the-prototype');
       await SettingsStore.setPairState(PAIRED, 'old-partner-uid');
       await SettingsStore.setPartnerSnapVer(7);
+      // 上一轮配对留下的「已降级」：语义是"排不动推送，直到某次拉成功"，留着它，下一轮配对
+      // 从第一版快照起就静默不推，而界面上那条提示讲的是上一个配对的事。
+      await SettingsStore.setCloudSyncState(encodeSyncState(SYNC_STATE_BLOCKED, 20453, 'FORBIDDEN'));
       AgcPairingClient.calls = 0;
 
       const res = await ProfileSettingsService.unpair();
@@ -208,6 +211,7 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
       expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
+      expect(SettingsStore.getCloudSyncState()).assertEqual('');
     });
 
     it('cancel_waiting_needs_no_cloud', 0, async () => {

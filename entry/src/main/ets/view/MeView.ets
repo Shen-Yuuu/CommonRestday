@@ -2,13 +2,15 @@ import { OWNER_ME, PairLink, PairOffer } from 'domain';
 import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'data';
 import {
   FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
-  PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult
+  PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult,
+  SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, syncStateNoteOf, syncStateTitleOf
 } from 'feature';
 import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
 import { DesignTokens } from '../theme/DesignTokens';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
+import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
@@ -39,6 +41,11 @@ export struct MeView {
   };
   @State private shareLevel: number = 2;
   @State private pairState: string = PAIR_NONE;
+  /**
+   * 云同步三态（协议 §3.4 末行）：默认「已同步」= 提示条不出。
+   * 只在进这一页时读一次——它是后台推送/拉取失败时写的，没有理由为一条提示条挂监听。
+   */
+  @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
   // 伴侣档案
   @State private partnerExists: boolean = false;
   @State private partnerEditing: boolean = false;
@@ -168,6 +175,7 @@ export struct MeView {
   reload(): void {
     this.shareLevel = ProfileSettingsService.getShareLevel();
     this.pairState = ProfileSettingsService.getPairState();
+    this.syncState = ProfileSettingsService.getCloudSyncState();
     this.pairToken = ProfileSettingsService.getOutboundToken();
     this.channels = PairingShareGateway.channels();
     this.reloadPartner();
@@ -265,6 +273,16 @@ export struct MeView {
     }
     return '本机已标记为已配对，但云端未开通：TA 的班表不会自动同步。'
       + '现在就要共同时间，请用上方「伴侣（本机代录）」。';
+  }
+
+  /**
+   * 云同步现在是不是坏消息（待重试 / 已停止）。「已同步」与从未试过都不算。
+   * 两处读它：身份卡那一行与配对卡里的提示条——同一件事不能在页上两种说法。
+   * 关闭态一律不出：那一档压根没有同步通路，`pairedNote()` 已经说了"云端未开通"，
+   * 而偏好里残留的降级结论讲的是上一版开通时的事，挂出来只会让页上同时存在两种说法。
+   */
+  syncTrouble(): boolean {
+    return FeatureFlags.cloudPairing && syncStateNoteOf(this.syncState) !== '';
   }
 
   /**
@@ -479,9 +497,15 @@ export struct MeView {
       return '已加入 · 还差对方确认，尚未同步';
     }
     if (this.pairState === PAIRED) {
-      return FeatureFlags.cloudPairing
-        ? '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步'
-        : '本机标记已配对 · 云端未开通，未同步';
+      if (!FeatureFlags.cloudPairing) {
+        return '本机标记已配对 · 云端未开通，未同步';
+      }
+      // 同步已经死了还在顶上那一行写"加密同步"，就是协议 §8 明令禁止的那种假态；
+      // 三态的名字在这里念一次，配对卡里的提示条才是同一句话的展开。
+      if (this.syncTrouble()) {
+        return '已配对 · ' + syncStateTitleOf(this.syncState);
+      }
+      return '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步';
     }
     if (this.partnerExists) {
       return '本机代录 · 数据只写在本机的应用沙箱里';
@@ -926,6 +950,24 @@ export struct MeView {
         Text(this.pairedNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
+        // 三态里唯一的坏消息出口（协议 §3.4 末行）：待重试用警示色 ↻，已停止用错误色 !。
+        // 刻意不给「立即重试」这颗按钮：§3.3 明写端侧没有自动退避重试，手动重试也不在 §7 的触发时机里，
+        // 给了等于让用户自己按一次就烧一次免费档的按天配额。
+        // 两种结论走 if / else if 两个分支而不是同一个节点换颜色：NoticeBar 的 tone/title/body 是普通成员，
+        // 父节点重建时不会更新它们，只有整颗节点被拆掉重挂才会——「待重试」变「已停止」必须让人看见换的那一句。
+        if (this.syncTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
+          NoticeBar({
+            tone: NoticeTone.ERROR,
+            title: syncStateTitleOf(this.syncState),
+            body: syncStateNoteOf(this.syncState)
+          })
+        } else if (this.syncTrouble()) {
+          NoticeBar({
+            tone: NoticeTone.WARN,
+            title: syncStateTitleOf(this.syncState),
+            body: syncStateNoteOf(this.syncState)
+          })
+        }
         Button('解除配对')
           .width('100%')
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })

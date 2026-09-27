@@ -1,10 +1,14 @@
-# 配对与加密快照协议 v1（冻结设计）
+# 配对与加密快照协议 v1（已实现，未开闸）
 
-> 状态：**设计已冻结，尚未获授权实施。**
-> 依据：阶段 3 的唯一开门条件是 `docs/validation/clouddev-api26-spike.md` 的结论不为 `CLOUD_BLOCKED`；
-> 当前结论为 `CLOUD_BLOCKED`（HUKS 实验 #5 仅 `PARTIAL_STATIC`，实验 #1/#2/#3/#4/#6 `NOT_STARTED`）。
-> 因此本文只冻结"要建成什么样"，不代表任何端点已经存在或可用。翻闸前必须按 §9 逐项核对。
-> 本文是本仓库内云端契约的唯一事实源；改协议 = 改本文并升 `schemaVersion`，不允许在代码注释里另立口径。
+> 状态：**端侧与云侧源码均已落地，产品开关仍关着。**
+> 落点：端侧 `cloud/src/main/ets/api/`（HUKS 密钥托管 + 传输层）与 `feature` 的配对状态机；
+> 云侧 `cloud-backend/`（`pairing` / `snapshot` 两个云对象 + CloudDB 对象类型），部署步骤见其 README。
+> `FeatureFlags.cloudPairing` 目前为 `false`，开闸是**独立一批**（INTERNET 权限、隐私用途说明、
+> 备案与双设备实测必须同批，见 §9 末与 `docs/release/`）。
+>
+> **本文的"已实现"只到代码层**：还没有两台真机跑过一次完整配对，所以§11 的实测清单一条都没勾。
+> 改协议 = 改本文并升 `schemaVersion`，不允许在代码注释里另立口径。
+> 与实际实现不符的地方，以本文为准（本文按实现回写；若二者冲突，先停下来查是哪一侧漂了）。
 
 ## 1. 云端承担什么、不承担什么
 
@@ -14,7 +18,7 @@
 |---|---|---|
 | 班表/课表/循环模板/单日覆盖/计划 | 本机 RDB | 只存"降维后的加密快照"，不存原始数据 |
 | 共同时间窗口计算 | 本机 `domain` 引擎 | 云端不参与计算，也不缓存计算结果 |
-| 配对状态（`UNPAIRED/WAITING/PAIRED`） | 双方各存本机 + 云端会话记录 | 云端是会话生命周期的仲裁者（过期、撤销） |
+| 配对状态（本机 `NONE/WAITING/PENDING_CONFIRM/PAIRED` ↔ 云端五态，§8） | 双方各存本机 + 云端会话记录 | 云端是会话生命周期的唯一仲裁者（过期、撤销都只由它宣布） |
 | 长期密钥 | **只存在于 HUKS 安全环境** | 云端永不得到密钥明文，因而读不到载荷 |
 
 三条不可让步的边界（来自改造文档 §0.3 与 spike §4 门禁规则）：
@@ -27,28 +31,39 @@
 
 | 名称 | 形态 | 生成方 | 可见范围 | 说明 |
 |---|---|---|---|---|---|
-| `ownerUid` | 云端分配的账号内 uid | 云端 | 云侧明文 | 用于安全规则与归属判定；非个人信息 |
-| `pairId` | 云端生成的会话 id | 云端 | 云侧明文、双方本机 | 快照的分片键与权限键；Preferences 可存 |
-| `code` | 6 位数字，**短期凭据** | 云端 | 用户之间口头/分享传递 | 只能用于 `pairing-join`，有 TTL，用过即废 |
-| 长期密钥 | 256-bit | **HUKS 会话协商派生**（§6） | 只在两端 HUKS 内 | 以别名引用，密钥材料不出安全环境 |
-| `version` | 单调递增整数 | 客户端（每台自己维护） | 云侧明文 | 幂等与乱序判定用（§7） |
+| `uid` | 36 位 UUID 字符串 | **本机**（`SettingsStore.getOrCreateUid()`） | 云侧明文、双方本机 | 这台设备在这个配对里的身份别名。**不是云端分配的**——AGC 云对象给不出可验证的用户身份（§6.1 第 1 条），所以它是端侧自证的一个随机串。非个人信息，但**一旦公布就无法再改**：换 uid 等于换一个人 |
+| `pairId` | 云端生成的 UUID | 云端（`create` 返回） | 云侧明文、双方本机 | 快照的分片键与权限键；Preferences 可存，别名由它现推（§6） |
+| `code` | 6 位数字，**短期凭据** | 云端 | 用户之间口头/分享传递 | 只能用于 `pairing.join`，有 TTL，用过即废（§6.1 第 4 条） |
+| `confirmToken` | 32 字符 base64url（**无 `=` 填充**） | 云端（`join` 时生成） | 只给加入方，再由它经安全信道交回发起方 | 一次性：`confirm` 成功即从库里抹掉（§4.3）。长度落在端侧 `PairLink.tokenValid` 的 22–128 白名单里 |
+| 长期密钥 | 256-bit | **HUKS 会话协商派生**（§6） | 只在两端 HUKS 内 | 以别名 `crd-pair-<pairId>` 引用，密钥材料不出安全环境；因此**它压根不是协议字段**——不进请求、不进响应、不进数据库列，也不进日志 |
+| `version` | 单调递增整数 | 客户端（每台自己维护） | 云侧明文 | 乱序判定用；幂等靠载荷比对而不是它（§3.3、§7） |
 
-`code` 与长期密钥的关系是**单向且经过 HUKS 协商**的：拿到 `code` 不能算出密钥，`code` 泄露的最坏后果是"在 TTL 内被人抢一次配对"，而不是历史快照被解密。这是本协议与旧原型（`deriveKeyHex(code)`）的唯一实质区别。
+`code` 与长期密钥的关系是**单向且经过 HUKS 协商**的：拿到 `code` 不能算出密钥——密钥由双方
+**公钥**做 ECDH 得出，公钥在 `create`/`join` 里各带一份（§4.1–4.2），`code` 只是"允许你进这个会话"的门条。
+`code` 泄露的最坏后果是"在 24 小时 TTL 内被人抢一次配对位"，而不是历史快照被解密。
+这是本协议与旧原型（`SHA256('crd-v1:' + code)` 当密钥）的唯一实质区别。
 
 ## 3. 通用包络
 
-### 3.1 请求
+### 3.1 传输形态与请求
 
-所有端点共用同一请求骨架：
+端云之间**不是** HTTP 端点，而是两个云对象：`pairing`（create/join/confirm/status/unpair/heartbeat）
+与 `snapshot`（put/get）。调用体固定为：
 
 ```jsonc
-{
-  "requestId": "uuid-v4",     // 客户端生成，幂等键的一部分
-  "sentAt": 1767225600000,    // 客户端毫秒时间戳，仅用于观测，不参与判定
-  "schemaVersion": 1,         // 本协议版本；不匹配返回 SCHEMA_UNSUPPORTED
-  // ...端点自有字段
-}
+// cloudFunction.call({ name: <对象名>, version: '$latest', timeout: 30000,
+//   data: { method: <方法名>, params: [按位置排列的参数] } })
+{ "method": "join", "params": ["480213", "3f2a…-…-…（本机 UUID）", "<base64 公钥>", 1] }
 ```
+
+这条形态是从 DevEco 的接口生成脚本里读出来的（它生成的 `ImportObject` 代理就是
+`data: {method: prop, params: args}`），不是猜的。由此产生一条比字段名更硬的约束：
+**参数的顺序与个数就是线上契约**，方法名对了但顺序错了不会报错，只会静默错位。
+逐条对照表在 `cloud-backend/README.md` §4.3，改任何一侧都要同步另一侧并升 `schemaVersion`。
+
+因此本协议**没有**统一请求骨架：`schemaVersion` 只在 `create`/`join` 上作为位置参数传，
+`requestId` 只在 `unpair`/`snapshot-put` 上传，且当前只用于日志对齐（§3.3）。
+`sentAt` 从未实现，已从协议里删除——服务端一律以自己的时钟为准（`serverTime`）。
 
 ### 3.2 响应
 
@@ -58,7 +73,7 @@
   "message": "",              // 面向日志的英文短语，不进 UI 文案
   "retryable": false,         // 客户端是否值得退避重试
   "serverTime": 1767225601234,// 服务端毫秒时间戳，客户端据此校准 TTL 判定
-  "requestId": "uuid-v4",     // 原样回带
+  "requestId": "uuid-v4",     // 仅 `unpair` / `snapshot-put` 回带，用于日志对齐
   // ...端点自有字段
 }
 ```
@@ -66,8 +81,12 @@
 ### 3.3 超时与重试
 
 - 客户端调用**必须显式传 `timeout: 30000`**。`FunctionParams.timeout` 的 SDK 默认值是 70×1000ms，而云函数同步调用侧上限是 55s，不传就会在慢请求上撞墙（spike §1 已核）。
-- 只有 `retryable = true` 且网络类错误才重试：**指数退避 + 抖动**，1s 起、上限 3 次；`retryable = false` 立即降级，不重试。
-- 重试必须复用同一 `requestId`：写类端点（`snapshot-put`、`pairing-confirm`）以 `pairId + ownerUid + version + requestId` 幂等。
+- **端侧没有自动退避重试循环**，这是实现选择不是遗漏：`retryable` 只决定文案（"今天同步已用完"vs"网络不好"）以及当天是否还重排，真正的再试由 §7 的触发时机（回前台、保存、进入共同时间）自然带起。给一个静默重试循环等于把配额烧在用户看不见的地方。
+- **幂等不是靠 `requestId` 达成的**（那是本节此前的说法，与实现不符，现已改成实现口径）：
+  - `snapshot-put`：同 `version` 且 `iv` + `ciphertext` 完全相同 → 判为重放，返回首次的 `storedVersion`；同 `version` 但载荷不同 → `CONFLICT_VERSION`；
+  - `pairing-unpair`：删除是收敛操作，会话行已不存在也返回 `OK` + `deletedVersions = 0`；
+  - `pairing-confirm`：已 `ACTIVE` 时重放返回同一结果。
+  `requestId` 保留在参数里，作用是让 AGC 日志能把一次端侧重放和它的两次服务端写入对上号。
 - 不做后台常驻、不做定时轮询以外的唤醒（改造文档 §0.3）。
 
 ### 3.4 语义码
@@ -89,105 +108,171 @@
 
 客户端把上述映射收敛为现有的 `CloudApiError`，UI 只消费"已同步 / 待重试 / 已降级"三态。
 
-## 4. 端点（8 个）
+两点与表格字面不同的实现口径：
 
-字段表里"必填"标注省略的均为必填。所有端点都要求调用方已通过 Cloud Foundation 匿名鉴权。
+- `TIMEOUT` 与传输层失败是**端侧自己归类**的（`NETWORK` = 1008210001，`LOCAL` = 201/1008210009，
+  `INTERNAL` = 解包失败），服务端从不产 `TIMEOUT`——一个已经超时的请求不会再有服务端回包；
+- 服务端目前**不产 `UNAUTHORIZED`**：AGC 云对象这一路给不出可验证的用户身份（§6.1），
+  非成员访问一律以 `FORBIDDEN` 表达。端侧仍把 401/403 字样的传输层拒绝还原成 `UNAUTHORIZED`，
+  因为那是网关在请求到达云对象之前挡下来的形态。
 
-### 4.1 `pairing-create`
+## 4. 端点（8 个方法 / 2 个云对象）
 
-发起方生成邀请码。
+`pairing` 云对象承载 §4.1–§4.6，`snapshot` 云对象承载 §4.7–§4.8。响应列里的字段都出现在
+§3.2 包络的同一层（扁平，不再嵌一层 `data`）。
 
-| 请求 | 响应 |
+调用方身份**由参数声明**：AGC 云对象这条路给不出可验证的用户 uid（§6.1），所以下文凡写
+"必须是成员"的地方，实现都是"参数里的 uid 出现在会话的 creatorUid/joinerUid 列里"。
+
+### 4.1 `pairing.create`
+
+发起方生成配对码。
+
+| 请求（位置参数） | 响应 |
 |---|---|
-| `creatorUid` | `pairId`、`code`、`expiresAt`（服务端时钟）、`ttlSeconds` |
+| `uid`、`publicKey`、`schemaVersion` | `pairId`、`code`、`status=WAITING`、`peerUid=""`、`peerPublicKey=""`、`expiresAt`、`serverTime` |
 
-- `code` 由**云端**生成（当前原型在端侧 `generateInviteCode()` 生成后上传，实施时删除该路径）；
-- 同一 `creatorUid` 同时最多一个 `WAITING` 会话：重复调用**复用**未过期会话并返回同一 `pairId` + 新码（旧码作废）；
-- 副作用：创建会话记录，状态 `WAITING`。
+- `code` 由**云端**生成（6 位数字，`crypto.randomInt`），端侧 `generateInviteCode()` 那条上传路径已删除；
+- `publicKey` 是发起方 HUKS 身份别名下的公钥（不透明 base64，云端不解析、不校验曲线）；
+- **重复调用的语义是"整轮重来"**：该 uid 名下所有未完成（`WAITING`/`PENDING_CONFIRM`）会话当场转
+  `REVOKED` 并新建一行，因此 `pairId` 会换。原设计写的"复用未过期会话、返回同一 `pairId` + 新码"
+  没有实现，理由是复用要"改码不改行"的读改写，而一旦旧链接还挂在对方手里，同一个 `pairId`
+  就会同时存在两张码和两个候选加入方——状态机反而更含糊。**`ACTIVE` 会话不受影响**：
+  换机重装或误点"重新生成"不该拆散已经配对的一对；
+- `ttlSeconds` 未实现：`expiresAt` 已是服务端绝对毫秒，间隔常量固定 24 小时（`SESSION_TTL_MS`），
+  再回一个秒数是给端侧多一个会漂的口径。
 
-### 4.2 `pairing-join`
+### 4.2 `pairing.join`
 
 加入方凭码入会。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `code`、`joinerUid` | `pairId`、`creatorUid`、`status`（`PENDING_CONFIRM`）、`expiresAt` |
+| `code`、`uid`、`publicKey`、`schemaVersion` | `pairId`、`status=PENDING_CONFIRM`、`peerUid`（=发起方）、`peerPublicKey`、`confirmToken`、`expiresAt`、`serverTime` |
 
-- 一次 `code` 只允许一个 `joinerUid`（`CODE_TAKEN`）；
+- 一次 `code` 只允许一个加入方（第二人 `CODE_TAKEN`）；
+- **响应里没有 `creatorUid` 这个字段名**：对端一律以 `peerUid` 给出（加入方拿到的是发起方，
+  发起方拿到的是加入方），端侧不需要知道自己在那一行里；
+- `confirmToken` 在这一步由云端生成并**只发给加入方**：32 个 base64url 字符（无 `=` 填充），
+  满足端侧 `PairLink.tokenValid` 的 22–128 字符白名单，可以直接进分享链接；
 - 加入后**不得立即视为已配对**，也不得立即写任何快照——必须等 §4.3；
-- 加入方在此步完成 HUKS 密钥协商的本地准备（§6）。
+- `expiresAt` 在这里**重置为"加入时刻 + 24 小时"**：确认这一步也要时间窗，而不是沿用剩下半截的
+  建码窗口；
+- 同一加入方用同一张码重进（换手机、清过界面）走幂等重放，把凭据再给一次；
+- 加入方在此步完成 HUKS 密钥协商的本地准备（§6），协商用 `peerPublicKey`。
 
-### 4.3 `pairing-confirm`
+### 4.3 `pairing.confirm`
 
-发起方确认，会话转 `ACTIVE`。
+发起方交回凭据后确认，会话转 `ACTIVE`。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `pairId`、`uid`（发起方）、`confirmToken` | `status = ACTIVE`、`pairedAt`、`serverTime` |
+| `pairId`、`uid`、`confirmToken` | `status=ACTIVE`、`peerUid`、`peerPublicKey`、`expiresAt=0`、`serverTime` |
 
-- `confirmToken` 是 `pairing-join` 之后由云端下发给加入方、再由加入方通过任意安全信道（二维码/分享，§4.6）交回发起方的一次性凭据；
-- 只有双方 uid 都在会话成员表内才允许 `ACTIVE`（否则 `FORBIDDEN`）；
-- 幂等：同一 `pairId` 重复确认返回同一结果。
+- `confirmToken` 是 §4.2 下发给加入方、再由加入方通过任意安全信道（二维码/系统分享）交回发起方的一次性凭据；
+- **只有发起方能确认**：`roleOf(uid) !== 'creator'` 直接 `FORBIDDEN`。加入方确认等于绕过本节；
+- 一次性：**转 `ACTIVE` 的同时把库里的 `confirmToken` 清空**，重放同一份链接不再有副作用。
+  幂等重放仍然成功（已 `ACTIVE` 时返回同一状态），但靠的是状态判断而不是留着的那枚凭据；
+- `ACTIVE` 之后 `expiresAt` 归零（会话不再到期，只被 §4.5 或闲置回收终止），**没有 `pairedAt` 字段**：
+  行里有 `createdAt`/`updatedAt`，但对端不需要第三个时间戳；
+- 对方还没加入（`WAITING`）→ `BAD_REQUEST`；这轮已被新码顶掉（`REVOKED`）→ 同；过期 → `CODE_EXPIRED`。
 
-### 4.4 `pairing-status`
+### 4.4 `pairing.status`
 
 任一侧查询会话状态，用于打开「我的 · 伴侣与同步」时的对账。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `pairId`、`uid` | `status`（`WAITING/PENDING_CONFIRM/ACTIVE/EXPIRED/REVOKED`）、`peerUid`、`peerShareLevel`、`peerVersion`、`expiresAt`、`serverTime` |
+| `pairId`、`uid` | `status`（`WAITING/PENDING_CONFIRM/ACTIVE/EXPIRED/REVOKED`）、`peerUid`、`peerPublicKey`、`expiresAt`、`serverTime` |
 
-只读、可频繁调用；`EXPIRED/REVOKED` 时客户端把本机状态收回 `UNPAIRED` 并**保留全部本机数据**（含对方代录数据）。
+- **只读端点不得返回 `confirmToken`，也不得返回 `code`**。原设计的响应里有 `confirmToken`，
+  那等于把"任何一侧轮询一次状态就能自己完成确认"的口子留在协议里；`code` 同理，
+  它是仍可被第三次设备使用的凭据，不该在配对完成后还能从任何读路径拿到；
+- 只有成员能查（非成员 `FORBIDDEN`，会话不存在 `NOT_FOUND`）；查到过期时服务端顺手落一次
+  `EXPIRED`，让"过期"这个事实只有一份；
+- `peerShareLevel` / `peerVersion` **未实现**：对方的档位与版本随快照信封到达（§4.8），
+  在状态端点里重复一份就是两个事实源。对账只看 `status` 与 `peerUid`；
+- `EXPIRED/REVOKED` 时客户端把本机状态收回 `UNPAIRED` 并**保留全部本机数据**（含对方代录数据）。
 
-### 4.5 `pairing-unpair`
+### 4.5 `pairing.unpair`
 
 解除配对，**级联删除云侧该 pair 的全部快照**。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `pairId`、`uid`、`requestId` | `deletedVersions`（删除的对象数） |
+| `pairId`、`uid`、`requestId` | `deletedVersions`（删除的快照行数）、`requestId` |
 
 - 任一成员发起即整对解除（本产品的双人语义）；
-- 云侧删除是硬删除，且必须**同时**删除成员表、快照对象与未过期的邀请码；
-- 本机：删除 HUKS 别名（密钥材料随之消失），清 `pairId`，保留本机 RDB 数据；
+- 云侧删除是硬删除，**顺序固定为先删快照、再删会话行**：反过来一旦中途失败，就成了
+  "没有成员可验证、又查得到密文"的孤儿行；
+- 成员关系存在会话行里（`creatorUid`/`joinerUid` 两列），没有独立成员表可删——
+  原设计写的"同时删除成员表"就是删这一行；未过期的 `code` 随行一起消失；
+- 本机：删除 HUKS 协商别名（密钥材料随之消失），清 `pairId`，保留本机 RDB 数据；
+  身份别名 `crd-id-<uid>` 留着，下一轮配对还要用同一把公钥；
 - 幂等：会话已不存在返回 `OK` + `deletedVersions = 0`（不返回 `NOT_FOUND`）。
 
-### 4.6 `pair-heartbeat`
+### 4.6 `pairing.heartbeat`
 
 轻量存活信号，用于避免 AGC 把项目判为闲置资源（docs/05 §3.2：连续 6 个月无有效调用 → 预警 30 日后回收）。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `uid`、`pairId?`（未配对时省略） | `serverTime`、`projectLastActiveAt` |
+| `uid`、`pairId`（未配对传空串） | `paired`、`serverTime` |
 
-- **不携带任何载荷数据**，不写库；
-- 由冷启动与"每周一次"的定时器各发一次即可，成本可忽略；
-- 未配对用户没有云数据可回收，因此未配对时允许省略 `pairId`，服务端只记一次项目活跃。
+- **不携带任何载荷数据，不查库也不写库**：这条调用的频率由"项目快被回收了"决定，不由业务决定，
+  任何一次读都是白付的配额。`pairId` 只用于日志对号，未配对时传空串是合法的存活信号；
+- `projectLastActiveAt` **未实现**：AGC 没有把这个项目级时间戳暴露给云对象，返回它只能是服务端自己
+  伪造的一份数据。防回收要看的是 AGC 控制台的资源状态，不是这个字段；
+- 由冷启动与"每周一次"的定时器各发一次即可。
+  > **端侧尚未接线**：`AgcPairingClient.heartbeat` 已实现但没有任何调用点。开闸批（U3b）必须补上，
+  > 否则这条端点等于不存在，6 个月后项目会被预警回收。
 
-### 4.7 `snapshot-put`
+### 4.7 `snapshot.put`
 
 写入自己的加密快照。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `pairId`、`ownerUid`、`version`、`shareLevel`、`payload`（§5 信封）、`requestId` | `storedVersion`、`updatedAt` |
+| `pairId`、`ownerUid`、`version`、`shareLevel`、`envelope`（§5.1 的五个字节字段）、`requestId` | `storedVersion`、`requestId` |
 
-- 会话必须 `ACTIVE`，`uid` 必须是成员；
-- `version` 必须大于该 `ownerUid` 已存的 `version`，否则 `CONFLICT_VERSION`（不做服务端合并，客户端先拉后推）；
-- 服务端只存信封字节，**不解密、不校验明文结构**；`payload` 超过 2 MB 直接 `BAD_REQUEST`；
-- 覆盖写：每个 `pairId + ownerUid` 只保留**最后一个**快照（历史版本无用途，且少存一份是一票收益的隐私改进）。
+判定顺序就是下面这条顺序，它决定了客户端看到哪个语义码：
 
-### 4.8 `snapshot-get`
+1. 会话不存在 → `NOT_FOUND`（端侧回 `UNPAIRED`，数据不删）；
+2. `ownerUid` 不是成员 → `FORBIDDEN`；
+3. 会话不是 `ACTIVE` → `BAD_REQUEST`（还没确认就推快照 = 状态机被绕开，属端侧缺陷）；
+4. `envelope.schemaVersion !== 1` → `SCHEMA_UNSUPPORTED`，**禁止静默降级写入**；
+5. `algorithm !== 'AES-256-GCM'`、`iv`/`authTag`/`ciphertext` 任一为空、`version <= 0`、
+   `shareLevel` 不在 0–3 → `BAD_REQUEST`；
+6. Base64 长度换算后超过 2 MB → `BAD_REQUEST`（阈值按**字符串长度**算，因为计费与列上限都在字符串上；
+   端侧真实量级是几十 KB，2 MB 是格式余量不是业务余量）；
+7. `version` **小于**已存版本 → `CONFLICT_VERSION`；**等于**已存版本且 `iv` + `ciphertext` 完全相同
+   → 判为同一份的重放，返回 `OK` + 原 `storedVersion`；等于但载荷不同 → `CONFLICT_VERSION`。
+
+- 服务端只存信封字节，**不解密、不解析明文、不看日程内容**（§5.2 的明文列清单是它能看到的全部）；
+- 覆盖写：每个 `pairId + ownerUid` 只保留**最后一个**快照（历史版本无用途，少存一份是一票收益的隐私改进）；
+- 行上的 `peerUid` 由服务端按会话解析后写入，客户端传不进、也不需要传。
+- `updatedAt` 未在响应里回带：它由服务端时钟写进行里，客户端下一次 `get` 自然拿到；
+  在响应里再回一次等于给同一件事两个值。
+
+### 4.8 `snapshot.get`
 
 拉取对方的快照。
 
-| 请求 | 响应 |
+| 请求（位置参数） | 响应 |
 |---|---|
-| `pairId`、`peerUid?`、`sinceVersion` | `snapshot`（对象或 `null`）、`serverTime` |
+| `pairId`、`uid`、`sinceVersion` | `snapshot`（§5.1 信封对象；无更新时**该字段缺席**）、`serverTime` |
 
-- 省略 `peerUid` 时服务端按成员表自行解析对端——**客户端不需要知道对方 uid 的语义**；
-- `version <= sinceVersion` 时返回 `snapshot = null`（无更新），这是常态而不是错误；
-- 安全规则：`request.auth.uid == resource.ownerUid || request.auth.uid == resource.peerUid`，其余一律 `2001015: permission denied`（docs/05 §5.5）。端侧禁止绕过云函数直连读写。
+- **`peerUid` 参数已删除，改为必须传调用方自己的 `uid`**：一个 `pairId` 下有两行快照（每人一行），
+  服务端只有拿到"调用方是谁"才知道对方是哪一行，也才谈得上成员校验。少了它就只能要么全给、要么放弃鉴权。
+  对端语义仍由服务端解析——客户端不需要知道对方 uid 的值；
+- 会话不存在 → `NOT_FOUND`；非成员 → `FORBIDDEN`；对端还没推过快照、或
+  `version <= sinceVersion` → `OK` 且不带 `snapshot` 字段（无更新是常态，不是错误）；
+- **没有云数据库安全规则这回事**（原设计的 `request.auth.uid == resource.ownerUid || …` 表达式
+  在 CloudDB 的 Server SDK / objecttype 形态下不存在）。实际防线是两层：
+  `PairSnapshot` 的 `permissions` 四个角色全空（World/Authenticated/Creator 无任何权利，
+  Administrator 才有 Read/Upsert/Delete），所以**端侧直连云数据库读写不到任何东西**；
+  一切读写都必须穿过 `snapshot` 云对象，由它做 §4.7/§4.8 的成员与状态判定。
+  这条是实测口径而非推定：spike 用匿名认证直连同一张表就是拿到 `2001015: permission denied`。
 
 ## 5. 快照对象与加密信封
 
@@ -195,22 +280,29 @@
 
 ```jsonc
 {
-  "pairId": "p_...",
-  "ownerUid": "u_...",
+  // ↓ 这四个是 snapshot.put 的位置参数，不在 envelope 里
+  "pairId": "9f1c…（云端 UUID）",
+  "ownerUid": "3f2a…（本机 UUID，列名叫 ownerUid）",
   "version": 17,
   "shareLevel": 2,
+  // ↓ envelope 对象的五个字段（唯一进信封的部分）
   "schemaVersion": 1,
   "algorithm": "AES-256-GCM",
   "iv": "base64(12B)",
   "authTag": "base64(16B)",     // 独立字段，不再拼进 ciphertext
   "ciphertext": "base64(...)",
+  // ↓ 服务端写的列，客户端传了也不算
   "updatedAt": 1767225600000
 }
 ```
 
-- **AAD = `pairId|ownerUid|version|schemaVersion`**（UTF-8）。当前实现用的是固定常量 `'crd-v1'`，必须换掉：把上下文绑进 AAD 之后，"把 A 的密文搬到 B 名下"会直接解密失败；
-- 编码统一为 **base64**（当前实现是 hex，实施时一次性迁移，§9）；
-- `authTag` 与 `ciphertext` 分离，不再靠"末 16 字节是 tag"的隐式约定。
+- **AAD = `pairId|ownerUid|version|schemaVersion`**（UTF-8）已实现：写侧在 `ScheduleUseCase.pushMySnapshot`
+  里按自己的 `pairId/uid/version` 组串，读侧由 `aadOfSnapshot()` 从信封明文元数据重组。
+  两侧必须共用 `SnapshotCrypto.aadOf` 这一个构造口径——各写一份就会漂，一漂就是"永远解密失败"。
+  把上下文绑进 AAD 之后，"把 A 的密文搬到 B 名下"在解密这一步就直接失败；
+- 编码统一为 **base64**（旧原型的 hex 已随信封字段一起换掉，没有共存期：`schemaVersion` 不匹配就拒绝写入）；
+- `authTag` 与 `ciphertext` 分离，不再靠"末 16 字节是 tag"的隐式约定；
+  `algorithm` 是明文列，云侧只接受 `'AES-256-GCM'` 这一个值，不准备"以后可能加"的第二把。
 
 ### 5.2 明文体（本机生成，按隐私等级降维）
 
@@ -228,7 +320,19 @@ S:<startMin>,<endMin>,<tag>;...             # L2/L3，epochMin
 | L2 班次类型 | 位图 + 30 分钟量化标签（如"上课"），无精确时段 | 同上，量化后不暴露分钟 |
 | L3 完整时间 | 分钟级区间 + 标签 | 可归因到"TA 的这段时间已有安排" |
 
-**云端明文禁区**（可由 §4.8 的审计查询核验）：日程名、课程名、地点、备注、计划标题、长期密钥、邀请历史、昵称、精确定位。允许明文：`pairId`、`ownerUid`、`peerUid`、`version`、`shareLevel`、`schemaVersion`、`updatedAt`、`algorithm`。
+**云端明文禁区**：日程名、课程名、地点、备注、计划标题、长期密钥、HUKS 别名、配对码、确认凭据、
+昵称、精确定位。云侧明文列的完整清单就是 `cloud-backend/clouddb/objecttype/*.json` 里那两个对象的
+字段集，逐字如下——
+
+| 表 | 明文列 |
+|---|---|
+| `PairSession` | `pairId`、`status`、`code`、`creatorUid`、`creatorPublicKey`、`joinerUid`、`joinerPublicKey`、`confirmToken`、`schemaVersion`、`createdAt`、`updatedAt`、`expiresAt` |
+| `PairSnapshot` | `pairId`、`ownerUid`、`peerUid`、`version`、`shareLevel`、`schemaVersion`、`algorithm`、`iv`、`authTag`、`updatedAt`（`ciphertext` 是密文本体） |
+
+`code`、`confirmToken`、`iv`、`authTag` 这四列不在最初的允许清单里，是随"一张表装下成员关系"
+这个实现选择一起进来的（§6.1 第 2 条）。前三者是有 TTL 的一次性凭据，`iv`/`authTag` 单独泄露
+不解密也不产生信息——但它们的**存在**必须写进清单，否则下一次审计会按"禁区"误报。
+真正的一票否决项没有动过：密钥材料、别名、日程明文，任何一条出现在列上都算协议被破。
 
 **接收侧不再二次加缓冲**：快照产出时已含对方自己的通勤/收整缓冲（`ScheduleUseCase` 的 buffer 管线），二次叠加会把共同时间算少。
 
@@ -236,35 +340,90 @@ S:<startMin>,<endMin>,<tag>;...             # L2/L3，epochMin
 
 目标：**长期密钥只在两端 HUKS 内生成，永不以裸字节交回应用**。
 
-spike §1 的静态核验已经否决了两种写法：本 SDK 的 HUKS **没有** `deriveKey()` / `agree()` 函数，也**没有** `NON_EXPORTABLE` 标签。因此 v1 只允许下面两条形态之一，且**必须由实验 #5 在真机上二选一定形**：
+**路线 A 已选定并实现**（`cloud/src/main/ets/api/PairKeyStore.ets`），依据是 API 26 模拟器
+两台设备的跨端互通实测（`docs/validation/clouddev-api26-spike.md` §2 实验 #5），不是静态推断：
 
-- 路线 A：ECDH 会话流程（`initSession/updateSession/finishSession`，`HUKS_ALG_ECDH = 100`）派生共享密钥，派生密钥以 `DERIVED_AGREED_KEY_STORAGE_FLAG` 留在 HUKS 内，直接用于 AES-GCM 会话；
-- 路线 B：`wrapKeyItem` / `unwrapKeyItem`（`HUKS_UNWRAP_SUITE_ECDH_AES_256_GCM_NOPADDING`）或 KEM `encapsulate`/`decapsulate`（含 `HUKS_ALG_ML_KEM = 200`）包裹一把内容密钥。
+- 本机静态身份密钥：`HUKS_ALG_ECC` / 256 / purpose 只有 `AGREE`（没有 export、没有 derive），
+  别名 `crd-id-<uid>`。purpose 里没有可导出位，私钥就导不出去；
+- 协商：`HUKS_ALG_ECDH` 会话 `initSession → updateSession → finishSession`，共享密钥以
+  `HUKS_TAG_DERIVED_AGREED_KEY_STORAGE_FLAG = HUKS_STORAGE_ONLY_USED_IN_HUKS` 直接收进
+  `crd-pair-<pairId>` 别名——**协商结果全零、`sharedSecret` 为空**，应用侧从头到尾没有裸密钥，
+  所以 `PairKeyStore` 里不存在任何返回密钥的函数；
+- 加解密在同一别名上做 `AES-256-GCM`。三条只有实测才能得到的参数口径写死在这里：
+  GCM 用 `HUKS_TAG_NONCE` / `HUKS_TAG_ASSOCIATED_DATA` / `HUKS_TAG_AE_TAG`，
+  用 `HUKS_TAG_IV`/`HUKS_TAG_AAD` 会**加密"成功"而解密报 `401: The parameter does not exist`**；
+  HUKS 交回的 `outData` 是"密文 ‖ 16 字节 tag"，拆成 §5.1 的两个字段是本文件的职责。
+- 路线 B（`wrapKeyItem`/KEM）不实现，也不留"以后可能加"的分支。
 
-协商消息（公钥/封装体）通过 §4.1–§4.3 的会话端点带外交换，云端只见不透明字节。
+协商消息（公钥）通过 §4.1–§4.3 的会话端点带外交换，云端只见不透明 base64，不解析、不校验曲线。
 
-三条实现约束：
+三条实现约束的落地情况：
 
-1. Preferences 只存**别名**（如 `crd-pair-<pairId>`）与 `pairId`，`SettingsStore.savePairKey/getPairKey` 这条密钥持久化路径在实施时必须**删除**；
-   > **阶段 6R.2 已完成这一条的"删除写入口"半边**：`savePairKey` 与 `SnapshotCrypto.deriveKeyHex` 已从源码移除，`getPairKey` 转为只读、`clearPairKey` 只用于清旧原型残留（换机恢复与解除配对时调用）。
-   > 剩下的是"存别名"这半边：HUKS 别名方案尚未实现（Task 0.4 `CLOUD_BLOCKED`），届时 `getPairKey` 这个读接口也应一并换成 `getPairKeyAlias()`，别留一个读密钥材料的口子。
-2. 别名生命周期必须在 spike 里实测：卸载重装、备份恢复、清数据后别名是否还在。若"恢复后别名不存在"，则本机必须能感知密钥丢失并引导重新配对（`KEY_UNAVAILABLE` → 提示重新配对），不得静默生成新别名造成双方密钥永久不一致；
-3. 密钥失配的表现必须与"解密失败"一致：保留最后有效快照 + 提示重新配对，**不删对方数据、不进入半同步状态**。
+1. **已完成**：Preferences 里既不存密钥也不存别名——别名由 `pairId`/`uid` 现推
+   （存一份就会和 `pairId` 漂）。`savePairKey`/`getPairKey`/`deriveKeyHex` 全部不存在，
+   `SettingsStore.clearPairKey()` 只保留一个 delete 口，用来清旧原型留下的 64 位 hex 残留。
+2. **仍未实测**：卸载重装、清数据、备份恢复之后别名是否还在。目前所有对外判断都走
+   `isKeyItemExist`——别名不在就是 `KEY_UNAVAILABLE`，由调用方引导重新配对，
+   **绝不静默新建别名**（那会让双方密钥永久不一致）。开闸批要把"恢复后别名不存在"这一条
+   真正在设备上跑一次并记进 §11。
+3. **已实现**：密钥失配的表现与解密失败完全一致——保留最后有效快照 + 提示重新配对，
+   不删对方数据、不进入半同步状态（`partnerIntervalsFromSnapshot` 返回 null 就是这条路径）。
+
+### 6.1 残余风险（实现选择带来的，不是缺陷清单）
+
+写在这里是为了让下一次审计不必重新发现它们。
+
+1. **`uid` 是自证的。** AGC 云对象这条路给不出可验证的调用方身份（§4.8 的 `permissions`
+   只覆盖 Cloud DB 直连那条路，而云对象用自己的服务身份访问数据库）。所以"是不是成员"
+   的判定是"参数里的 uid 在不在会话行的两列里"。冒充一个 `pairId` + 成员 uid 能得到什么：
+   **密文与元数据**（版本、档位、时间戳）。得不到什么：日程内容——载荷端到端加密，
+   密钥只在两端 HUKS 内。代价与缓解：`FORBIDDEN` 挡住非成员是"提高成本"而非"不可能"，
+   真正的防线是加密本身。
+2. **配对密钥是对称的，因此成员之间无法互相验证写入。** 同一把 pair key 既能解自己的快照
+   也能解对方的，所以一个已配对的成员**可以**用对方的 `ownerUid` + 更高的 `version` 写一条密文，
+   服务端无从分辨（它能分辨的只有成员关系、状态、schema、算法、大小、版本单调性）。
+   攻击后果被两件事限住：写进去的内容仍要是能被 `SnapshotCodec.decode` 解开的合法密文，
+   而这需要它已经持有对方的密钥——也就是它已经是这个 pair 的成员。
+   **本产品不防这一层**：能读到对方全部细节的前提是双方已经互相信任到交换配对码。
+   `confirmToken` 一次一用、`status` 不回凭据（§4.3/§4.4）关掉的是"第三方抢配对"，不是"成员互害"。
+3. **快照云对象被完全入侵能泄出什么**：元数据（`uid`/`pairId`/`version`/`shareLevel`/时间戳）
+   与配额，泄不出日程。这条边界正是 §5.2 允许存在明文列清单的全部理由。
+4. **`code` 落在明文列上**：`PairSession` 存了未用完的 6 位码（原设计也存，但没写进清单）。
+   它的保护窗口就是 TTL 24 小时且用过即清（§4.1 的 REVOKED 会把 `code` 一起抹掉）；
+   拿到一枚有效码能做的事是"抢下这个配对位"，仍然算不出密钥（§2）。
+   如果将来要更进一步，做法是不存码而存 `SHA256(code)`——但云端本来就给不出比对用的盐，
+   这条留作未决（§10 第 6 项）。
 
 ## 7. 排序、幂等与失败降级
 
 | 情形 | 判定 | 处置 |
 |---|---|---|
-| 重复 `snapshot-put` | 同 `version` + 同 `requestId` | 服务端幂等返回首个结果 |
-| 乱序（旧包晚到） | `version <= storedVersion` | `CONFLICT_VERSION`，客户端丢弃本地待发 |
-| 同版本内容不同 | `version` 相同但 `requestId` 不同 | 后到者失败并转为"先拉后推"（不做服务端合并） |
+| 重复 `snapshot.put` | 同 `version` + 同 `iv` + 同 `ciphertext` | 服务端判为重放，幂等返回 `storedVersion`（**不看 `requestId`**，§3.3） |
+| 乱序（旧包晚到） | `version <` 已存 | `CONFLICT_VERSION`，客户端丢弃本次待发 |
+| 同版本内容不同 | `version` 相同但载荷不同 | `CONFLICT_VERSION`；客户端**不做先拉后推**，见下 |
+| 未确认就推 | 会话不是 `ACTIVE` | `BAD_REQUEST`——这是端侧状态机的缺陷信号，不是网络问题 |
 | 解密失败（tag/AAD） | 本机 | 丢弃这一份，保留**最后一次有效快照**，提示重新配对 |
 | 解码失败（`CRD1` 格式） | 本机 | 同上 |
 | 密钥失配 | 本机（`KEY_UNAVAILABLE`） | 保留旧快照 + 引导重新配对，清别名 |
 | 云端 401/403/404 | 端点级 | §3.4 表；一律不删本机数据 |
-| 超时/配额 | `retryable = true` | 退避重试；当天不再重排，UI 显示"待重试" |
+| 超时/配额 | `retryable = true` | **不自动重试**：当天不再重排，UI 显示降级态，下一次真实触发再试 |
 
-触发同步的时机（与改造文档一致，不新增常驻）：配对完成、日程保存后、应用回前台、进入共同时间、用户手动同步。前四项在客户端各自只排一次"合并同步"，同一 5 秒窗口内的多次触发合并为一次调用。
+`CONFLICT_VERSION` 在客户端的实际后果要写清楚，因为它和原设计的"先拉后推"不同：
+`nextSnapshotVersion()` 是本机单调递增的游标，推送失败只记一条 warn，
+所以版本回退的纠正方式是"下一次保存动作带着更高版本号推上去"，即**后推的赢**。
+这里没有需要合并的东西——快照是本人班表的**全量降维投影**，不是增量补丁，
+"先拉后推"只会白付一次配额去拉自己刚推出去的那份。
+
+触发同步的时机与实际形态（不新增常驻）：
+
+- **推**：`ScheduleUseCase.onScheduleChanged()` → `scheduleMergedSync()`，
+  同一 5 秒窗口内的多次保存只排一次推送，到点时读**当时**的最新班表，
+  所以连改三次只花一次配额而内容不丢。关闭态与非 `PAIRED` 一个定时器都不建；
+- **拉**：**按需，不排队不定时**——`buildPartnerBusy()` 需要对方忙区间时拉一次
+  （首页/共同时间/冲突解释的计算路径都会经过它）。拉不到就静默降级为本机代录；
+- 配对完成会走一次 `onScheduleChanged()`，等价于原设计的"配对完成即推"；
+- **冷启动与"应用回前台"没有独立触发点**：读数路径自己会拉，不必再排一次。
+  这一条与原设计不同，写在这里是为了让"少了哪个触发"不再是猜。
 
 ## 8. 配对状态机
 
@@ -276,31 +435,71 @@ UNPAIRED ──create──▶ WAITING ──join──▶ PENDING_CONFIRM ─�
                           EXPIRED / REVOKED  ◀──────────unpair───────────┘
 ```
 
-- 本机状态与云状态不一致时，以 `pairing-status` 为准（打开设置页必然对一次账）；
+- 本机状态与云状态不一致时，以 `pairing.status` 为准（打开「我的 · 伴侣与同步」必然对一次账）；
 - `EXPIRED/REVOKED` 的**本机后果相同**：收回 `UNPAIRED`，保留本机 RDB 全部数据，包括本机代录的对方日程（那部分从来不是云数据）；
-- 严禁出现"UI 显示已配对但没有任何同步通路"的态：现行「完成配对」按钮直接置 `PAIRED` 而不走 §4.3，属实施时必须修掉的偏离（见 `docs/testing-checklist.md` §9.5）。
+- 严禁出现"UI 显示已配对但没有任何同步通路"的态。**这条已封口**：`confirmWithToken()` 只有在云端
+  真的回 `status === 'ACTIVE'` 之后才写本机 `PAIRED`，「检查配对状态」只做对账不再直接置位，
+  加入方停在 `PENDING_CONFIRM`。原先"完成配对按钮直接置 `PAIRED`"的偏离（`docs/testing-checklist.md` §9.5）
+  随 U3a 一起消失；
+- 云端没有"第六态"：`WAITING/PENDING_CONFIRM/ACTIVE/EXPIRED/REVOKED` 五态全在会话行的 `status` 列上。
+  本机存的是同一组字符串（`SettingsStore` 的 `PAIR_NONE='NONE'`、`PAIR_WAITING='WAITING'`、
+  `PAIR_PENDING='PENDING_CONFIRM'`、`PAIRED='PAIRED'`），**只有 `NONE` 是端侧自造的词**，
+  对应云端的"会话不存在"（`NOT_FOUND`）。刻意不做第二套枚举：加一层映射就多一处会漂的地方，
+  而 `EXPIRED → UNPAIRED`、`REVOKED → UNPAIRED` 这两条收敛在端侧写死一次就够了。
 
-## 9. 实施前必须核对的差异（当前代码 → v1）
+## 9. 差异清单的落地情况（原"实施前必须核对"）
 
-这些是**待授权**的改动清单，不是待办建议；在门禁解除前不得动手。
+原来的 10 条是"当前代码 → v1"的待办；现在 9 条已经落地，剩下的一条是开闸本身。
+提交：U1+U2 = `3207ebf`，U3a = `e44846e`，云侧源码与本文修订 = 本提交。
 
-| # | 位置 | 现状 | v1 要求 |
+| # | 位置 | v1 要求 | 现状 |
 |---|---|---|---|
-| 1 | `SnapshotCrypto.deriveKeyHex()` + `SettingsStore.savePairKey/getPairKey` | ~~`SHA256('crd-v1:'+code)`，密钥 hex 落 Preferences~~ **已随阶段 6R.2 删除**（`deriveKeyHex`/`savePairKey` 不存在；`getPairKey` 只读，供清理与"没钥匙就停住"判断） | 余下动作：把 `getPairKey` 换成 `getPairKeyAlias()`，密钥材料改由 HUKS 别名承载（§6） |
-| 2 | `SnapshotCrypto` AAD | 固定 `'crd-v1'` | `pairId\|ownerUid\|version\|schemaVersion`（§5.1） |
-| 3 | `EncryptedPayload` | `{ciphertext, iv}`，tag 拼在密文尾，hex | 独立 `authTag` + `algorithm`，base64（§5.1） |
-| 4 | `CloudApi.call()` | `cloudFunction.call({name, version, data})`，未传 timeout | 显式 `timeout: 30000` + `requestId`（§3.3） |
-| 5 | 端点名 | `snapshot-push` / `snapshot-pull` | `snapshot-put` / `snapshot-get`（§4.7–4.8） |
-| 6 | 端点集合 | 5 个 | 8 个：补 `pairing-confirm`、`pairing-status`、`pair-heartbeat` |
-| 7 | 邀请码 | 端侧 `generateInviteCode()` 上传 | 云端 `pairing-create` 生成并下发（§4.1） |
-| 8 | 错误码 | `CloudApiError(1001/1002)` 两态 | §3.4 语义码表 + 三态 UI 收敛 |
-| 9 | 触发同步 | 保存后即时推 | 触发集合 + 5 秒合并窗口（§7） |
-| 10 | `FeatureFlags.cloudPairing` | `false` | 保持 `false`，直到 spike §4 五条门禁全部满足 |
+| 1 | 密钥承载 | 密钥材料改由 HUKS 别名承载，Preferences 不落密钥 | **已落地**。`savePairKey/getPairKey/deriveKeyHex` 均不存在；`clearPairKey()` 只保留一个 delete 口清旧原型 hex |
+| 2 | `SnapshotCrypto` AAD | `pairId\|ownerUid\|version\|schemaVersion`（§5.1） | **已落地**，且两侧共用 `SnapshotCrypto.aadOf` 这一个构造点 |
+| 3 | `EncryptedPayload` | 独立 `authTag` + `algorithm`，base64（§5.1） | **已落地**。HUKS 交回的是"密文 ‖ tag"，拆分发生在 `PairKeyStore` |
+| 4 | `CloudApi.call()` | 显式 `timeout: 30000` + `requestId`（§3.3） | **已落地**；`requestId` 的幂等角色按 §3.3 改成了实现口径（它不做幂等） |
+| 5 | 端点名 | `snapshot.put` / `snapshot.get`（§4.7–4.8） | **已落地** |
+| 6 | 端点集合 | 8 个方法 | **已落地**：`pairing` 6 + `snapshot` 2 |
+| 7 | 邀请码 | 云端生成并下发（§4.1） | **已落地**，端侧 `generateInviteCode()` 已删 |
+| 8 | 错误码 | §3.4 语义码表 + 三态 UI 收敛 | **端侧已落地**（`CloudApiError.semantic` + `retryable`）；**UI 三态未落地**：现在只有"降级"这一种表现（回退本机代录 + 一条 warn），没有"待重试"的可见状态。开闸批必须补，否则用户看不出同步死了 |
+| 9 | 触发同步 | 触发集合 + 5 秒合并窗口（§7） | **已落地**，按 §7 修正后的口径（推有合并窗口，拉是按需） |
+| 10 | `FeatureFlags.cloudPairing` | 门禁全过前保持 `false` | **仍为 `false`**。开闸是独立一批（U3b）：`INTERNET` 权限、隐私政策与用途说明、备案、双设备实测必须同批，一个都不许落下 |
 
-## 10. 未决项（只能靠 spike 实测回答，写代码前必须有答案）
+## 10. 未决项
 
-1. 实验 #3：现有多 HAR 扁平根目录能否不重排而加入 `CloudProgram/` → 决定 `IN_REPO_CLOUDPROGRAM` 还是 `SEPARATE_CLOUD_REPO`；若为后者，云函数实现落在独立授权仓库，本仓库只保留本文与运维手册。
-2. 实验 #5：HUKS 路线 A / B 哪条能在 API 26 上跑通；派生密钥是否会被以裸字节交回应用；别名在卸载/恢复后的行为。
-3. 实验 #4：Node.js 20 运行时下端侧 `timeout: 30000` 的实际截断行为与错误码归属（`TIMEOUT` vs `INTERNAL`）。
-4. 实验 #6：云数据库安全规则能否稳定拒绝端侧直连（`2001015`），以及成员表模型下 `peerUid` 解析是否需要在服务端做 join。
-5. 单份快照的字节上界：`days` 上限 366 × L3 分段数在真实班表下的密文尺寸（决定 `BAD_REQUEST` 阈值是否需要按等级分档）。
+原先 5 条里 4 条已经有了答案，留下的都归到 §11 的实测清单，因为它们的共同点是
+"静态读代码读不出来"。
+
+1. ~~实验 #3~~ **已定**：`SEPARATE_CLOUD_REPO`。硬把向导的 `CloudProgram/` 塞进多 HAR 扁平根目录
+   会污染 App 侧构建；云侧实现落在 `cloud-backend/`（纯镜像，不参与本仓库任何构建），
+   部署时复制进仓库外的向导工程，见 `cloud-backend/README.md` §2。
+2. ~~实验 #5~~ **已定**：路线 A（§6）。但"别名在卸载/重装/清数据/备份恢复后是否还在"**仍未实测**，
+   它是 §11 第 5 项，不是本条的已完成部分。
+3. ~~实验 #4~~ **部分回答**：`timeout: 30000` 已显式传入，网络类失败归 `1008210001 → NETWORK`、
+   AGC 未就绪归 `201/1008210009 → LOCAL`（`CloudGateway.transportError`）。
+   **真实 30s 截断一次也没观察到过**，所以"截断到底报哪个码"仍是猜，见 §11 第 6 项。
+4. ~~实验 #6~~ **已定**：没有安全规则这回事，靠 `permissions` 四角色全空 + 一切读写穿云对象（§4.8）；
+   成员关系折进 `PairSession` 的两列，不需要服务端 join。
+5. **仍未测**：单份快照的字节上界（`days` 上限 366 × L3 分段数在真实班表下的密文尺寸）。
+   2 MB 阈值目前按 base64 **字符串长度**换算收口，是否需要按 `shareLevel` 分档取决于这条实测结果，
+   见 §11 第 7 项。
+6. **新加入**：`code` 是否改成只存 `SHA256(code)`（§6.1 第 4 条）。做了要解决"云端拿什么比对"，
+   没做就把一枚 24 小时内有效的 6 位码明文留在列上——这条留给下一个改协议的人裁定。
+
+## 11. 开闸前必须有的设备证据（**当前一条都没勾**）
+
+本文所有"已落地"都只到代码层。下面每一条都要在真机或模拟器上跑出证据，
+勾完才允许 `cloudPairing = true`（验收报告 §7：不得在没有设备证据时勾选权限/渲染类通过）。
+
+| # | 要跑的 | 通过判据 |
+|---|---|---|
+| 1 | 两台设备走完整配对：`create → join → confirm` | 云端 `status=ACTIVE` 之前，任何一侧的 UI 都不显示"已配对"；加入方停在 PENDING 态能看到"等 TA 确认" |
+| 2 | 快照往返 | A 改班表 → B 侧共同时间在 5 秒窗口后跟上；`shareLevel` 三档各测一次，L1 看不到标签、L2 看不到分钟 |
+| 3 | 三种降级：飞行模式 / AGC 未初始化 / 云对象未部署 | 本机全部功能可用、无阻塞弹窗、无重试风暴；`CloudGateway.calls` 增长但界面只回一句降级 |
+| 4 | 人为制造版本回退（把 `nextSnapshotVersion` 游标改小） | 只丢这一次推送（`CONFLICT_VERSION`），后续保存正常推上去，不进入"永远推不动" |
+| 5 | HUKS 别名生命周期：卸载重装 / 清数据 / 备份恢复 | `isKeyItemExist` 的答复与 UI 引导一致；**绝不静默新建别名**（否则双方密钥永久不一致，表现为永远解密失败） |
+| 6 | 真实 30s 截断一次 | 记录实际错误码与归属（`NETWORK` / `INTERNAL` / 端侧 timeout），回填 §3.4 |
+| 7 | 真实班表 366 天 L3 的密文字节数 | 得出上界，裁定 2 MB 阈值要不要按档位分档（§10 第 5 项） |
+| 8 | 接上 `heartbeat`（§4.6 端侧缺口）后连跑一周 | AGC 控制台看到调用计数在涨；否则这条端点等于不存在 |
+| 9 | 解除配对 | 云侧该 pair 的会话行与两行快照一起消失（AGC 控制台核对），**对方**本机数据一条不丢 |
+| 10 | 第三次设备拿旧码/旧 `pairId` 访问 | 全部 `FORBIDDEN`；本机数据不受影响 |

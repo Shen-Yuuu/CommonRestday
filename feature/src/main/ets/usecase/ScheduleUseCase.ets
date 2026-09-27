@@ -237,7 +237,8 @@ export class ScheduleUseCase {
         return null;
       }
       const sync = new AgcSnapshotSync();
-      const snap = await sync.getSnapshot(pairId, SettingsStore.getPartnerSnapVer());
+      const snap = await sync.getSnapshot(pairId, await SettingsStore.getOrCreateUid(),
+        SettingsStore.getPartnerSnapVer());
       if (snap == null) {
         return null;
       }

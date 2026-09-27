@@ -77,8 +77,13 @@ export interface PairingApi {
 export interface SnapshotSync {
   putSnapshot(pairId: string, ownerUid: string, version: number, shareLevel: number,
     payload: EncryptedPayload, requestId: string): Promise<number>;
-  /** 返回 null = 没有比 sinceVersion 更新的快照（常态，不是错误）。 */
-  getSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null>;
+  /**
+   * 拉取对方的快照；返回 null = 没有比 sinceVersion 更新的快照（常态，不是错误）。
+   *
+   * `uid` 必须在参数里：一个 pair 下有两行快照（每人一行），服务端只有拿到调用方是谁
+   * 才知道"对方"是哪一行，也才谈得上成员校验。少了它就只能要么全给、要么放弃鉴权。
+   */
+  getSnapshot(pairId: string, uid: string, sinceVersion: number): Promise<CloudSnapshot | null>;
 }
 
 /** 云端调用的统一失败形态：调用方按 semantic + retryable 决定提示与重试。 */
@@ -246,8 +251,8 @@ export class AgcSnapshotSync implements SnapshotSync {
     return CloudGateway.numOf(o, 'storedVersion');
   }
 
-  async getSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null> {
-    const o = await CloudGateway.call(OBJ_SNAPSHOT, 'get', [pairId, sinceVersion, SNAPSHOT_SCHEMA_VERSION]);
+  async getSnapshot(pairId: string, uid: string, sinceVersion: number): Promise<CloudSnapshot | null> {
+    const o = await CloudGateway.call(OBJ_SNAPSHOT, 'get', [pairId, uid, sinceVersion]);
     const snap = o['snapshot'];
     if (snap == null) {
       return null;

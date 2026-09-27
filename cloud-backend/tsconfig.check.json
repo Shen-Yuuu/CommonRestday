@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2019"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": ["../../CloudDevSpikeOfficial/CloudProgram/node_modules/@types"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@hw-agconnect/cloud-server": [
+        "../../CloudDevSpikeOfficial/CloudProgram/cloudfunctions/spike-db/node_modules/@hw-agconnect/cloud-server"
+      ]
+    }
+  },
+  "include": ["cloudfunctions/**/*.ts"]
+}

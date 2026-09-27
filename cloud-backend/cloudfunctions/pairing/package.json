@@ -1,0 +1,9 @@
+{
+  "name": "fortwo-pairing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "两人份 配对云对象（协议 v1 §4.1–§4.6）",
+  "dependencies": {
+    "@hw-agconnect/cloud-server": "1.0.5"
+  }
+}

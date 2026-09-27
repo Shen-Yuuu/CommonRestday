@@ -1,8 +1,9 @@
 # 云侧运维手册 v1
 
 > 配套：`docs/cloud/pairing-protocol-v1.md`（协议，唯一事实源）与 `cloud-backend/README.md`（代码放哪、怎么部署）。
-> 状态：**云侧代码已写好，AGC 项目与两张表还不存在**——本手册的 §1 与 §2 是"把还不存在的东西建出来"
-> 的步骤，§3 之后是建好之后的管理。已实测过的路径会标 `[实测]`，只有文档依据的标 `[文档]`，
+> 状态：**AGC 项目与两张表已建、`snapshot` 已部署**（2026-09-27 首部署，实测记录见 §2.4）；
+> **`pairing` 还没部署，端上也没有任何一次调用记录**，所以 §11 的设备证据仍然一条没勾。
+> 已实测过的路径会标 `[实测]`，只有文档依据的标 `[文档]`，
 > 需要账号持有者本人在 AGC 控制台点的都标 `[需你操作]`。
 > 2026-09-27 依实现回写：删掉了"8 个云函数""三份对象类型""云数据库安全规则"这三处从未成立的前提（§2.2、§2.3）。
 
@@ -13,7 +14,7 @@
 | 1 | 账号已实名认证、注册地为中国境内（港澳台除外）、**账户无欠款** `[需你操作]` | 欠款会连带卡住云开发开通；开通靠 DevEco 勾选协议自动完成 | docs/05 §1 |
 | 2 | 数据处理位置只启用「中国」，之后**不再改动** `[需你操作]` | 云开发仅支持中国境内；更改或取消启用**可能自动清理云侧数据且不可恢复** | docs/05 §3.3 |
 | 3 | 手动开启**消费提醒 + 余额不足提醒** `[需你操作]` | 免费档"用尽即停"不会自动扣费也不会自动扩容；配额提醒只有互动中心消息是默认有的 | docs/05 §3.1 |
-| 4 | 运行时 Node.js（spike 实测跑在 20 上）；不要沿用旧 `@hw-agconnect` SDK 写法 | 2025-11-04 起云函数运行时收窄为仅 Node.js | docs/05 §8 |
+| 4 | 运行时显式设成 **Node.js 20** `[需你操作]`；不要沿用旧 `@hw-agconnect` SDK 写法 | 2025-11-04 起云函数运行时收窄为仅 Node.js。`[实测]` DevEco 向导给的默认值是 `nodejs14.x`（§2.4 第 2 行），不手动改就是 14 | docs/05 §8 |
 | 5 | 服务端凭据放在**仓库外**（`ForTwoPrivate/agc-apiclient-*.json`），经环境变量交给探针 | 凭据进仓库＝进 git 历史，删不掉。云对象自身不需要它——AGC 运行时用 `PROJECT_CREDENTIAL` 注入 | `[实测]` spike 的 `server-probe` |
 | 6 | 端云工程关联后记下 `CloudProgram/cloud-config.json` 的位置与里面的项目/应用 ID | 这份文件是向导产物，**永不进 git**（含 projectId/appId/teamId） | `[实测]` |
 
@@ -79,6 +80,22 @@
   否则客户端先断、服务端还在写，会得到"失败但已写入"的假不一致；
 - `put` 的体积阈值按协议 §4.7 的 2 MB 拒绝；云侧**不解密、不解析明文**，所以它的 CPU 与载荷内容无关；
 - 版本策略见 §5：端侧写死 `$latest`，这条在 2026-09-27 是个已知限制而不是选择。
+
+### 2.4 首次部署实测（2026-09-27，AGC 项目「两人份」已建）
+
+云侧第一次真实存在了。落点：`E:/desktop/Code/harmony/FortwoCloud/`（向导生成 `Application/` 示例应用
++ `CloudProgram/` 云工程，都在仓库外）；15 份云侧文件复制后与 `cloud-backend/` **逐字节相同**（`cmp` 全过）。
+下面是只在真实部署里才看得见的东西：
+
+| # | 实测到的事实 | 影响 / 处置 |
+|---|---|---|
+| 1 | **部署产物会落地成 `CloudProgram/build/target/<hash>/<对象>/{<对象>.zip, template.yaml}`**，`template.yaml` 就是线上描述符 | 判断"某个云对象到底部署没有"看这张表，比看控制台的刷新延迟更直接；本次只有 `snapshot` 有产物，`pairing` 缺 ⇒ **`pairing` 尚未部署**，六个配对方法还不可调用 |
+| 2 | 向导给的默认资源参数是 **`runtime: nodejs14.x`、`timeout: 60`、`memorySize: 500`、`instanceConcurrency: 100`**，**与 §2.3 的建议值无关** | `timeout: 60` 同时超过同步调用上限 55s 和端侧 30s 超时——正好制造 §2.3 警告的"客户端先断、服务端还在写"；必须改到 20s。`nodejs14.x` 要单独验：`contract.ts` 用了 `crypto.randomUUID`（≥14.17）、`crypto.randomInt`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），任一不支持就会以 `INTERNAL` 冒出来，探针第 2 步（`create`）会直接把它暴露 |
+| 3 | 触发器配置逐字落地：`enableUrlDecode: true / authFlag: 'true' / authType: apigw-client / authAlgor: HDA-SYSTEM`，`functionType: 1` | 与我们写的 `function-config.json` 一致，无需再调 |
+| 4 | 打包内容 = 编译产物 + 依赖 + **源文件**：zip 里同时有 `snapshot.js`/`contract.js` 和 `snapshot.ts`/`contract.ts`/`*.js.map`，两份对象类型 `.js` 也在 | 编译与打包形状符合预期（模型 `.js` 没被 tsc 吞掉）；源码随包上传是向导行为，云侧代码里没有凭据，可接受 |
+| 5 | **`Deploy Cloud DB` 会把 `clouddb/objecttype/` 目录整个部署**，向导自带的示例表 `Post.json` 一起上线，而它的 `permissions` 是四角色**全开**（World 可 Read/Upsert/Delete），配套的 `dataentry/d_Post.json` 还会写示例行 | 这是 §2.2 那条警告的现成事故：同一存储区里躺着一张公网可写的表。处置＝删 `objecttype/Post.json` + `dataentry/d_Post.json`（以及示例函数 `cloudfunctions/id-generator/`）后**重新 Deploy Cloud DB**。我们两张表的权限核对无误：World/Authenticated/Creator 全空，仅 Administrator 有 Read/Upsert/Delete |
+| 6 | `Deploy Cloud DB` 会在**应用侧**生成 `Application/AppScope/resources/rawfile/schema.json`，`permissions` 从对象类型 JSON 里提到根数组按表分列；索引如实落地（`PairSession` 的 `code`/`creatorUid`，`PairSnapshot` 无索引按复合主键读） | 这份 `schema.json` 是**端侧直连**用的，本产品不直连，因此不需要把它拷进 `cloud/` HAR；但它是一份很好的"云侧 schema 与仓库源码是否一致"的核对材料 |
+| 7 | 云工程绑到的是**另一个 AGC 应用**：向导的示例应用是 `com.common.fortwocloud`，`cloud-config.json` 的 `appId` ≠ 本仓库 `agconnect-services.json` 里 `com.common.fortwo` 的 `app_id`（**`projectId` 相同**，同项目下两个应用记录） | spike 的结论是"同 bundle name 关联 + 签名 + debugToken"，所以跨 appId 调用会不会 403 **属未知**。正式开闸（§6 探针、以及 U3b）之前必须在控制台把云工程关联到 `com.common.fortwo`，否则真机路径第一天就撞鉴权 |
 
 ## 3. 日常巡检（每周一次，10 分钟）
 
@@ -174,8 +191,10 @@
 
 ## 7. 待补（项目建起来后回来填）
 
-- `[需你操作]` 实际项目 ID / 应用 ID / 区域与 `CloudProgram/cloud-config.json` 落点；
-- `[需你操作]` 两个云对象的真实部署时间、AGC 控制台里的内存/超时实配值；
+- `[已填 2026-09-27]` 云工程落点 `E:/desktop/Code/harmony/FortwoCloud/CloudProgram/`，AGC 项目「两人份」
+  （区域 CN）。**ID 一律不写进本文档**：`projectId` 本仓库与云工程一致；但两侧各有一个 19 位 `appId`，
+  前缀相同而值不等——云工程绑的是向导示例应用 `com.common.fortwocloud`，不是产品包名 `com.common.fortwo`（§2.4 第 7 行）。
+- `[需你操作]` `pairing` 的部署时间，以及两个云对象在 AGC 控制台改配后的**实际**内存/超时值；
 - 配额水位的历史峰值（用于验证 §1 末的 0.01% 估算）；
 - 真机上是否必须 `agconnect-services.json`（§1 末那条未验证边界）；
 - 闲置回收预警的实际到达方式与响应流程（是否只有邮件）。

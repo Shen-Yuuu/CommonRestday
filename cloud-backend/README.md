@@ -25,10 +25,14 @@ cloud-backend/
 
 ## 2. 放置位置（一次配对流程要用到的复制动作）
 
-前提：DevEco Studio 里对**正式应用**（`com.common.fortwo`）执行一次 `New > CloudProgram`，
+前提：DevEco Studio 里对**正式应用**执行一次 `New > CloudProgram`，
 向导会在工程根生成 `CloudProgram/`（含 `cloud-config.json`，里面是 projectId/appId/teamId）。
-向导产物与凭据**永不进 git**，所以复制目标目录在仓库外，例如
-`E:/desktop/Code/harmony/ForTwoCloud/CloudProgram/`：
+向导产物与凭据**永不进 git**，所以复制目标目录在仓库外。
+`[实测 2026-09-27]` 实际落点是 `E:/desktop/Code/harmony/FortwoCloud/CloudProgram/`——
+注意向导把示例**应用**也叫 `com.common.fortwocloud` 并把它绑进了 `cloud-config.json`，
+与产品包名 `com.common.fortwo` 是同项目下的两个应用记录（运维手册 §2.4 第 7 行）。
+
+复制对照：
 
 | 来源（本仓库） | 目标（向导 `CloudProgram/`） |
 |---|---|
@@ -46,9 +50,17 @@ cloud-backend/
 
 ## 3. 部署顺序
 
+0. **先删向导自带的样本，再部署**：`clouddb/objecttype/Post.json`、`clouddb/dataentry/d_Post.json`、
+   `cloudfunctions/id-generator/`。`[实测 2026-09-27]` `Deploy Cloud DB` 是把 `objecttype/` **整个目录**推上去的，
+   样本 `Post` 表因此一起上线，而它的 `permissions` 四个角色全是 `Read/Upsert/Delete`——
+   同区里等于躺了一张公网可写表，`d_Post.json` 还会往里塞示例数据。
 1. 右键 `clouddb` → **Deploy Cloud DB**（先建表和区，云对象一跑就要读写它们）；
 2. 右键 `cloudfunctions/pairing` → **Deploy 'pairing'**；
 3. 右键 `cloudfunctions/snapshot` → **Deploy 'snapshot'**。
+4. `[实测]` 部署会在 `CloudProgram/build/target/<hash>/<对象>/` 留下 `<对象>.zip` 与 `template.yaml`，
+   **后者就是线上描述符**——用它确认"这个对象到底部署没有"，并在 AGC 控制台把
+   `runtime` 从向导默认的 `nodejs14.x` 改成 Node.js 20、`timeout` 从 60 改到 20
+   （60s 同时撞穿"同步调用上限 55s"和端侧 30s 超时，会造成"客户端先断、服务端还在写"的假不一致）。
 
 区名 `FortwoPair`：**不能含下划线**（AGC 实测报 `invalid CloudDBZone name`）。
 `db-config.json` 里的 `defaultCloudDBZoneName` 只是向导显示值——spike 实测过该字段写着
@@ -112,6 +124,10 @@ node ../CloudDevSpikeOfficial/CloudProgram/node_modules/typescript/bin/tsc \
 2. **getter 读回**：紧接着用回包的 `pairId` 调 `status` → 期望 `status:"WAITING"`、
    `peerUid` 为空串。这一步证明 `contract.ts` 的 `toSession()` 用 getter 取值这条路是对的
    （`query().get()` 返回的是模型实例，不是普通对象）。
+   顺带这一步也是 **Node 运行时版本的探针**：`newSessionRow`/`confirmToken` 用了
+   `crypto.randomUUID()`（≥14.17）、`crypto.randomInt()`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），
+   向导默认给的 `nodejs14.x` 只要落在 14.17 以下，`create` 就会以 `INTERNAL` 冒出来——
+   这时先查运行时版本，别去怀疑加密口径。
 3. **Text 列写入**：`snapshot.put` 塞一份超过 200 字符的假密文（`ACTIVE` 会话下）→ 期望
    `storedVersion` 回显；报 `2060` 就是 §5.2 那条字段类型没生效。
 

@@ -16,6 +16,12 @@ import { horizonError, isCrossMidnight, rhythmError, toMinutes } from '../model/
 
 const TAG = 'ProfileSettingsService';
 
+/**
+ * 心跳节流窗口（协议 §4.6）：7 天。闲置回收线是 6 个月，取一周既留了 25 倍的余量，
+ * 又把免费档的调用量压在一个 pair ≈ 52 次/年 —— 配额花在配对上，不花在续命上。
+ */
+const HEARTBEAT_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** 一次设置写入的结果：message 已是可以直接 toast 的中文，页面不再自己拼错误码。 */
 export interface SettingsResult {
   ok: boolean;
@@ -429,6 +435,77 @@ export class ProfileSettingsService {
     ScheduleUseCase.onScheduleChanged().catch(() => {
     });
     return ok('已解除配对');
+  }
+
+  /**
+   * 「该不该跳一次心跳」的纯判断（与发请求分开，是为了让这一格能离线断言：设备侧改不了系统钟，
+   * `hdc shell` 无 root、`date -s` 回 Operation not permitted，于是"隔一周"这类按时间的分支
+   * 在真机上属于撞运气，权威覆盖只能落在这里——同 D-39 的 `greetingOf` 口径）。
+   *
+   * 三条到期情形合成一句：从未心跳过、窗口走满、系统时间被往回拨过。最后一条反过来判为"到期"
+   * 而不是"未到期"——宁可多打一次，也不要用户改一次时钟就永久停跳，让 6 个月的回收线裸奔。
+   */
+  static heartbeatDue(pairId: string, lastBeatAt: number, now: number): boolean {
+    if (pairId === '') {
+      return false;
+    }
+    // 偏好里若是脏值，Number() 给出 NaN，而 `NaN > 0` 为假 —— 于是脏值也落在"从未心跳过"这一支
+    if (!(lastBeatAt > 0)) {
+      return true;
+    }
+    const elapsed = now - lastBeatAt;
+    return elapsed < 0 || elapsed >= HEARTBEAT_WEEK_MS;
+  }
+
+  /**
+   * 心跳（协议 §4.6）：AGC 的闲置回收是**项目级**判定（连续 6 个月无有效调用 → 预警 30 日后回收），
+   * 这条端点的作用是把"还有人在用配对功能"这件事，用最小代价、与业务解耦地说给云侧听。
+   *
+   * 只由回前台顺路带起，**不建常驻、不起定时器**（协议 §3.3 与 §7 都禁后台常驻）——
+   * 所以 `HEARTBEAT_WEEK_MS` 是"两次心跳的最小间隔"，不是闹钟：整机不用应用，心跳就停，
+   * 而回收线在 6 个月外，中间隔着 25 倍余量。
+   *
+   * 两条形同拒绝的前置：关闭态一次都不发（B1 的 `AgcPairingClient.calls === 0` 断言管的就是这里）；
+   * 从未配对（`pairId` 为空）也不发——本机没有云端数据要护着，就不该替整个项目开一次云调用。
+   * 这一句与 `ScheduleUseCase.scheduleMergedSync` 的 `pairState === PAIRED` 口径**故意不同**：
+   * 那边管的是"该不该动对方的数据"，这边只看"本机手里有没有一个 pairId 指向的云端记录"，
+   * 停在 WAITING/PENDING 的会话行同样占着库，一跳都不亏。
+   *
+   * fire-and-forget 且失败不排重试：漏一跳的代价是下次回前台补上，重试风暴的代价是把当天的
+   * 配额吃光，反过来把真正的快照同步挤成 `QUOTA_EXHAUSTED`。
+   */
+  static beatIfDue(): void {
+    if (ProfileSettingsService.cloudBlocked()) {
+      return;
+    }
+    let pairId = '';
+    let lastBeatAt = 0;
+    try {
+      pairId = SettingsStore.getPairId();
+      lastBeatAt = SettingsStore.getLastHeartbeatAt();
+    } catch (e) {
+      // Preferences 尚未初始化：这一趟回前台不心跳，下一次还有机会
+      return;
+    }
+    const now = Date.now();
+    if (!ProfileSettingsService.heartbeatDue(pairId, lastBeatAt, now)) {
+      return;
+    }
+    ProfileSettingsService.beat(pairId, now);
+  }
+
+  /**
+   * 发一次心跳。拆成私有方法只为让上面那段判断保持同步返回：启动链上没有人该为一个心跳 await。
+   * 记的是**发起前**取的本机钟（不是服务端回的 serverTime）：节流比的是同一只钟的两端，
+   * 混进服务端时刻会让一次网络往返的偏差也算进间隔里。失败不落游标，于是下次回前台还能补。
+   */
+  private static beat(pairId: string, now: number): void {
+    SettingsStore.getOrCreateUid()
+      .then((uid: string) => new AgcPairingClient().heartbeat(uid, pairId))
+      .then(() => SettingsStore.setLastHeartbeatAt(now))
+      .catch((e: Error) => {
+        Logger.warn(TAG, 'heartbeat degraded: ' + e.message);
+      });
   }
 
   // ---------- 清空数据 ----------

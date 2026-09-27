@@ -23,6 +23,7 @@ const KEY_PAIR_KEY = 'pair_key';
 const KEY_PAIR_ID = 'pair_id';
 const KEY_PARTNER_SNAP_VER = 'partner_snap_ver';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
+const KEY_LAST_HEARTBEAT_AT = 'last_heartbeat_at';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
@@ -228,6 +229,21 @@ export class SettingsStore {
 
   static async setPartnerSnapVer(v: number): Promise<void> {
     await SettingsStore.p().put(KEY_PARTNER_SNAP_VER, v);
+    await SettingsStore.p().flush();
+  }
+
+  /**
+   * 上一次心跳**成功返回**时的本机时刻（epoch ms）；0 = 从未心跳过。
+   *
+   * 两个口径都是故意的：存本机钟而不是服务端回的 serverTime，因为节流比的是同一只钟的两端；
+   * 失败不写，所以"未到期"这一句是真的"最近一次确认活着"，而不是"最近一次试过"。
+   */
+  static getLastHeartbeatAt(): number {
+    return Number(SettingsStore.p().getSync(KEY_LAST_HEARTBEAT_AT, 0));
+  }
+
+  static async setLastHeartbeatAt(ms: number): Promise<void> {
+    await SettingsStore.p().put(KEY_LAST_HEARTBEAT_AT, ms);
     await SettingsStore.p().flush();
   }
 

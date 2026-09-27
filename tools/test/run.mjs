@@ -347,6 +347,13 @@ export class SettingsStore {
   static async setPartnerSnapVer(v: number): Promise<void> {
     settingsRows.set('partner_snap_ver', v);
   }
+  /** 心跳游标（设备侧同名）：桩把 setter 露出来，用例据此摆出"上周跳过/这周不该跳"两种形状。 */
+  static getLastHeartbeatAt(): number {
+    return Number(settingOf('last_heartbeat_at', 0));
+  }
+  static async setLastHeartbeatAt(ms: number): Promise<void> {
+    settingsRows.set('last_heartbeat_at', ms);
+  }
   static async getOrCreateUid(): Promise<string> {
     const existing = settingOf('device_uid', '') as string;
     if (existing !== '') {

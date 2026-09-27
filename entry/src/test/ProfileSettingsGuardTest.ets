@@ -222,6 +222,53 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getPairId()).assertEqual('');
     });
 
+    /**
+     * 心跳（协议 §4.6，U3b-1 接线）在关闭态必须完全静默：`beatIfDue` 是回前台挂的 fire-and-forget，
+     * 一旦漏了守卫，每台装了本机的设备都会替一个从没配过对的用户去敲 AGC 的门。
+     * 这里刻意把设置摆成"已配对且游标为 0"（也就是最该发的一格），好让这条断言打的是守卫本身，
+     * 而不是顺带被节流挡掉。
+     */
+    it('beat_if_due_is_silent_when_cloud_is_closed', 0, async () => {
+      await SettingsStore.savePairId('stale-session');
+      await SettingsStore.setPairState(PAIRED, 'stale-partner');
+      await SettingsStore.setLastHeartbeatAt(0);
+      AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
+
+      ProfileSettingsService.beatIfDue();
+
+      // 守卫是 `beatIfDue` 的第一句，所以这里可以同步断言：连 uid 都没去取，谈不上发请求
+      expect(AgcPairingClient.calls).assertEqual(0);
+      expect(PairKeyStore.calls).assertEqual(0);
+      // 游标没被写：一次都没发出去，就不该留下"最近跳过"的假证据
+      expect(SettingsStore.getLastHeartbeatAt()).assertEqual(0);
+    });
+
+    /**
+     * 「该不该跳」的判断单独断言（`heartbeatDue` 是纯函数）。为什么不能只靠上一条：
+     * 档位是源码常量，离线用例改不动它，所以开档之后的四格（未心跳 / 窗口内 / 窗口满 / 时钟回拨）
+     * 在这一层没有云可打；而设备侧又改不了系统钟（无 root，`date -s` 回 Operation not permitted），
+     * 于是"隔一周"这类按时间的分支两头都拿不到现场证据，权威覆盖只能落在这几条断言上（同 D-39）。
+     */
+    it('heartbeat_due_predicate_covers_eligibility_and_window', 0, async () => {
+      const now = 1777000000000;
+      const day = 86400000;
+
+      // 收窄资格：本机没有 pairId 就永远不发，哪怕游标老到跨年——保护的是自己的云端数据，
+      // 不是替整个项目交配额（协议 §4.6 端侧口径）
+      expect(ProfileSettingsService.heartbeatDue('', 0, now)).assertFalse();
+      expect(ProfileSettingsService.heartbeatDue('', now - 400 * day, now)).assertFalse();
+      // 已配对且从未心跳（0）或偏好里是脏值（Number 给出 NaN）都要发
+      expect(ProfileSettingsService.heartbeatDue('pair-1', 0, now)).assertTrue();
+      expect(ProfileSettingsService.heartbeatDue('pair-1', Number('dirty'), now)).assertTrue();
+      // 窗口内不发，窗口满要发：边界按"到点即到期"取，不留一整天的缝隙
+      expect(ProfileSettingsService.heartbeatDue('pair-1', now - day, now)).assertFalse();
+      expect(ProfileSettingsService.heartbeatDue('pair-1', now - (7 * day - 1), now)).assertFalse();
+      expect(ProfileSettingsService.heartbeatDue('pair-1', now - 7 * day, now)).assertTrue();
+      // 时钟回拨（游标落在未来）判为到期：宁可多跳一次，也不要一次改表就永久停跳
+      expect(ProfileSettingsService.heartbeatDue('pair-1', now + day, now)).assertTrue();
+    });
+
     it('local_only_features_keep_working_with_cloud_closed', 0, async () => {
       expect(FeatureFlags.cloudPairing).assertFalse();
 

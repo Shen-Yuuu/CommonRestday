@@ -3,7 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { todayEpochDay } from 'domain';
 import { Db, SettingsStore } from 'data';
-import { CalendarGateway, PairingShareGateway, PlanUseCase, ScheduleUseCase } from 'feature';
+import { CalendarGateway, PairingShareGateway, PlanUseCase, ProfileSettingsService, ScheduleUseCase } from 'feature';
 import { Logger } from 'commons';
 import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
 
@@ -105,6 +105,10 @@ export default class EntryAbility extends UIAbility {
     this.initChain.then(() => PlanUseCase.sweepPendingProjections()).catch((e: Error) => {
       Logger.warn('EntryAbility', 'projection sweep failed: ' + e.message);
     });
+    // 心跳（协议 §4.6）：AGC 的闲置回收线在 6 个月外，而本机不建常驻、不起定时器
+    // （§3.3/§7 的硬约束），所以"每周一跳"只能靠回前台带起、由节流窗口决定该不该发。
+    // 同样排在初始化链之后：Preferences 没就绪时读到的 pairId 是假的。
+    this.initChain.then(() => ProfileSettingsService.beatIfDue());
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 

@@ -20,7 +20,7 @@ import { EncryptedPayload, SnapshotCrypto } from './SnapshotCrypto';
  *    它们拆成两个字段给云端存）。
  *
  * 别名生命周期（实测边界）：卸载重装、清数据、备份恢复后别名是否存在**尚未验证**。
- * 因此这里所有对外判断都走 `isKeyItemExist`：别名不在就是 `KEY_UNAVAILABLE`，
+ * 因此这里所有对外判断都走 `aliasExists()`：别名不在就是 `KEY_UNAVAILABLE`，
  * 由调用方引导重新配对，绝不静默新建别名（那会让双方密钥永久不一致）。
  */
 
@@ -36,6 +36,15 @@ function param(tag: huks.HuksTag, value: boolean | number | bigint | Uint8Array)
 
 function options(properties: huks.HuksParam[]): huks.HuksOptions {
   return { properties: properties };
+}
+
+/**
+ * 别名是否存在。只能用 `hasKeyItem`：`isKeyItemExist` 的 Promise 形态在"不存在"时不是返回
+ * false，而是 reject 12000011 / `The entity does not exist.`（API 26 模拟器实测，协议 §11
+ * 第 1 条的设备证据抓到的——首次配对必定在 `ensureIdentity` 第一步就降级成"服务暂不可用"）。
+ */
+async function aliasExists(alias: string): Promise<boolean> {
+  return await huks.hasKeyItem(alias, options([]));
 }
 
 /** 本机静态身份密钥的生成参数：只做协商，purpose 里没有 export/derive，所以私钥导不出去。 */
@@ -125,7 +134,7 @@ export class PairKeyStore {
    */
   static async ensureIdentity(uid: string): Promise<string> {
     const alias = PairKeyStore.identityAliasOf(uid);
-    if (!await huks.isKeyItemExist(alias, options([]))) {
+    if (!await aliasExists(alias)) {
       await huks.generateKeyItem(alias, options(identityProperties()));
       Logger.info(TAG, 'identity key created');
     }
@@ -149,7 +158,7 @@ export class PairKeyStore {
   static async agreeKey(uid: string, pairId: string, peerPublicKeyB64: string): Promise<void> {
     const identityAlias = PairKeyStore.identityAliasOf(uid);
     const pairAlias = PairKeyStore.pairAliasOf(pairId);
-    if (!await huks.isKeyItemExist(identityAlias, options([]))) {
+    if (!await aliasExists(identityAlias)) {
       throw new Error('identity key missing before agreement');
     }
     const peerPublic = SnapshotCrypto.fromB64(peerPublicKeyB64);
@@ -171,7 +180,7 @@ export class PairKeyStore {
       const be = e as BusinessError;
       throw new Error('ECDH ' + stage + ' failed, code=' + be.code);
     }
-    if (!await huks.isKeyItemExist(pairAlias, options([]))) {
+    if (!await aliasExists(pairAlias)) {
       throw new Error('agreed key alias not created');
     }
     Logger.info(TAG, 'pair key agreed');
@@ -183,7 +192,7 @@ export class PairKeyStore {
       return false;
     }
     try {
-      return await huks.isKeyItemExist(PairKeyStore.pairAliasOf(pairId), options([]));
+      return await aliasExists(PairKeyStore.pairAliasOf(pairId));
     } catch (e) {
       Logger.warn(TAG, 'hasPairKey degraded: ' + (e as Error).message);
       return false;

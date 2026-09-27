@@ -406,9 +406,13 @@ S:<startMin>,<endMin>,<tag>;...             # L2/L3，epochMin
    （存一份就会和 `pairId` 漂）。`savePairKey`/`getPairKey`/`deriveKeyHex` 全部不存在，
    `SettingsStore.clearPairKey()` 只保留一个 delete 口，用来清旧原型留下的 64 位 hex 残留。
 2. **仍未实测**：卸载重装、清数据、备份恢复之后别名是否还在。目前所有对外判断都走
-   `isKeyItemExist`——别名不在就是 `KEY_UNAVAILABLE`，由调用方引导重新配对，
+   `hasKeyItem`——别名不在就是 `KEY_UNAVAILABLE`，由调用方引导重新配对，
    **绝不静默新建别名**（那会让双方密钥永久不一致）。开闸批要把"恢复后别名不存在"这一条
    真正在设备上跑一次并记进 §11。
+   **2026-09-27 设备实测补充**：判断存在性不能用 `isKeyItemExist` 的 Promise 形态——它在别名
+   不存在时不是返回 `false`，而是 reject `12000011 / The entity does not exist.`（API 26 模拟器，
+   首次点「生成邀请码」时在 `ensureIdentity` 第一步就降级成"配对服务暂时不可用"，整条链路一条云请求
+   都没发出）。`hasKeyItem` 的 Promise 形态（@since 11）才按文档返回 `false`。
 3. **已实现**：密钥失配的表现与解密失败完全一致——保留最后有效快照 + 提示重新配对，
    不删对方数据、不进入半同步状态（`partnerIntervalsFromSnapshot` 返回 null 就是这条路径）。
 
@@ -557,9 +561,38 @@ U4–U6（云侧源码、包络修复与探针复验）= `978b24b`…`8f9183c`�
 | 2 | 快照往返 | A 改班表 → B 侧共同时间在 5 秒窗口后跟上；`shareLevel` 三档各测一次，L1 看不到标签、L2 看不到分钟 |
 | 3 | 三种降级：飞行模式 / AGC 未初始化 / 云对象未部署 | 本机全部功能可用、无阻塞弹窗、无重试风暴；`CloudGateway.calls` 增长但界面只回一句降级。**三态要能被看见（U3b-3 的实测项）**：飞行模式下保存一次 → 配对卡出现「云同步待重试」（警示色 ↻），且当天再保存**不再排推送**（日志里 `scheduleMergedSync` 直接 return，`snapshot.put` 调用数不涨）；次日或下一次拉成功后清回「已同步」；把 `cloud_sync_state` 手动写成 `BLOCKED` 那一格 → 配对卡念「云同步已停止」（错误色 !），且身份卡顶上那行不再是"加密同步" |
 | 4 | 人为制造版本回退（把 `nextSnapshotVersion` 游标改小） | 只丢这一次推送（`CONFLICT_VERSION`），后续保存正常推上去，不进入"永远推不动" |
-| 5 | HUKS 别名生命周期：卸载重装 / 清数据 / 备份恢复 | `isKeyItemExist` 的答复与 UI 引导一致；**绝不静默新建别名**（否则双方密钥永久不一致，表现为永远解密失败） |
+| 5 | HUKS 别名生命周期：卸载重装 / 清数据 / 备份恢复 | `hasKeyItem` 的答复与 UI 引导一致（**不要用 `isKeyItemExist`**：它的 Promise 形态在别名不存在时 reject 12000011，见 §6 第 2 条的 2026-09-27 实测补充）；**绝不静默新建别名**（否则双方密钥永久不一致，表现为永远解密失败） |
 | 6 | 真实 30s 截断一次 | 记录实际错误码与归属（`NETWORK` / `INTERNAL` / 端侧 timeout），回填 §3.4 |
 | 7 | 真实班表 366 天 L3 的密文字节数 | 得出上界，裁定 2 MB 阈值要不要按档位分档（§10 第 5 项） |
 | 8 | ~~接上 `heartbeat`~~（§4.6 端侧缺口已于 U3b-1 补上，离线断言见 `ProfileSettingsGuardTest`）；剩观察项：paired 态连跑一周 | AGC 控制台看到 `pairing.heartbeat` 的调用计数在涨。**注意只能拿 paired 态测**：未配对的安装按 §4.6 的收窄一条都不发 |
 | 9 | 解除配对 | 云侧该 pair 的会话行与两行快照一起消失（AGC 控制台核对），**对方**本机数据一条不丢 |
 | 10 | 第三次设备拿旧码/旧 `pairId` 访问 | 全部 `FORBIDDEN`；本机数据不受影响 |
+
+### 11.1 现场记录（2026-09-27，两台 API 26 模拟器）
+
+**十条全部未勾。** 下面只记已经跑出来的事实，包括一次失败。
+
+- 两台设备（`127.0.0.1:5555`＝Pura 90 Pro Max HVD / `127.0.0.1:5557`＝Mate 80 HVD，都是 API 26 模拟器）
+  都装的是**签名后的 debug HAP**，`bm dump -n com.common.fortwo`
+  各回三条权限、含 `ohos.permission.INTERNET`；启动日志 `CrdFlags: calendarFlow=on cloudPairing=on
+  scanPairing=off newCard=on responsiveV2=on`。5555 那次是全新安装，顺带留下了首启隐私弹窗的真实截图
+  （五条要点 + 两个按钮都是 v1.1 的文案）。
+- **第 1 条卡在端侧，而且是代码缺陷不是环境问题**：两台设备首次点「生成邀请码」都只回一句降级，
+  日志里**没有** `identity key created`、也没有任何出网记录。根因见 §6 第 2 条的实测补充——
+  `ensureIdentity` 用 `isKeyItemExist` 判断别名是否存在，而它在别名不存在时 reject 而不是返回 false。
+  改用 `hasKeyItem` 后两台都走到 `PairKeyStore: identity key created`。
+- 修好之后第 1 条仍未通，卡在鉴权：请求真的出网了（`CloudDevelopProxyNet POST … httpCode: 401`），
+  端侧把它归成 `CloudApiError('UNAUTHORIZED')`，界面念「云端拒绝了这次调用」。**两侧都停在「未配对」，
+  没有阻塞弹窗，也没有写进任何半截配对状态**——这条本身就是 §11 第 3 条要的"降级只回一句话"的形态，
+  但不算它的证据（触发原因不是那三种降级之一）。
+  `[未判定]` 401 有两条候选解释，现在还不能二选一：① `com.common.fortwo`（app id `6917617383543050045`）
+  在这两台模拟器上的调试凭据从没注册过——注册凭据是按 app id 绑的，spike 那轮注册的是**另一个** app；
+  ② 云工程绑的是"两人份云"（`6917617526333646177`），跨 app 调用是否被网关放行属未知（运维册 §2.4 第 8 行
+  预警的就是这一格）。处置顺序按成本排：先给正式应用注册两台模拟器各自的凭据（AGC → 证书、APP ID和Profile
+  → 模拟器调试凭据，改后约 30 分钟生效），仍 401 才回到 §1 第 1 步重生成绑到本应用的云工程。
+  **凭据值不写进本文档，也不写进任何聊天**：本次取到的两枚放在仓库外 `.crdtest/pair/debug-tokens.txt`。
+- 同日 21:43 用服务端凭据直跑云侧 24 步全生命周期探针：23 通过，唯一失败是 `put_v0_behind` 拿到
+  `12003: timeout of 30000ms exceeded`——那是**探针自己的客户端超时**，不是云对象回的语义码，
+  所以既不能当 §11 第 4 条的证据，也不能反过来说版本回退的拒绝逻辑坏了；待复跑定性。
+  云侧健康的旁证：`create → join → confirm → ACTIVE`、级联删除、外部人 `FORBIDDEN` 全在同一轮里过。
+

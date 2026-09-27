@@ -184,7 +184,9 @@
 
 按顺序判：`pairing.status` 是否 `ACTIVE` → 对方 `version` 是否 0（对方从没推过）→ 本机是否解密失败
 （密钥失配，协议 §7）→ 本机是否把 `snapshot.get` 的"无更新"当成错误 → **HUKS 别名是否还在**
-（卸载重装/清数据之后 `isKeyItemExist` 会答 false，此时任何拉到的密文都解不开）。
+（卸载重装/清数据之后 `hasKeyItem` 会答 false，此时任何拉到的密文都解不开）。
+**看日志时别被 `12000011 / The entity does not exist.` 骗了**：那是 `isKeyItemExist` 在"不存在"时的
+reject 形态而不是崩溃（端侧已改用 `hasKeyItem`，见协议 §6 第 2 条）。
 **禁止的处置**：为了让界面有内容而伪造对方数据，或在解密失败时自动重建密钥。
 
 ### 4.7 云对象报 `2002037: CloudDBZone does not exist`

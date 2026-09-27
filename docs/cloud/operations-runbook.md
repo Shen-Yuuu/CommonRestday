@@ -1,12 +1,11 @@
 # 云侧运维手册 v1
 
 > 配套：`docs/cloud/pairing-protocol-v1.md`（协议，唯一事实源）与 `cloud-backend/README.md`（代码放哪、怎么部署）。
-> 状态：**AGC 项目已建、存储区 `FortwoPair` 已存在、两个云对象已部署且 `this-free` 那版已上线**
-> （2026-09-27 两次部署，实测记录见 §2.4 第 11/12 行；超时已改 20s，§7）。
-> **当前卡点一条**：首部署那版把邀请码放在包络保留名 `code` 里，语义码被顶掉，端侧会把每一次
-> 成功配对都判成失败（§2.4 第 13 行）——仓库与云工程里已改名 `inviteCode` 并升 `schemaVersion` 到 `2`，
-> **需要把两个云对象再部署一次**，然后 24 步全生命周期探针必须全绿才进 U3b。
-> 所以整条链路还没有端侧证据，§11 的设备证据一条没勾。
+> 状态：**云端链路已全线跑通**（2026-09-27 第三轮部署后，24 步全生命周期探针 `not_clean=0`，§2.4 第 14 行）——
+> 存储区在、两个云对象是 `this-free` + `inviteCode` 那一版、状态机与权限与幂等级联删除逐条对上。
+> 历次卡点（存储区不存在 / `this` 被摘 / 包络保留名顶掉语义码）全部已解，实测记录在 §2.4 第 11/12/13 行。
+> **剩下的都不是云端问题了**：① §2.4 第 14 行末尾那条"重新部署可能把控制台超时打回 60s"待核对；
+> ② 协议 §11 的端侧与双设备证据一条没勾，那才是 `cloudPairing = true` 的闸门。
 > 已实测过的路径会标 `[实测]`，只有文档依据的标 `[文档]`，
 > 需要账号持有者本人在 AGC 控制台点的都标 `[需你操作]`。
 > 2026-09-27 依实现回写：删掉了"8 个云函数""三份对象类型""云数据库安全规则"这三处从未成立的前提（§2.2、§2.3）。
@@ -18,7 +17,7 @@
 | 1 | 账号已实名认证、注册地为中国境内（港澳台除外）、**账户无欠款** `[需你操作]` | 欠款会连带卡住云开发开通；开通靠 DevEco 勾选协议自动完成 | docs/05 §1 |
 | 2 | 数据处理位置只启用「中国」，之后**不再改动** `[需你操作]` | 云开发仅支持中国境内；更改或取消启用**可能自动清理云侧数据且不可恢复** | docs/05 §3.3 |
 | 3 | 手动开启**消费提醒 + 余额不足提醒** `[需你操作]` | 免费档"用尽即停"不会自动扣费也不会自动扩容；配额提醒只有互动中心消息是默认有的 | docs/05 §3.1 |
-| 4 | 运行时在 **AGC 控制台**显式设成 Node.js 20 `[需你操作]`；不要沿用旧 `@hw-agconnect` SDK 写法 | 2025-11-04 起云函数运行时收窄为仅 Node.js。`[实测]` DevEco 向导给的默认值是 `nodejs14.x`，而且**本地改不了**（`function-config.json` 没这个键，值写死在 IDE 插件里，§2.4 第 3 行）。14 目前跑得起来（§2.4 第 12 行）所以这条是**迟早要换**而不是阻塞 | docs/05 §8 |
+| 4 | 运行时在 **AGC 控制台**显式设成 Node.js 20 `[需你操作]`；不要沿用旧 `@hw-agconnect` SDK 写法 | 2025-11-04 起云函数运行时收窄为仅 Node.js。`[实测]` DevEco 向导给的默认值是 `nodejs14.x`，而且**本地改不了**（`function-config.json` 没这个键，值写死在 IDE 插件里，§2.4 第 3 行）。14 目前跑得起来，云侧用到的三项 crypto 已在 `nodejs14.x` 线上全部证实（§2.4 第 12/14 行）所以这条是**迟早要换**而不是阻塞 | docs/05 §8 |
 | 5 | 服务端凭据放在**仓库外**（`ForTwoPrivate/agc-apiclient-*.json`），经环境变量交给探针 | 凭据进仓库＝进 git 历史，删不掉。云对象自身不需要它——AGC 运行时用 `PROJECT_CREDENTIAL` 注入 | `[实测]` spike 的 `server-probe` |
 | 6 | 端云工程关联后记下 `CloudProgram/cloud-config.json` 的位置与里面的项目/应用 ID | 这份文件是向导产物，**永不进 git**（含 projectId/appId/teamId） | `[实测]` |
 
@@ -108,8 +107,10 @@
 | 8 | 云工程绑到的是**另一个 AGC 应用**：向导的示例应用是 `com.common.fortwocloud`，`cloud-config.json` 的 `appId`（`6917617526333646177`，"两人份云"）≠ 本仓库 `agconnect-services.json` 里 `com.common.fortwo` 的 `app_id`（`6917617383543050045`）；**`projectId` 两边相同**（`101653523865149102`，项目"两人份"） | spike 的结论是"同 bundle name 关联 + 签名 + debugToken"，所以跨 appId 调用会不会 403 **属未知**（华为文档站这一轮只回 1749 字节的 SPA 壳，取不到正文；不作断言）。`[实测 2026-09-27]` **这个绑定改不了**：云工程一旦生成，DevEco 项目结构页里"关联云工程"是灰的，手改 `cloud-config.json` 没有依据说 IDE 会接受。处置＝**先不动**，云资源挂在项目而不是 App 上，用一次真实端侧调用来判定；**只有**回包是 401/403 一类鉴权失败（`2002037` 那类库/区失败不算，判据见 §6 第 0.5 步的表）才回到 §1 第 1 步：在 `CommonRestday` 里 `New > CloudProgram` 生成绑到 `com.common.fortwo` 的新云工程，把 `clouddb/` 与两个函数目录复制过去**只重新部署函数**（同项目同名的存储区不用重建） |
 | 9 | 服务端凭据（`ForTwoPrivate/agc-apiclient-*.json`）的 `project_id` 与云工程、与仓库里那份 `agconnect-services.json` **三者相同**，且用它直连能拿到 CloudDB 的业务错误码而不是 401 | `[实测]` 凭据没拿错项目——上面第 1 行的 2002037 是"区不存在"，不是"你没权限"，这条排除了凭据错配这个嫌疑 |
 | 10 | **云对象可以用服务端凭据从 Node 直接调起来，不需要设备。** 框架自己解析 `data.method`：缺它回 `Call handler error: cloud object method is empty`，写错回 `Can't find cloud object method X`；`params` 走 `func.apply(?, params)` 按位置展开——把 `params` 换成 JSON 字符串会得到 V8 的 `CreateListFromArrayLike called on non-object` | `[实测]` 两点用处：① 端侧 `{method, params}` 这条契约被线上证实（与 `CloudObjectInterface.js` 里 ImportObject 模板发的 `data: {method: prop, params: args}` 对上），协议 §3.3 不用改；② README §6 的"分派形态"探针从此可以在**没有设备**的时候先跑一遍，不必等真机 |
+| 11 | **框架把方法从实例上摘下来调，`this` 不是实例。** 原来的公开方法写成 `guarded(() => this.doX(...))`，于是每一次调用都在读库之前抛 `Cannot read properties of undefined (reading 'doX')`，被 guarded 塌成 `{"code":"INTERNAL","message":"cloud error "}`。拿 `build/target` 里那份**线上编译产物**在本地按同样方式调，复现出逐字节相同的包络 | `[实测]` 这条最容易踩，因为向导样本 `IdGenerator.randomUUID()` 一个 `this` 都不碰，坑被掩盖到第一次真调用。修法＝公开方法只做转调、业务函数放模块级（本次已改两个云对象，**必须重新部署一次**）。判据留下：`INTERNAL` 且 message 尾部**没有** dbCode ⇒ 云对象在读库前就炸；尾部带 dbCode（如 `cloud error 2002037`）⇒ 云对象是好的，问题在库/权限/区，见 §4.7。细则 §4.8 |
 | 12 | **第 11 行那版修复已上线，且存储区确实存在了。** 用服务端凭据在 Node 里直连线上云对象：`create` 回 `code:"OK"` 并带出 6 位码与 `pairId`，`snapshot.put` 把 **1776 字符**的密文写进 `PairSnapshot.ciphertext` 成功、`get` 原样读回（长度一致） | `[实测 2026-09-27 18:01 部署]` 第 1 行的"唯一阻塞"就此解除，§4.7 的建区动作被证实有效；`ciphertext` 是 `Text` 而不是 `String` 这条也被线上证明（200 字符硬限没有拦下 1776）。同时 `crypto.randomInt` 与 `crypto.randomUUID` 在 `nodejs14.x` 上跑通＝第 3 行的运行时问题降级为"迟早要换" |
 | 13 | **包络的保留名会被业务字段顶掉，而且顶掉的是成功判定本身。** `ok()` 原本先写 `code:'OK'` 再把载荷并进同一个对象，而 `sessionBody(withCode)` 把 6 位邀请码放在键 `code` 里——于是每一次 `pairing.create` 的语义码被 `"403153"` 这种数字串覆盖，端侧 `CloudGateway.unwrap()`（判 `code === 'OK'`）会把**所有成功配对**读成失败。修法＝包络四键在合并**之后**钉死，邀请码在报文里改名 `inviteCode`（库里那列仍叫 `code`），并把这个改名作为 `schemaVersion` 1→2 的全部内容 | `[实测 2026-09-27]` 第 12 行那次"绿"里藏着它：探针当时按 `body.code` 取邀请码，取到的其实是语义码位上的数字串，`create` 判 FAIL 却没拿到 `pairId`，后面 21 步全成 `NOT_FOUND`——**一条根因伪装成 22 条失败**。教训两条：① 探针的验断函数不许挂在上一步的判定后面（跨步状态必须无条件捕获）；② 只要包络是"语义码 + 自由业务字段"扁平合并，就必须把保留名写进协议并让 `ok()` 钉死，见协议 §3.2。**这条改了 wire 字段名，云端与端侧必须一起上**，两份 `contract.ts` 已同步到云工程，函数需再部署一次 |
+| 14 | **第三轮部署（18:32）之后，云端契约用 Server SDK 从 Node 侧全线跑通：24 步全生命周期探针 `not_clean=0`。** 逐条对上：`create` 回 `code:"OK"` + `inviteCode` 六位码（第 13 行的改名已生效）→ `status` 不带码不带 token → `join` 回 32 字符 **base64url 无填充** token → 加入方确认 `FORBIDDEN`、错 token `FORBIDDEN`、发起方确认转 `ACTIVE` → `put` 1776 字符写进 `Text` 列并原样读回、重放幂等、异载荷撞 `CONFLICT_VERSION`、版本回退 `BAD_REQUEST`、`shareLevel=9` `BAD_REQUEST`、`schemaVersion=3` `SCHEMA_UNSUPPORTED`、外人 `FORBIDDEN` → `get` 只给"对方"那份且无更新时回空包 → `heartbeat paired=true` → `unpair` 一次清掉两行快照、`status` 随即 `NOT_FOUND`、重放回 `deletedVersions=0` | `[实测 2026-09-27]` 三条副产品：① `toString('base64url')`（Node ≥14.18）也在线上跑通了，第 3 行动手前留的最后一个运行时疑点关闭，`nodejs14.x` 三项 crypto 全部证实；② `snapshot` 拒 `schemaVersion=3` 而收 `2`，说明两个云对象**都**是 U6 那一版（`build/target/` 里只剩 `snapshot` 一个目录，不能用来判断 `pairing` 部署没有——见第 2 行）；③ 探针自己收尾把测试行删干净了，正式项目里没留脏数据。**这 24 步一条也不能顶替协议 §11 的设备证据**：那是端侧行为与双机时序，这里全是服务端视角。**待核对**：本轮重新部署又生成了 `template.yaml`，里面仍是向导默认的 `timeout: 60`，而控制台已被手动改成 20s——DevEco 的部署描述符取自服务端模板接口（`serverless-tempalte-service/v1/server/ide/template`），所以"重新部署会不会把控制台的超时打回默认"目前只有间接证据。看一眼控制台即可判定；若确被打回，规则就是**改配置必须放在最后一次部署之后**。端侧 `CloudApi.ets` 头部第 2 条那句"所以这里 30s 一定是外层"也系在这个值上（20s 是推断成立的前提），核对完再决定要不要动那条注释 |
 
 ## 3. 日常巡检（每周一次，10 分钟）
 
@@ -248,7 +249,11 @@ CloudDB，空着说明抛的是**没有 code 的 JS 异常**，也就是云对�
   前缀相同而值不等——云工程绑的是向导示例应用 `com.common.fortwocloud`，不是产品包名 `com.common.fortwo`（§2.4 第 8 行）。
 - `[已填 2026-09-27]` 两个云对象的**超时已在 AGC 控制台改为 20s**（用户操作），本地 `function-config.json` 里
   没有这个键、改不了（§2.4 第 3 行）。**内存与运行时未报变化**，按向导默认视作 500MB / `nodejs14.x`，
-  以控制台为准；`pairing` 的具体部署时间仍未记录。
+  以控制台为准。
+- `[已填 2026-09-27]` 两轮部署时间：18:01（`this` 修复＋建区后复验，§2.4 第 12 行）、18:32（`inviteCode`
+  改名那一版，§2.4 第 14 行；这一版由探针的行为证明两个云对象**都**已更新，不靠 `build/target/` 的目录数）。
+  **仍未闭合的一件事**：18:32 那轮重新部署又生成了 `timeout: 60` 的 `template.yaml`，所以控制台的 20s 有没有被打回
+  默认值**待核对**（§2.4 第 14 行末）。若确被打回，规则是改配置必须放在最后一次部署之后。
 - 配额水位的历史峰值（用于验证 §1 末的 0.01% 估算）；
 - 真机上是否必须 `agconnect-services.json`（§1 末那条未验证边界）；
 - 闲置回收预警的实际到达方式与响应流程（是否只有邮件）。

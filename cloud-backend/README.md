@@ -30,7 +30,7 @@ cloud-backend/
 向导产物与凭据**永不进 git**，所以复制目标目录在仓库外。
 `[实测 2026-09-27]` 实际落点是 `E:/desktop/Code/harmony/FortwoCloud/CloudProgram/`——
 注意向导把示例**应用**也叫 `com.common.fortwocloud` 并把它绑进了 `cloud-config.json`，
-与产品包名 `com.common.fortwo` 是同项目下的两个应用记录（运维手册 §2.4 第 7 行）。
+与产品包名 `com.common.fortwo` 是同项目下的两个应用记录（运维手册 §2.4 第 8 行）。
 
 复制对照：
 

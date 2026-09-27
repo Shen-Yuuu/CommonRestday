@@ -104,6 +104,14 @@ node ../CloudDevSpikeOfficial/CloudProgram/node_modules/typescript/bin/tsc \
 
 `envelope` 是 `{schemaVersion, algorithm, iv, authTag, ciphertext}` 五个字段的名字段。
 
+4.4 **包络保留名**：`code`、`message`、`retryable`、`serverTime` 四个键是响应包络的，**业务字段不得占用**。
+`ok()` 现在把四键放在合并**之后**钉死，所以同名不再顶掉语义码，但会静默丢掉业务字段——两种都是事故。
+新增回包字段前先对照这张表；顶不掉不等于不冲突，端侧按名字取值，冲突要在设计期消掉。
+
+| 保留名 | 占用者 | 曾经的事故 |
+|---|---|---|
+| `code` | 语义码（`OK`/`BAD_REQUEST`/…） | `sessionBody` 把 6 位邀请码放在 `code` 里，`code:"OK"` 被数字串顶掉，端侧 `unwrap()` 把每一次成功 `create` 判成失败 ⇒ 报文键改名 `inviteCode`（库里列名不变），协议 §3.2 |
+
 ## 5. 四条会影响部署成败的写法约束
 
 1. **导出方法签名里不得出现第三方类型。** DevEco 的接口生成脚本 `analyzeDependency()` 会顺着

@@ -8,6 +8,8 @@
 >
 > **本文的"已实现"只到代码层**：还没有两台真机跑过一次完整配对，所以§11 的实测清单一条都没勾。
 > 改协议 = 改本文并升 `schemaVersion`，不允许在代码注释里另立口径。
+> **当前 `schemaVersion` = 2**（2026-09-27 从 1 升位，原因见 §3.2 的保留名规则）。
+> 它和标题里的"v1"是两个数：v1 是这份文档的版本，`schemaVersion` 是报文里的兼容位。
 > 与实际实现不符的地方，以本文为准（本文按实现回写；若二者冲突，先停下来查是哪一侧漂了）。
 
 ## 1. 云端承担什么、不承担什么
@@ -33,7 +35,7 @@
 |---|---|---|---|---|---|
 | `uid` | 36 位 UUID 字符串 | **本机**（`SettingsStore.getOrCreateUid()`） | 云侧明文、双方本机 | 这台设备在这个配对里的身份别名。**不是云端分配的**——AGC 云对象给不出可验证的用户身份（§6.1 第 1 条），所以它是端侧自证的一个随机串。非个人信息，但**一旦公布就无法再改**：换 uid 等于换一个人 |
 | `pairId` | 云端生成的 UUID | 云端（`create` 返回） | 云侧明文、双方本机 | 快照的分片键与权限键；Preferences 可存，别名由它现推（§6） |
-| `code` | 6 位数字，**短期凭据** | 云端 | 用户之间口头/分享传递 | 只能用于 `pairing.join`，有 TTL，用过即废（§6.1 第 4 条） |
+| `code` | 6 位数字，**短期凭据** | 云端 | 用户之间口头/分享传递 | 只能用于 `pairing.join`，有 TTL，用过即废（§6.1 第 4 条）。**库列名 `code`，报文里叫 `inviteCode`**（`code` 是包络保留名，§3.2）；`pairing.join` 的**请求**仍按位置传它 |
 | `confirmToken` | 32 字符 base64url（**无 `=` 填充**） | 云端（`join` 时生成） | 只给加入方，再由它经安全信道交回发起方 | 一次性：`confirm` 成功即从库里抹掉（§4.3）。长度落在端侧 `PairLink.tokenValid` 的 22–128 白名单里 |
 | 长期密钥 | 256-bit | **HUKS 会话协商派生**（§6） | 只在两端 HUKS 内 | 以别名 `crd-pair-<pairId>` 引用，密钥材料不出安全环境；因此**它压根不是协议字段**——不进请求、不进响应、不进数据库列，也不进日志 |
 | `version` | 单调递增整数 | 客户端（每台自己维护） | 云侧明文 | 乱序判定用；幂等靠载荷比对而不是它（§3.3、§7） |
@@ -78,9 +80,18 @@
 }
 ```
 
+**`code` / `message` / `retryable` / `serverTime` 是包络保留名**，端点自有字段不得占用同名键。
+云侧 `ok()` 在合并业务字段**之后**才钉这四个键，所以撞名的业务字段会被静默丢掉而不是顶掉成功判定——
+被丢掉的那一份要靠探针断言查，别指望它报错。
+这条规则是 `schemaVersion` 1→2 的唯一原因：`pairing.create` 的邀请码原本就叫 `code`，
+与语义码撞名之后 `code:"OK"` 被 6 位数字顶掉，端侧 `unwrap` 把每一次配对都判成失败
+（`[实测 2026-09-27]`，见 `docs/cloud/operations-runbook.md` §2.4 第 13 行）。字段改名 `inviteCode` 后，
+库里那一列仍叫 `code`，只有报文名变了。
+
 ### 3.3 超时与重试
 
 - 客户端调用**必须显式传 `timeout: 30000`**。`FunctionParams.timeout` 的 SDK 默认值是 70×1000ms，而云函数同步调用侧上限是 55s，不传就会在慢请求上撞墙（spike §1 已核）。
+- `[已配 2026-09-27]` 两个云对象在 AGC 控制台的函数超时是 **20s**（向导默认 60s，本地 `function-config.json` 无此键、改不了，只能在控制台设，见 runbook §2.4 第 3 行）。**函数超时必须小于端侧 30s**：这样先断的一定是服务端，端侧拿到的是一个回包而不是自己那侧的超时，"客户端已断、服务端还在写"的假不一致窗口随之关闭。函数侧超时若被调回 30s 以上，本节这条约束就重新打开了。
 - **端侧没有自动退避重试循环**，这是实现选择不是遗漏：`retryable` 只决定文案（"今天同步已用完"vs"网络不好"）以及当天是否还重排，真正的再试由 §7 的触发时机（回前台、保存、进入共同时间）自然带起。给一个静默重试循环等于把配额烧在用户看不见的地方。
 - **幂等不是靠 `requestId` 达成的**（那是本节此前的说法，与实现不符，现已改成实现口径）：
   - `snapshot-put`：同 `version` 且 `iv` + `ciphertext` 完全相同 → 判为重放，返回首次的 `storedVersion`；同 `version` 但载荷不同 → `CONFLICT_VERSION`；
@@ -130,9 +141,9 @@
 
 | 请求（位置参数） | 响应 |
 |---|---|
-| `uid`、`publicKey`、`schemaVersion` | `pairId`、`code`、`status=WAITING`、`peerUid=""`、`peerPublicKey=""`、`expiresAt`、`serverTime` |
+| `uid`、`publicKey`、`schemaVersion` | `pairId`、`inviteCode`、`status=WAITING`、`peerUid=""`、`peerPublicKey=""`、`expiresAt`、`serverTime` |
 
-- `code` 由**云端**生成（6 位数字，`crypto.randomInt`），端侧 `generateInviteCode()` 那条上传路径已删除；
+- `inviteCode`（报文名；库列名 `code`，见 §3.2 保留名规则）由**云端**生成（6 位数字，`crypto.randomInt`），端侧 `generateInviteCode()` 那条上传路径已删除；
 - `publicKey` 是发起方 HUKS 身份别名下的公钥（不透明 base64，云端不解析、不校验曲线）；
 - **重复调用的语义是"整轮重来"**：该 uid 名下所有未完成（`WAITING`/`PENDING_CONFIRM`）会话当场转
   `REVOKED` 并新建一行，因此 `pairId` 会换。原设计写的"复用未过期会话、返回同一 `pairId` + 新码"
@@ -185,8 +196,8 @@
 |---|---|
 | `pairId`、`uid` | `status`（`WAITING/PENDING_CONFIRM/ACTIVE/EXPIRED/REVOKED`）、`peerUid`、`peerPublicKey`、`expiresAt`、`serverTime` |
 
-- **只读端点不得返回 `confirmToken`，也不得返回 `code`**。原设计的响应里有 `confirmToken`，
-  那等于把"任何一侧轮询一次状态就能自己完成确认"的口子留在协议里；`code` 同理，
+- **只读端点不得返回 `confirmToken`，也不得返回 `inviteCode`**。原设计的响应里有 `confirmToken`，
+  那等于把"任何一侧轮询一次状态就能自己完成确认"的口子留在协议里；邀请码同理，
   它是仍可被第三次设备使用的凭据，不该在配对完成后还能从任何读路径拿到；
 - 只有成员能查（非成员 `FORBIDDEN`，会话不存在 `NOT_FOUND`）；查到过期时服务端顺手落一次
   `EXPIRED`，让"过期"这个事实只有一份；
@@ -240,7 +251,7 @@
 1. 会话不存在 → `NOT_FOUND`（端侧回 `UNPAIRED`，数据不删）；
 2. `ownerUid` 不是成员 → `FORBIDDEN`；
 3. 会话不是 `ACTIVE` → `BAD_REQUEST`（还没确认就推快照 = 状态机被绕开，属端侧缺陷）；
-4. `envelope.schemaVersion !== 1` → `SCHEMA_UNSUPPORTED`，**禁止静默降级写入**；
+4. `envelope.schemaVersion !== 当前 SCHEMA_VERSION`（现在是 `2`）→ `SCHEMA_UNSUPPORTED`，**禁止静默降级写入**；
 5. `algorithm !== 'AES-256-GCM'`、`iv`/`authTag`/`ciphertext` 任一为空、`version <= 0`、
    `shareLevel` 不在 0–3 → `BAD_REQUEST`；
 6. Base64 长度换算后超过 2 MB → `BAD_REQUEST`（阈值按**字符串长度**算，因为计费与列上限都在字符串上；

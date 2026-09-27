@@ -22,8 +22,10 @@ const { PairSnapshot } = require('./PairSnapshot');
 const ZONE = 'FortwoPair';
 /** AGCClient 实例名：固定名才有 warm 复用，每次换一个名等于每次新建客户端。 */
 const INSTANCE = 'fortwo-pair';
-/** 本协议的 schemaVersion；不匹配一律 SCHEMA_UNSUPPORTED，禁止静默降级写入（协议 §3.4）。 */
-export const SCHEMA_VERSION = 1;
+/** 本协议的 schemaVersion；不匹配一律 SCHEMA_UNSUPPORTED，禁止静默降级写入（协议 §3.4）。
+ * `2`：响应里的邀请码字段从 `code` 改名为 `inviteCode`——`code` 是包络保留名（语义码），
+ * 两者同名会互相覆盖，线上实测把 `create` 的成功判定整个打掉（协议 §3.2 / runbook §2.4 第 13 行）。 */
+export const SCHEMA_VERSION = 2;
 /** 配对码与待确认会话的存活时长：跨设备、跨聊天软件的一次配对，24 小时够得着又不至于长期敞开。 */
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 /** 一次性确认凭据的字节数：32 个 base64url 字符 ≈192 bit，远高于端侧 22 字符下限。 */
@@ -160,12 +162,16 @@ export function newSessionRow(uid: string, publicKey: string): Record<string, Ob
 
 /** 成功包络：字段由调用方追加（协议 §3.2）。 */
 export function ok(extra: Record<string, Object>): Record<string, Object> {
-  const body: Record<string, Object> = {
-    'code': OK, 'message': '', 'retryable': false, 'serverTime': nowMs()
-  };
+  // 包络四键最后钉，业务字段不许顶掉它们——同名字段的两种坏法里，"语义码被顶掉"会让
+  // 端侧把每一次成功调用都当失败（线上实测过一次），所以这里宁可丢业务字段并把它写进探针断言。
+  const body: Record<string, Object> = {};
   for (const key of Object.keys(extra)) {
     body[key] = extra[key];
   }
+  body['code'] = OK;
+  body['message'] = '';
+  body['retryable'] = false;
+  body['serverTime'] = nowMs();
   return body;
 }
 
@@ -308,8 +314,11 @@ export function peerKeyOf(session: Record<string, Object>, uid: string): string 
 /**
  * 会话投影：只挑端侧要用的字段。
  *
- * `code` 与 `confirmToken` 由调用方**按端点决定是否附上**——
+ * `inviteCode` 与 `confirmToken` 由调用方**按端点决定是否附上**——
  * §4.4 的 status 绝不能带 confirmToken，否则加入方查一次状态就能自确认，§4.3 的门槛塌掉。
+ *
+ * 邀请码在**库里那列叫 `code`**，但在回包里必须叫 `inviteCode`：包络的语义码占用了 `code`
+ * （协议 §3.2），同名会让 `ok()` 把成功判定顶掉。端侧 `PairSession.code` 读的是 `inviteCode`。
  */
 export function sessionBody(session: Record<string, Object>, uid: string,
   withCode: boolean, withToken: boolean): Record<string, Object> {
@@ -321,7 +330,7 @@ export function sessionBody(session: Record<string, Object>, uid: string,
     'expiresAt': num(session, 'expiresAt')
   };
   if (withCode) {
-    body['code'] = str(session, 'code');
+    body['inviteCode'] = str(session, 'code');
   }
   if (withToken) {
     body['confirmToken'] = str(session, 'confirmToken');

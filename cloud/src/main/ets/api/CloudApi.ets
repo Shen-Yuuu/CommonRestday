@@ -15,6 +15,8 @@ import { PairKeyStore } from './PairKeyStore';
  *    不是把字段平铺进 data；平铺只有云函数形态才收得到。
  * 2. **超时**：显式 `timeout: 30000`。`FunctionParams.timeout` 的 SDK 默认是 70s，
  *    而云函数同步调用侧上限 55s——不传就会在慢请求上撞墙（spike §1）。
+ *    两个云对象在控制台已设 **20s**（runbook §2.4 第 3 行），所以这里 30s 一定是外层：
+ *    先断的是服务端，端侧收到的是回包而不是自己那侧的超时。
  * 3. **失败语义**：服务端返回 §3.4 的语义码，传输层异常归一成 `NETWORK`/`LOCAL`/`INTERNAL`；
  *    两者都抛 `CloudApiError`，带 `retryable`。云端任何失败都不得阻断本机（门禁 §4 第 4 条）。
  *
@@ -189,7 +191,8 @@ function sessionOf(o: Record<string, Object>): PairSession {
   const session: PairSession = {
     pairId: CloudGateway.strOf(o, 'pairId'),
     status: CloudGateway.strOf(o, 'status'),
-    code: CloudGateway.strOf(o, 'code'),
+    // 线上字段名是 inviteCode 不是 code：`code` 被包络的语义码占用，同名会互相顶掉（协议 §3.2）
+    code: CloudGateway.strOf(o, 'inviteCode'),
     peerUid: CloudGateway.strOf(o, 'peerUid'),
     peerPublicKey: CloudGateway.strOf(o, 'peerPublicKey'),
     confirmToken: CloudGateway.strOf(o, 'confirmToken'),

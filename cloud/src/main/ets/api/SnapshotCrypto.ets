@@ -22,7 +22,13 @@ export interface EncryptedPayload {
 
 export const ALG_AES_256_GCM = 'AES-256-GCM';
 /** 信封与 AAD 里的协议版本；改协议必须同步升它（docs/cloud/pairing-protocol-v1.md §5.1）。 */
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+/**
+ * 协议/密文口径的版本，两侧必须同时改（云端 SCHEMA_VERSION 同值）。
+ * `2`：配对响应的邀请码字段 `code` → `inviteCode`，`code` 归包络语义码独占（协议 §3.2）。
+ * 它会一起进 `aadOf()`，所以升位等于旧密文一律解不开——这是有意的：宁可响亮失败，不做静默降级。
+ * 开闸前（`FeatureFlags.cloudPairing` 仍是 false）没有任何历史密文，因此不需要迁移。
+ */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 const IV_LEN = 12;
 const TAG_LEN = 16;
 

@@ -1,156 +1,167 @@
 import { cloudFunction } from '@kit.CloudFoundationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { util } from '@kit.ArkTS';
 import { Interval, SnapshotCodec } from 'domain';
-import { EncryptedPayload, SnapshotCrypto } from './SnapshotCrypto';
+import { EncryptedPayload, SnapshotCrypto, SNAPSHOT_SCHEMA_VERSION } from './SnapshotCrypto';
+import { PairKeyStore } from './PairKeyStore';
 
 /**
- * 云层接口定义与 AGC 调用封装（US9 / FR-015）。
- * 云端只承载：配对会话 + AES-256-GCM 加密快照密文；云函数不可读内容。
- * AGC 未开通/未初始化时 cloudFunction.call 会抛 BusinessError，
- * 由 AgcPairingClient/AgcSnapshotSync 统一转为 CloudApiError，调用方据此降级
- * （提示 + 引导本机代录），不得影响本机功能与稳定性。
- * 云函数（pairing-xxx / snapshot-xxx）尚未部署到 AGC——AGC 就绪后生效，未就绪时全部走降级路径。
+ * 云层接口与 AGC 调用封装（协议 v1：docs/cloud/pairing-protocol-v1.md）。
+ *
+ * 三件在这里收敛的事，页面与 usecase 不再各自处理：
+ *
+ * 1. **传输形态**：端云之间只有两个**云对象**——`pairing`（create/join/confirm/status/unpair/heartbeat）
+ *    与 `snapshot`（put/get）。云对象的调用体固定是 `{ method, params }`（API 26 模拟器实测过的形态），
+ *    不是把字段平铺进 data；平铺只有云函数形态才收得到。
+ * 2. **超时**：显式 `timeout: 30000`。`FunctionParams.timeout` 的 SDK 默认是 70s，
+ *    而云函数同步调用侧上限 55s——不传就会在慢请求上撞墙（spike §1）。
+ * 3. **失败语义**：服务端返回 §3.4 的语义码，传输层异常归一成 `NETWORK`/`LOCAL`/`INTERNAL`；
+ *    两者都抛 `CloudApiError`，带 `retryable`。云端任何失败都不得阻断本机（门禁 §4 第 4 条）。
+ *
+ * `calls` 计数器是"关闭态 0 次云调用"这条断言的落点（验收报告 B1），不要删。
  */
 
-/** 云端快照元数据。 */
+/** 云对象名（部署形态见 cloud-backend/README.md）。 */
+export const OBJ_PAIRING = 'pairing';
+export const OBJ_SNAPSHOT = 'snapshot';
+/** 端侧统一超时；服务端同步调用上限 55s。 */
+export const CLOUD_TIMEOUT_MS = 30000;
+
+/** 语义码：传输层特有的三种（服务端的码见协议 §3.4，原样透传）。 */
+export const CLOUD_LOCAL = 'LOCAL';
+export const CLOUD_NETWORK = 'NETWORK';
+export const CLOUD_MALFORMED = 'INTERNAL';
+
+/** 快照信封（云侧存储单元，协议 §5.1）。字节字段一律 base64，authTag 独立成字段。 */
 export interface CloudSnapshot {
   pairId: string;
   ownerUid: string;
   version: number;
   shareLevel: number;
-  /** 密文（hex，含拼接的 authTag）。 */
-  ciphertext: string;
-  /** 12 字节随机 IV（hex）。 */
+  schemaVersion: number;
+  algorithm: string;
   iv: string;
+  authTag: string;
+  ciphertext: string;
   updatedAt: number;
 }
 
-/** 配对会话。 */
-export interface PairingSession {
-  sessionId: string;
-  code: string;
-  creatorUid: string;
+/** 配对会话投影：八个端点里凡返回会话状态的地方都用它，缺字段就是空串/0。 */
+export interface PairSession {
+  pairId: string;
   status: string;
+  /** 一次性邀请码，仅 create 返回；不进链接、不进日志。 */
+  code: string;
+  peerUid: string;
+  /** 对端 HUKS 公钥（base64，不透明字节）。 */
+  peerPublicKey: string;
+  /** 加入方拿到、由加入方经安全信道交回发起方的一次性确认凭据。 */
+  confirmToken: string;
   expiresAt: number;
+  serverTime: number;
 }
 
-/** 快照同步接口（AgcSnapshotSync 为 AGC 实现）。 */
-export interface SnapshotSync {
-  pushSnapshot(pairId: string, version: number, shareLevel: number, payload: EncryptedPayload): Promise<void>;
-  pullSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null>;
-}
-
-/** 配对接口：端侧实现类接入 Cloud Foundation Kit 云函数（AgcPairingClient）。 */
+/** 配对端点集合（协议 §4.1–§4.6）。 */
 export interface PairingApi {
-  createPairing(uid: string): Promise<PairingSession>;
-  /** 输码加入：code 为对方分享的 6 位邀请码；成功返回配对会话（sessionId 即 pairId）。 */
-  joinPairing(code: string, uid: string): Promise<PairingSession>;
-  unpair(pairId: string, uid: string): Promise<void>;
+  createPairing(uid: string, publicKey: string): Promise<PairSession>;
+  joinPairing(code: string, uid: string, publicKey: string): Promise<PairSession>;
+  confirmPairing(pairId: string, uid: string, confirmToken: string): Promise<PairSession>;
+  pairStatus(pairId: string, uid: string): Promise<PairSession>;
+  /** 返回云侧被级联删除的快照条数。 */
+  unpair(pairId: string, uid: string, requestId: string): Promise<number>;
+  /** 防闲置回收的存活信号，不带任何业务载荷。 */
+  heartbeat(uid: string, pairId: string): Promise<number>;
 }
 
-/** 云端调用统一降级错误（调用方捕获后降级，不崩溃）。 */
-export class CloudApiError extends Error {
-  /** 1001 = AGC 未初始化/未开通；1002 = 网络失败/其他调用异常。 */
-  readonly code: number;
+/** 快照端点集合（协议 §4.7–§4.8）。 */
+export interface SnapshotSync {
+  putSnapshot(pairId: string, ownerUid: string, version: number, shareLevel: number,
+    payload: EncryptedPayload, requestId: string): Promise<number>;
+  /** 返回 null = 没有比 sinceVersion 更新的快照（常态，不是错误）。 */
+  getSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null>;
+}
 
-  constructor(code: number, message: string) {
+/** 云端调用的统一失败形态：调用方按 semantic + retryable 决定提示与重试。 */
+export class CloudApiError extends Error {
+  readonly semantic: string;
+  readonly retryable: boolean;
+
+  constructor(semantic: string, retryable: boolean, message: string) {
     super(message);
     this.name = 'CloudApiError';
-    this.code = code;
+    this.semantic = semantic;
+    this.retryable = retryable;
   }
 }
 
-/**
- * 本地生成 6 位数字邀请码（体验版演示码，非安全凭据——正式配对由云端生成并校验）。
- * 使用 cryptoFramework 密码学安全随机，替代 Math.random 弱随机。
- */
-export function generateInviteCode(): string {
-  let v = SnapshotCrypto.randomInt(1000000);
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code = String.fromCharCode(48 + (v % 10)) + code;
-    v = Math.floor(v / 10);
-  }
-  return code;
+/** 新幂等键：写类端点以 pairId + ownerUid + version + requestId 幂等（协议 §3.3）。 */
+export function newRequestId(): string {
+  return util.generateRandomUUID();
 }
 
-/**
- * AGC 云函数配对客户端（PairingApi 实现）：
- * - pairing-create / pairing-join / pairing-unpair 三个云函数封装；
- * - AGC 未配置时 call 抛错 → 统一抛 CloudApiError（1001/1002），由调用方降级；
- * - 依赖说明：@kit.CloudFoundationKit 为系统 kit，无需 ohpm 三方依赖；
- *   AGC 开通（agconnect-services.json + 云函数部署）前调用必然降级，属预期主路径。
- */
-export class AgcPairingClient implements PairingApi {
-  /**
-   * 进程内云函数调用计数（阶段 6R.2，验收报告 B1 的"关闭态 0 次调用"断言用）。
-   * 只做计数、不做业务：读它不需要权限，也不跨进程。
-   */
+export class CloudGateway {
+  /** 进程内云调用计数：只做计数、不做业务，读它不需要权限。 */
   static calls: number = 0;
 
-  async createPairing(uid: string): Promise<PairingSession> {
-    const payload: Record<string, Object> = { 'uid': uid, 'code': generateInviteCode() };
-    const result = await AgcPairingClient.call('pairing-create', payload);
-    return AgcPairingClient.parseSession(result);
-  }
-
-  async joinPairing(code: string, uid: string): Promise<PairingSession> {
-    const payload: Record<string, Object> = { 'code': code, 'uid': uid };
-    const result = await AgcPairingClient.call('pairing-join', payload);
-    return AgcPairingClient.parseSession(result);
-  }
-
-  async unpair(pairId: string, uid: string): Promise<void> {
-    const payload: Record<string, Object> = { 'pairId': pairId, 'uid': uid };
-    await AgcPairingClient.call('pairing-unpair', payload);
+  /**
+   * 调一个云对象方法并剥开响应包络。
+   * 传输异常与语义码失败都抛 CloudApiError；解包失败按 INTERNAL（不重试，先记缺陷）。
+   */
+  static async call(objectName: string, method: string, params: Object[]): Promise<Record<string, Object>> {
+    CloudGateway.calls = CloudGateway.calls + 1;
+    const data: Record<string, Object> = { 'method': method, 'params': params };
+    let raw: string | Object;
+    try {
+      const value = await cloudFunction.call({
+        name: objectName,
+        version: '$latest',
+        data: data,
+        timeout: CLOUD_TIMEOUT_MS
+      });
+      raw = value.result;
+    } catch (e) {
+      throw CloudGateway.transportError(e as BusinessError);
+    }
+    return CloudGateway.unwrap(raw);
   }
 
   /**
-   * 统一云函数调用封装：
-   * - 1008210001 网络连接错误 → CloudApiError(1002)；
-   * - 201 无 INTERNET 权限 / 1008210009 客户端内部错误 / 1008211001 服务端错误
-   *   （AGC 未初始化/未开通的典型表现）→ CloudApiError(1001)；
-   * - 其余异常一律 CloudApiError(1002)。
+   * 传输层错误归类。三条实测口径写在这里而不是散在调用点：
+   * 201 是缺 INTERNET 权限、1008210009/1008211001 是 AGC 未初始化/未开通或签名与凭据不匹配，
+   * 1008210001 是网络类。带 401/403 字样的服务端拒绝要还原成鉴权语义，否则用户看到的是"网络不好"。
    */
-  static async call(name: string, data: Record<string, Object>): Promise<string | Object> {
-    AgcPairingClient.calls = AgcPairingClient.calls + 1;
-    try {
-      const result = await cloudFunction.call({
-        name: name,
-        version: '$latest',
-        data: data
-      });
-      return result.result;
-    } catch (e) {
-      const be = e as BusinessError;
-      if (be.code === 201 || be.code === 1008210009 || be.code === 1008211001) {
-        throw new CloudApiError(1001, 'AGC 云服务未初始化或未开通（' + be.code + '）');
-      }
-      throw new CloudApiError(1002, '云端网络调用失败（' + be.code + '）');
+  private static transportError(be: BusinessError): CloudApiError {
+    const text = (be.message === undefined ? '' : be.message).toLowerCase();
+    const denied = text.indexOf('401') >= 0 || text.indexOf('403') >= 0
+      || text.indexOf('permission') >= 0 || text.indexOf('forbidden') >= 0;
+    if (denied) {
+      return new CloudApiError('UNAUTHORIZED', false, '云端拒绝了这次调用');
     }
+    if (be.code === 201 || be.code === 1008210009) {
+      return new CloudApiError(CLOUD_LOCAL, false, 'AGC 云服务未初始化或未开通（' + be.code + '）');
+    }
+    if (be.code === 1008210001) {
+      return new CloudApiError(CLOUD_NETWORK, true, '云端网络不可达（' + be.code + '）');
+    }
+    return new CloudApiError(CLOUD_MALFORMED, true, '云端调用失败（' + be.code + '）');
   }
 
-  /** 解析云函数返回的配对会话（string 或对象形态均兼容；解析失败按网络类降级错误处理）。 */
-  static parseSession(result: string | Object): PairingSession {
+  /** 包络解析：string / object 两种回包形态都兼容（云侧返回体不保证已是对象）。 */
+  private static unwrap(raw: string | Object): Record<string, Object> {
+    let o: Record<string, Object>;
     try {
-      let text = '';
-      if (typeof result === 'string') {
-        text = result;
-      } else {
-        text = JSON.stringify(result);
-      }
-      const o = JSON.parse(text) as Record<string, Object>;
-      const session: PairingSession = {
-        sessionId: AgcPairingClient.strOf(o, 'sessionId'),
-        code: AgcPairingClient.strOf(o, 'code'),
-        creatorUid: AgcPairingClient.strOf(o, 'creatorUid'),
-        status: AgcPairingClient.strOf(o, 'status'),
-        expiresAt: AgcPairingClient.numOf(o, 'expiresAt')
-      };
-      return session;
+      const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      o = JSON.parse(text === '' ? '{}' : text) as Record<string, Object>;
     } catch (e) {
-      throw new CloudApiError(1002, '配对会话响应解析失败');
+      throw new CloudApiError(CLOUD_MALFORMED, false, '云端回包无法解析');
     }
+    const code = CloudGateway.strOf(o, 'code');
+    if (code === 'OK') {
+      return o;
+    }
+    const semantic = code === '' ? CLOUD_MALFORMED : code;
+    const retryable = semantic === 'QUOTA_EXHAUSTED' || semantic === 'TIMEOUT' || semantic === CLOUD_MALFORMED;
+    throw new CloudApiError(semantic, retryable, CloudGateway.strOf(o, 'message'));
   }
 
   static strOf(o: Record<string, Object>, key: string): string {
@@ -168,87 +179,153 @@ export class AgcPairingClient implements PairingApi {
   }
 }
 
-/**
- * AGC 云函数快照同步客户端（SnapshotSync 实现）：
- * - snapshot-push / snapshot-pull 两个云函数封装（AGC 就绪后生效）；
- * - pull 返回 null 表示"无比 sinceVersion 更新的快照"，调用方沿用本机代录/旧数据；
- * - 一切调用异常经 AgcPairingClient.call 统一转为 CloudApiError，调用方降级。
- */
-export class AgcSnapshotSync implements SnapshotSync {
-  async pushSnapshot(pairId: string, version: number, shareLevel: number,
-    payload: EncryptedPayload): Promise<void> {
-    const data: Record<string, Object> = {
-      'pairId': pairId,
-      'version': version,
-      'shareLevel': shareLevel,
-      'ciphertext': payload.ciphertext,
-      'iv': payload.iv
-    };
-    await AgcPairingClient.call('snapshot-push', data);
+/** 会话投影：服务端没给的字段留空串/0，调用方按 status 判断而不是按字段是否为空判断。 */
+function sessionOf(o: Record<string, Object>): PairSession {
+  const session: PairSession = {
+    pairId: CloudGateway.strOf(o, 'pairId'),
+    status: CloudGateway.strOf(o, 'status'),
+    code: CloudGateway.strOf(o, 'code'),
+    peerUid: CloudGateway.strOf(o, 'peerUid'),
+    peerPublicKey: CloudGateway.strOf(o, 'peerPublicKey'),
+    confirmToken: CloudGateway.strOf(o, 'confirmToken'),
+    expiresAt: CloudGateway.numOf(o, 'expiresAt'),
+    serverTime: CloudGateway.numOf(o, 'serverTime')
+  };
+  return session;
+}
+
+/** AGC 云对象配对客户端（PairingApi 实现）。AGC 未就绪时每个方法都抛 CloudApiError，由调用方降级。 */
+export class AgcPairingClient implements PairingApi {
+  async createPairing(uid: string, publicKey: string): Promise<PairSession> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'create', [uid, publicKey, SNAPSHOT_SCHEMA_VERSION]);
+    return sessionOf(o);
   }
 
-  async pullSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null> {
-    const data: Record<string, Object> = { 'pairId': pairId, 'sinceVersion': sinceVersion };
-    const result = await AgcPairingClient.call('snapshot-pull', data);
-    return AgcSnapshotSync.parseSnapshot(result, pairId, sinceVersion);
+  async joinPairing(code: string, uid: string, publicKey: string): Promise<PairSession> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'join', [code, uid, publicKey, SNAPSHOT_SCHEMA_VERSION]);
+    return sessionOf(o);
   }
 
-  /** 解析云函数返回的快照（string 或对象形态均兼容）；无更新/密文缺失返回 null。 */
-  static parseSnapshot(result: string | Object, pairId: string, sinceVersion: number): CloudSnapshot | null {
-    try {
-      if (result == null || result === '') {
-        return null;
-      }
-      let text = '';
-      if (typeof result === 'string') {
-        text = result;
-      } else {
-        text = JSON.stringify(result);
-      }
-      if (text === '') {
-        return null;
-      }
-      const o = JSON.parse(text) as Record<string, Object>;
-      const version = AgcPairingClient.numOf(o, 'version');
-      if (version <= sinceVersion) {
-        return null; // 乱序旧包丢弃
-      }
-      const ciphertext = AgcPairingClient.strOf(o, 'ciphertext');
-      const iv = AgcPairingClient.strOf(o, 'iv');
-      if (ciphertext === '' || iv === '') {
-        return null;
-      }
-      const snap: CloudSnapshot = {
-        pairId: pairId,
-        ownerUid: AgcPairingClient.strOf(o, 'ownerUid'),
-        version: version,
-        shareLevel: AgcPairingClient.numOf(o, 'shareLevel'),
-        ciphertext: ciphertext,
-        iv: iv,
-        updatedAt: AgcPairingClient.numOf(o, 'updatedAt')
-      };
-      return snap;
-    } catch (e) {
-      throw new CloudApiError(1002, '快照响应解析失败');
-    }
+  async confirmPairing(pairId: string, uid: string, confirmToken: string): Promise<PairSession> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'confirm', [pairId, uid, confirmToken]);
+    return sessionOf(o);
+  }
+
+  async pairStatus(pairId: string, uid: string): Promise<PairSession> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'status', [pairId, uid]);
+    return sessionOf(o);
+  }
+
+  async unpair(pairId: string, uid: string, requestId: string): Promise<number> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'unpair', [pairId, uid, requestId]);
+    return CloudGateway.numOf(o, 'deletedVersions');
+  }
+
+  async heartbeat(uid: string, pairId: string): Promise<number> {
+    const o = await CloudGateway.call(OBJ_PAIRING, 'heartbeat', [uid, pairId]);
+    return CloudGateway.numOf(o, 'serverTime');
   }
 }
 
 /**
- * 拉取到的加密快照 → 引擎可用的对方忙碌区间：
- * AES-256-GCM 解密 → SnapshotCodec 解码 → toIntervals。
- * 解密失败（密钥失配/tag 校验失败）或解码失败返回 null，调用方据此降级本机代录模式。
- * 注意：快照生成时已并入对方缓冲，接收侧不再二次加缓冲。
+ * AGC 云对象快照客户端（SnapshotSync 实现）。
+ * get 返回 null 表示"无更新"，调用方沿用最后一次有效快照或本机代录。
  */
-export function partnerIntervalsFromSnapshot(snap: CloudSnapshot, keyHex: string): Interval[] | null {
-  const payload: EncryptedPayload = { ciphertext: snap.ciphertext, iv: snap.iv };
-  const plain = SnapshotCrypto.decryptWithKey(keyHex, payload);
-  if (plain == null) {
+export class AgcSnapshotSync implements SnapshotSync {
+  async putSnapshot(pairId: string, ownerUid: string, version: number, shareLevel: number,
+    payload: EncryptedPayload, requestId: string): Promise<number> {
+    const envelope: Record<string, Object> = {
+      'schemaVersion': SNAPSHOT_SCHEMA_VERSION,
+      'algorithm': payload.algorithm,
+      'iv': payload.iv,
+      'authTag': payload.authTag,
+      'ciphertext': payload.ciphertext
+    };
+    const o = await CloudGateway.call(OBJ_SNAPSHOT, 'put',
+      [pairId, ownerUid, version, shareLevel, envelope, requestId]);
+    return CloudGateway.numOf(o, 'storedVersion');
+  }
+
+  async getSnapshot(pairId: string, sinceVersion: number): Promise<CloudSnapshot | null> {
+    const o = await CloudGateway.call(OBJ_SNAPSHOT, 'get', [pairId, sinceVersion, SNAPSHOT_SCHEMA_VERSION]);
+    const snap = o['snapshot'];
+    if (snap == null) {
+      return null;
+    }
+    return AgcSnapshotSync.parseSnapshot(snap, pairId, sinceVersion);
+  }
+
+  /** 服务端已按成员表与 version 过滤，这里只做一次乱序兜底与字段完整性检查。 */
+  static parseSnapshot(raw: Object, pairId: string, sinceVersion: number): CloudSnapshot | null {
+    let o: Record<string, Object>;
+    try {
+      const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      o = JSON.parse(text === '' ? '{}' : text) as Record<string, Object>;
+    } catch (e) {
+      throw new CloudApiError(CLOUD_MALFORMED, false, '快照回包无法解析');
+    }
+    const version = CloudGateway.numOf(o, 'version');
+    if (version <= sinceVersion) {
+      return null;
+    }
+    const ciphertext = CloudGateway.strOf(o, 'ciphertext');
+    const iv = CloudGateway.strOf(o, 'iv');
+    const authTag = CloudGateway.strOf(o, 'authTag');
+    if (ciphertext === '' || iv === '' || authTag === '') {
+      return null;
+    }
+    const snap: CloudSnapshot = {
+      pairId: CloudGateway.strOf(o, 'pairId') === '' ? pairId : CloudGateway.strOf(o, 'pairId'),
+      ownerUid: CloudGateway.strOf(o, 'ownerUid'),
+      version: version,
+      shareLevel: CloudGateway.numOf(o, 'shareLevel'),
+      schemaVersion: CloudGateway.numOf(o, 'schemaVersion'),
+      algorithm: CloudGateway.strOf(o, 'algorithm'),
+      iv: iv,
+      authTag: authTag,
+      ciphertext: ciphertext,
+      updatedAt: CloudGateway.numOf(o, 'updatedAt')
+    };
+    return snap;
+  }
+}
+
+/**
+ * 拉到的加密快照 → 引擎可用的对方忙碌区间。
+ *
+ * 密钥由 `PairKeyStore` 按 pairId 别名在 HUKS 内解密，本函数拿不到也不需要拿到密钥材料；
+ * AAD 用快照自带的明文元数据重算，所以"把 A 的密文搬到 B 名下"在这里就是 null。
+ * 解密或解码失败一律 null，调用方据此降级本机代录（不删对方数据、不进半同步态）。
+ * 快照产出时已并入对方缓冲，接收侧不再二次加缓冲。
+ */
+export async function partnerIntervalsFromSnapshot(snap: CloudSnapshot, pairId: string): Promise<Interval[] | null> {
+  const payload: EncryptedPayload = {
+    iv: snap.iv,
+    authTag: snap.authTag,
+    ciphertext: snap.ciphertext,
+    algorithm: snap.algorithm
+  };
+  const plain = await PairKeyStore.open(pairId, aadOfSnapshot(snap), payload);
+  if (plain === null) {
     return null;
   }
   const data = SnapshotCodec.decode(plain);
-  if (data == null) {
+  if (data === null) {
     return null;
   }
   return SnapshotCodec.toIntervals(data);
+}
+
+/**
+ * 快照 AAD 的唯一构造口径（协议 §5.1：`pairId|ownerUid|version|schemaVersion`）。
+ * 写侧在 ScheduleUseCase 里按自己的 pairId/uid/version 组同一串，读侧从信封明文元数据重组，
+ * 所以这个函数必须是导出的——两侧各写一份就会漂，一漂就是"永远解密失败"。
+ */
+export function aadOfSnapshot(snap: CloudSnapshot): string {
+  return SnapshotCrypto.aadOf(snap.pairId, snap.ownerUid, snap.version, snap.schemaVersion);
+}
+
+export function aadOf(pairId: string, ownerUid: string, version: number,
+  schemaVersion: number = SNAPSHOT_SCHEMA_VERSION): string {
+  return SnapshotCrypto.aadOf(pairId, ownerUid, version, schemaVersion);
 }

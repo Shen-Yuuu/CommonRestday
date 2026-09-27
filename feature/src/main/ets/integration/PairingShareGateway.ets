@@ -6,6 +6,7 @@ import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { Logger } from 'commons';
 import { PairLink, PairLinkKind, PairOffer } from 'domain';
 import { FeatureFlags } from '../config/FeatureFlags';
+import { ProfileSettingsService } from '../usecase/ProfileSettingsService';
 
 /**
  * 扫码 / 二维码 / 系统分享的设备侧门面（阶段 4 Task 4.1）。
@@ -13,8 +14,8 @@ import { FeatureFlags } from '../config/FeatureFlags';
  * 三条口径写在这里，页面不再各自判断：
  * 1. **先检测能力再摆入口**：`canIUse` 决定扫码/分享入口是否出现，没有扫码能力时短码就是主路径；
  * 2. **只认一次性 token**：二维码与分享链接的内容一律由 `PairLink` 生成/校验（6 位配对码不进链接）；
- * 3. **不自动绑定**：这个门面对扫到/收到的请求只做"收下 + 广播"，是否配对由用户在确认页点头，
- *    而门禁（Task 0.4 = `CLOUD_BLOCKED`）未解除时「接受」也只到此为止——不写配对标记、不写密钥。
+ * 3. **不自动绑定**：这个门面对扫到/收到的请求只做"收下 + 交给服务层确认"，是否配对由用户在确认页点头，
+ *    而配对状态与密钥一律由 `ProfileSettingsService` 与 HUKS 落地，网关自己不写。
  * 与 CalendarGateway 同一 doctrine：任何设备异常都归一成结果码，绝不向页面抛出去。
  */
 
@@ -215,15 +216,22 @@ export class PairingShareGateway {
 
   /**
    * 用户在确认页点「接受」后的唯一入口。
-   * Task 0.4 的结论是 CLOUD_BLOCKED：开关关着就到此为止，不写 pairId、不写密钥、不改配对状态。
-   * 门禁解除后这里接 pairing-confirm（见 docs/cloud/pairing-protocol-v1.md §4），仍由页面在用户点头后调用。
+   *
+   * 网关只做"消费这条一次性凭据"，写入全在 `ProfileSettingsService.confirmWithToken`：
+   * 扫到的链接内容是**加入方**经安全信道交回来的 confirmToken（协议 §4.3），
+   * 所以这一步是发起方侧的云端确认——确认通过才写 PAIRED，本机不再自行宣布配对成功。
+   * 关闭态到此为止：不写 pairId、不建 HUKS 别名、不改配对状态。
    */
   static async acceptOffer(): Promise<PairOpResult> {
-    PairingShareGateway.takeOffer();
+    const offer = PairingShareGateway.takeOffer();
     if (!FeatureFlags.cloudPairing) {
       return fail(PAIR_CLOUD_CLOSED);
     }
-    return fail('云端配对尚未接通：等待服务端确认（pairing-confirm 未部署）');
+    if (offer === null) {
+      return fail('这次配对请求已经失效，请让对方重新分享');
+    }
+    const res = await ProfileSettingsService.confirmWithToken(offer.token);
+    return res.ok ? ok(res.message) : fail(res.message);
   }
 
   /** 用户忽略这次请求：清干净即可，不提示成功。 */
@@ -246,7 +254,7 @@ function classify(text: string): ScanResult {
   if (res.kind === PairLinkKind.MALFORMED) {
     return scanFail(ScanOutcome.FAILED, '二维码内容不是有效的配对链接');
   }
-  return scanFail(ScanOutcome.FOREIGN, '这不是同休日的配对码');
+  return scanFail(ScanOutcome.FOREIGN, '这不是两人份的配对码');
 }
 
 function scanOffer(offer: PairOffer | null): ScanResult {

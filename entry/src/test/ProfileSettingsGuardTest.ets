@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { PAIRED, PAIR_NONE, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
-import { AgcPairingClient } from 'cloud';
+import { AgcPairingClient, PairKeyStore } from 'cloud';
 import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, FeatureFlags, PlanCapabilities,
   ProfileSettingsService, ReminderCapability, RemoveOutcome
@@ -14,8 +14,11 @@ import {
  *    pairId/pairState 就会在这一格里被写进本机，用例立刻响；
  * 2. 关闭态要求"一条云请求都不发"，所以断言的是同名计数器 `AgcPairingClient.calls` 为 0；
  * 3. 关闭态不许把本机数据一起关掉：等级、代录、解除配对、清空数据照常（改造文档 §0.1「开关只关能力，不关数据」）；
- * 4. 长期密钥不写 Preferences 是**结构性**的：写入 API 已从生产路径删掉，所以这里断言的
- *    是"读回来仍是空串"，而不是"开关关着所以没写"。
+ * 4. 长期密钥既不进 Preferences 也不进应用层：读/写密钥的 API 都不存在了，密钥只在 HUKS 别名里。
+ *    所以这一格断言的是**关闭态一次 HUKS 别名操作都不发生**（`PairKeyStore.calls`），
+ *    比旧版那句"读回来是空串"更硬——旧断言能证明没写过，证明不了后来谁建了钥匙。
+ *
+ * 解除配对与取消等待是例外：它们允许调 `dropPairKey`，因为那是撤销而不是建立能力。
  *
  * 每条用例自己先把设置摆成已知的形状（上一版原型配对过的残留态），因此与文件顺序无关。
  */
@@ -118,6 +121,7 @@ export default function profileSettingsGuardTest() {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, 'stale-partner');
       AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
 
       const res = await ProfileSettingsService.createInvite();
 
@@ -125,16 +129,18 @@ export default function profileSettingsGuardTest() {
       expect(res.code).assertEqual('');
       expect(res.message).assertEqual(CLOSED);
       expect(AgcPairingClient.calls).assertEqual(0);
+      // 关闭态连 HUKS 身份别名都不建：没有钥匙的配对态才是真的配对不了
+      expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairId()).assertEqual('stale-session');
       expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
       expect(SettingsStore.getPartnerUid()).assertEqual('stale-partner');
-      expect(await SettingsStore.getPairKey()).assertEqual('');
     });
 
     it('join_by_code_never_reaches_paired_when_cloud_is_closed', 0, async () => {
       await SettingsStore.savePairId('');
       await SettingsStore.setPairState(PAIR_NONE, '');
       AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
 
       const res = await ProfileSettingsService.joinByCode('246810');
       const junk = await ProfileSettingsService.joinByCode('abc');
@@ -145,6 +151,7 @@ export default function profileSettingsGuardTest() {
       expect(junk.ok).assertFalse();
       expect(junk.message).assertEqual(CLOSED);
       expect(AgcPairingClient.calls).assertEqual(0);
+      expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
     });
@@ -153,12 +160,15 @@ export default function profileSettingsGuardTest() {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, '');
       AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
 
       const res = await ProfileSettingsService.markPaired();
 
       // 「本机标记已配对」是纯本地写库，但它的语义是"已经在同步了"：关闭态一并拒绝。
       expect(res.ok).assertFalse();
       expect(res.message).assertEqual(CLOSED);
+      expect(AgcPairingClient.calls).assertEqual(0);
+      expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
     });
 

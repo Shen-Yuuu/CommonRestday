@@ -26,6 +26,12 @@ const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
+/**
+ * 对方已经用码加入、还等这一侧确认（协议 §8 的 PENDING_CONFIRM 在本机的投影）。
+ * 加入方停在这档：它已经能协商出密钥，但在发起方确认之前一条快照都不推——
+ * 少了这一档，加入方就会直接 PAIRED，界面上就是"已经在同步了"的谎（TC §9.5）。
+ */
+export const PAIR_PENDING = 'PENDING_CONFIRM';
 export const PAIRED = 'PAIRED';
 export const PAIR_ERROR = 'ERROR';
 
@@ -193,19 +199,13 @@ export class SettingsStore {
   }
 
   /**
-   * 快照加密密钥（32 字节 hex，64 字符）；没有就返回空串。
+   * 快照加密密钥（旧原型残留）。
    *
-   * **只读**：本应用不往 Preferences 写长期密钥（改造文档 §0.3 红线 + 阶段 6R.2）。
-   * 之前那个写入口 `savePairKey` 连同 `SnapshotCrypto.deriveKeyHex` 一起删掉了——它写进去的是
-   * "6 位邀请码 SHA-256"出来的密钥，熵只有 ~20 bit，而 Preferences 是明文可读的键值文件。
-   * 长期密钥的唯一容器是 HUKS（Task 0.4 尚未验证，所以云端配对保持关闭）。
-   * 这里保留读，是为了让读到残留值时快照链路仍要校验长度，也是为了把旧原型留下的那条清干净。
+   * **本应用没有读它的路径，也没有写它的路径**：长期密钥从阶段 3 起只活在 HUKS 别名里
+   * （`cloud` 的 `PairKeyStore`），Preferences 里连别名都不存——别名由 pairId 推出来，
+   * 存一份就会和 pairId 漂。留着这个 delete 只为了清理旧原型留下的 64 位 hex：
+   * 那条残留既解不开今天的信封，也不该一直躺在明文键值文件里。
    */
-  static async getPairKey(): Promise<string> {
-    return SettingsStore.p().getSync(KEY_PAIR_KEY, '') as string;
-  }
-
-  /** 清掉上一版原型可能留在沙箱里的密钥（解除配对、清空数据、恢复完成回调都用它）。 */
   static async clearPairKey(): Promise<void> {
     await SettingsStore.p().delete(KEY_PAIR_KEY);
     await SettingsStore.p().flush();

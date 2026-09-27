@@ -111,6 +111,16 @@ async function seedLegacyPairKey(value: string): Promise<void> {
 }
 
 /**
+ * 读回那份残留：生产侧的 `SettingsStore.getPairKey()` 已随 HUKS 托管改造删掉了
+ * （本应用不再有任何读密钥材料的路径），所以"确实落过盘 / 确实清掉了"这两条断言
+ * 改由测试自己经 Preferences 读。读的仍是上面 seed 写进去的那块存储，没有换成内存替身。
+ */
+async function readLegacyPairKey(): Promise<string> {
+  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
+  return prefs.getSync(LEGACY_PAIR_KEY, '') as string;
+}
+
+/**
  * 模拟"恢复后第一次冷启动"：重开库，让 Db.init 里的 MigrationRunner
  * 消费 sync_meta 上的待清理标记。不另起一套清理实现，验收的就是生产路径本身。
  */
@@ -264,14 +274,14 @@ export default function upgradeMigrationTest() {
       const hadState: string = SettingsStore.getPairState();
       const hadUid: string = SettingsStore.getPartnerUid();
       const hadVer: number = SettingsStore.getPartnerSnapVer();
-      const hadKey: string = await SettingsStore.getPairKey();
+      const hadKey: string = await readLegacyPairKey();
       try {
         await seedLegacyPairKey('not-a-real-huks-handle');
         await SettingsStore.savePairId('pair-from-the-old-device');
         await SettingsStore.setPairState(PAIRED, 'uid-of-the-old-partner');
         expect(SettingsStore.getPairState()).assertEqual(PAIRED);
         // 残留确实经过了真实的 Preferences 落盘，不是被读逻辑吞掉了
-        expect(await SettingsStore.getPairKey()).assertEqual('not-a-real-huks-handle');
+        expect(await readLegacyPairKey()).assertEqual('not-a-real-huks-handle');
 
         // 与 EntryBackupAbility.onRestore 同一组调用
         await SettingsStore.clearPairKey();
@@ -280,7 +290,7 @@ export default function upgradeMigrationTest() {
         await SettingsStore.setPairState(PAIR_NONE, '');
 
         expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
-        expect(await SettingsStore.getPairKey()).assertEqual('');
+        expect(await readLegacyPairKey()).assertEqual('');
         expect(SettingsStore.getPairId()).assertEqual('');
         expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
         expect(SettingsStore.getPartnerUid()).assertEqual('');

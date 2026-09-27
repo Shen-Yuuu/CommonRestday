@@ -1,8 +1,10 @@
 import { EngineParams, defaultParams, hhmmToMin, minToHHmm } from 'domain';
 import {
-  PAIRED, PAIR_NONE, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
+  PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
 } from 'data';
-import { AgcPairingClient, PairingSession } from 'cloud';
+import {
+  AgcPairingClient, CLOUD_LOCAL, CLOUD_NETWORK, CloudApiError, newRequestId, PairKeyStore, PairSession
+} from 'cloud';
 import { Logger } from 'commons';
 import { FeatureFlags } from '../config/FeatureFlags';
 import { ScheduleUseCase } from './ScheduleUseCase';
@@ -183,15 +185,15 @@ export class ProfileSettingsService {
     return ok('已保存，重启后仍保持');
   }
 
-  // ---------- 云端配对（阶段 6R.2：开关关闭时这里是真边界，不是"AGC 恰好没配"） ----------
+  // ---------- 云端配对（协议 v1 §8：UNPAIRED ─create→ WAITING ─join→ PENDING_CONFIRM ─confirm→ ACTIVE） ----------
 
   /**
-   * 配对相关的四个写动作共用这一句判断，且必须在**任何**副作用之前：
-   * 不生成/读回 uid、不发云函数、不写 pairId/pairKey/pairState。
+   * 配对相关的写动作共用这一句判断，且必须在**任何**副作用之前：
+   * 不生成/读回 uid、不在 HUKS 建身份密钥、不发云对象、不写 pairId/配对态。
    *
    * 为什么不能靠"AGC 未配置所以调用必然抛错"来保证：换机、复用证书或误关联云工程之后，
-   * 成功分支就会把 pairId 与配对态写进本机（验收报告 B1）。今天这条路径还多一重结构保险——
-   * 长期密钥的写入 API 已经从 SettingsStore 删掉了，翻开关也复现不出"短码派生密钥存 Preferences"。
+   * 成功分支就会把 pairId 与配对态写进本机（验收报告 B1）。这条路径另有一重结构保险——
+   * 长期密钥的写入 API 已经不存在了，密钥只在 HUKS 别名里，翻开关也复现不出"短码派生密钥存 Preferences"。
    */
   private static cloudBlocked(): boolean {
     return !FeatureFlags.cloudPairing;
@@ -205,7 +207,50 @@ export class ProfileSettingsService {
     }
   }
 
-  /** 生成邀请码（创建方）：稳定 uid → pairing-create → 存 pairId → WAITING。关闭态一条请求都不发。 */
+  /**
+   * 加入方拿到的一次性确认凭据，等 TA 把它交回发起方（分享/二维码）。
+   * 只活在进程内存：落 Preferences 就违反"一次性凭据不持久化"（门禁 §4 第 3 条），
+   * 而宿主必须是比页面长寿的静态位，否则用户切个 Tab 回来就分享不出去了。
+   */
+  private static outboundToken: string = '';
+
+  /** 页面组分享链接用（`PairLink.build(token, 0)`）；空串就是还没有可分享的东西。 */
+  static getOutboundToken(): string {
+    return ProfileSettingsService.outboundToken;
+  }
+
+  /**
+   * 云端失败的统一说法（协议 §3.4 收敛成 UI 能直接念的一句）。
+   * 语义码之外的异常一律按"暂时不可用"，不把 stack 抛给用户。
+   */
+  private static degradedMessage(e: Object): string {
+    const err = e as CloudApiError;
+    const semantic = err.name === 'CloudApiError' ? err.semantic : '';
+    if (semantic === CLOUD_LOCAL) {
+      return FeatureFlags.cloudClosedMessage;
+    }
+    if (semantic === CLOUD_NETWORK) {
+      return '网络不可达，稍后再试';
+    }
+    if (semantic === 'CODE_EXPIRED' || semantic === 'CODE_TAKEN') {
+      return '配对码已失效或已被使用，请让对方重新生成';
+    }
+    if (semantic === 'UNAUTHORIZED' || semantic === 'FORBIDDEN' || semantic === 'NOT_FOUND') {
+      return '这次配对已失效，请重新发起（本机数据不受影响）';
+    }
+    if (semantic === 'QUOTA_EXHAUSTED') {
+      return '今天的云同步次数已用完，明天自动恢复';
+    }
+    if (semantic === 'SCHEMA_UNSUPPORTED') {
+      return '云端版本与本应用不匹配，请更新后再试';
+    }
+    return '配对服务暂时不可用，请稍后再试';
+  }
+
+  /**
+   * 生成邀请码（发起方）：HUKS 身份密钥 → pairing-create（带公钥）→ 存 pairId → WAITING。
+   * 关闭态一条请求都不发、一个别名都不建。
+   */
   static async createInvite(): Promise<InviteResult> {
     if (ProfileSettingsService.cloudBlocked()) {
       const blocked: InviteResult = { ok: false, code: '', message: FeatureFlags.cloudClosedMessage };
@@ -213,19 +258,26 @@ export class ProfileSettingsService {
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
-      const session: PairingSession = await new AgcPairingClient().createPairing(uid);
-      await SettingsStore.savePairId(session.sessionId);
+      const publicKey = await PairKeyStore.ensureIdentity(uid);
+      const session: PairSession = await new AgcPairingClient().createPairing(uid, publicKey);
+      await SettingsStore.savePairId(session.pairId);
       await SettingsStore.setPairState(PAIR_WAITING, '');
+      ProfileSettingsService.outboundToken = '';
       const r: InviteResult = { ok: true, message: '配对码已生成，发给 TA 吧', code: session.code };
       return r;
     } catch (e) {
       Logger.warn(TAG, 'createPairing degraded: ' + (e as Error).message);
-      const r: InviteResult = { ok: false, code: '', message: FeatureFlags.cloudClosedMessage };
+      const r: InviteResult = { ok: false, code: '', message: ProfileSettingsService.degradedMessage(e) };
       return r;
     }
   }
 
-  /** 输码加入（加入方）：关闭态直接拒；开启后配对码无效/云端未开通统一失败提示，页面只 toast。 */
+  /**
+   * 输码加入（加入方）：pairing-join → **就地完成 ECDH 协商** → 存 pairId → PENDING_CONFIRM。
+   *
+   * 加入后不得立即视为已配对，也不得推任何快照（协议 §4.2）：本机停在 PENDING_CONFIRM，
+   * 直到发起方带着这条 confirmToken 走完 §4.3。token 交回发起方靠分享/扫码，本应用不代发。
+   */
   static async joinByCode(codeText: string): Promise<SettingsResult> {
     if (ProfileSettingsService.cloudBlocked()) {
       return fail(FeatureFlags.cloudClosedMessage);
@@ -236,67 +288,141 @@ export class ProfileSettingsService {
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
-      const session: PairingSession = await new AgcPairingClient().joinPairing(code, uid);
-      await SettingsStore.savePairId(session.sessionId);
-      await SettingsStore.setPairState(PAIRED, '');
+      const publicKey = await PairKeyStore.ensureIdentity(uid);
+      const session: PairSession = await new AgcPairingClient().joinPairing(code, uid, publicKey);
+      // 协商失败就是没有钥匙：宁可不写 pairId，也不留下一个"显示已配对但永远同步不动"的态
+      if (session.peerPublicKey === '') {
+        return fail('对方密钥未就绪，请让对方重新生成配对码');
+      }
+      await PairKeyStore.agreeKey(uid, session.pairId, session.peerPublicKey);
+      await SettingsStore.savePairId(session.pairId);
+      await SettingsStore.setPairState(PAIR_PENDING, session.peerUid);
+      ProfileSettingsService.outboundToken = session.confirmToken;
     } catch (e) {
       Logger.warn(TAG, 'joinPairing degraded: ' + (e as Error).message);
-      return fail('加入失败：云端配对暂未开放或配对码无效');
+      return fail(ProfileSettingsService.degradedMessage(e));
     }
-    ScheduleUseCase.onScheduleChanged().catch(() => {
-    });
-    return ok('配对成功，班表将按隐私等级加密同步');
+    if (ProfileSettingsService.outboundToken === '') {
+      return ok('已加入，但这次没有拿到确认凭据：请让对方用配对码重新发起');
+    }
+    return ok('已加入，把配对链接发给 TA 确认后才会开始同步');
   }
 
   /**
-   * 创建方确认完成配对：只在云端真的接通后才有意义。
-   * 关闭态必须拒——写进库的 PAIRED 在界面上就是"正在同步"那句谎（TC §9.5 的偏离口径）。
+   * 发起方确认（协议 §4.3）：只有在云端真的把会话转成 ACTIVE 之后才写 PAIRED。
+   * 协商双方各算一次：发起方在这里用加入方的公钥算出与对方同一个密钥。
+   */
+  static async confirmWithToken(confirmToken: string): Promise<SettingsResult> {
+    if (ProfileSettingsService.cloudBlocked()) {
+      return fail(FeatureFlags.cloudClosedMessage);
+    }
+    const pairId = SettingsStore.getPairId();
+    if (pairId === '' || confirmToken === '') {
+      return fail('没有待确认的配对请求');
+    }
+    try {
+      const uid = await SettingsStore.getOrCreateUid();
+      const session: PairSession = await new AgcPairingClient().confirmPairing(pairId, uid, confirmToken);
+      if (session.status !== 'ACTIVE') {
+        return fail('云端还没有确认这次配对，请稍后重试');
+      }
+      if (session.peerPublicKey === '') {
+        return fail('对方密钥未就绪，请重新发起配对');
+      }
+      await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
+      await SettingsStore.setPairState(PAIRED, session.peerUid);
+      ProfileSettingsService.outboundToken = '';
+      ScheduleUseCase.onScheduleChanged().catch(() => {
+      });
+      return ok('配对完成，班表将按隐私等级加密同步');
+    } catch (e) {
+      Logger.warn(TAG, 'confirmPairing degraded: ' + (e as Error).message);
+      return fail(ProfileSettingsService.degradedMessage(e));
+    }
+  }
+
+  /**
+   * 「完成配对」按钮：现在只做**对账**，不再直接置 PAIRED。
+   *
+   * 原版这条是协议 §8 明令修掉的偏离——本地写 PAIRED 而云端仍是 WAITING，界面上就是"正在同步"那句谎。
+   * 以 pairing-status 为准：云端 ACTIVE 才转 PAIRED（并补上缺席的协商），其余状态照实回落本机配对态。
    */
   static async markPaired(): Promise<SettingsResult> {
     if (ProfileSettingsService.cloudBlocked()) {
       return fail(FeatureFlags.cloudClosedMessage);
     }
-    try {
-      await SettingsStore.setPairState(PAIRED, '');
-    } catch (e) {
-      return fail('操作失败：' + (e as Error).message);
+    const pairId = SettingsStore.getPairId();
+    if (pairId === '') {
+      return fail('还没有配对会话，先生成配对码');
     }
-    ScheduleUseCase.onScheduleChanged().catch(() => {
-    });
-    return ok('已进入配对模式，班表变更将加密同步');
+    try {
+      const uid = await SettingsStore.getOrCreateUid();
+      const session: PairSession = await new AgcPairingClient().pairStatus(pairId, uid);
+      if (session.status === 'ACTIVE') {
+        if (!await PairKeyStore.hasPairKey(pairId)) {
+          if (session.peerPublicKey === '') {
+            return fail('对方密钥未就绪，请重新发起配对');
+          }
+          await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
+        }
+        await SettingsStore.setPairState(PAIRED, session.peerUid);
+        ScheduleUseCase.onScheduleChanged().catch(() => {
+        });
+        return ok('已连接云端，班表将按隐私等级加密同步');
+      }
+      if (session.status === 'PENDING_CONFIRM') {
+        await SettingsStore.setPairState(PAIR_PENDING, session.peerUid);
+        return ok('等 TA 确认：把配对链接发给对方，确认后自动开始同步');
+      }
+      // WAITING / EXPIRED / REVOKED / 未知：本机跟着回落，不替云端谎报进度
+      await SettingsStore.setPairState(session.status === 'WAITING' ? PAIR_WAITING : PAIR_NONE, '');
+      return fail(session.status === 'WAITING' ? '对方还没有输入配对码' : '这次配对已失效，请重新发起');
+    } catch (e) {
+      Logger.warn(TAG, 'pairStatus degraded: ' + (e as Error).message);
+      return fail(ProfileSettingsService.degradedMessage(e));
+    }
   }
 
-  /** 取消等待中的配对：只清配对标记，不动本机代录数据。 */
+  /** 取消等待中的配对：只清配对标记与别名，不动本机代录数据。 */
   static async cancelWaiting(): Promise<void> {
     try {
-      await SettingsStore.savePairId('');
-      await SettingsStore.clearPairKey();
-      await SettingsStore.setPartnerSnapVer(0);
-      await SettingsStore.setPairState(PAIR_NONE, '');
+      await ProfileSettingsService.forgetPair();
     } catch (e) {
       Logger.warn(TAG, 'cancelWaiting degraded: ' + (e as Error).message);
     }
   }
 
   /**
-   * 解除配对：本地配对标记/密钥残留/对方快照游标一律清干净；云端解绑只在开关打开时才发。
+   * 本机配对痕迹的一次性清理：pairId、对方快照游标、HUKS 协商别名、内存里的确认凭据。
+   * 身份别名（`crd-id-<uid>`）留着——它是这台设备的长期身份，下一轮配对还要用同一把公钥。
+   */
+  private static async forgetPair(): Promise<void> {
+    ScheduleUseCase.cancelMergedSync();
+    await PairKeyStore.dropPairKey(SettingsStore.getPairId());
+    await SettingsStore.savePairId('');
+    await SettingsStore.clearPairKey();
+    await SettingsStore.setPartnerSnapVer(0);
+    await SettingsStore.setPairState(PAIR_NONE, '');
+    ProfileSettingsService.outboundToken = '';
+  }
+
+  /**
+   * 解除配对：云侧级联删快照 + 本机配对标记/协商密钥/对方快照游标一律清干净。
    *
-   * 注意这条**不受关闭态拒绝**：上一版原型可能在本机留下 PAIRED 与 pair_key，而云入口已经藏起来了，
+   * 注意这条**不受关闭态拒绝**：上一版原型可能在本机留下 PAIRED 与残留密钥，而云入口已经藏起来了，
    * 用户必须还能亲手撤掉这些标记，否则界面会一直挂着"已配对"。「开关只关能力，不关数据」。
    */
   static async unpair(): Promise<SettingsResult> {
     try {
       if (FeatureFlags.cloudPairing) {
         try {
-          await new AgcPairingClient().unpair(SettingsStore.getPairId(), await SettingsStore.getOrCreateUid());
+          await new AgcPairingClient().unpair(SettingsStore.getPairId(),
+            await SettingsStore.getOrCreateUid(), newRequestId());
         } catch (e) {
           Logger.warn(TAG, 'unpair cloud degraded: ' + (e as Error).message);
         }
       }
-      await SettingsStore.savePairId('');
-      await SettingsStore.clearPairKey();
-      await SettingsStore.setPartnerSnapVer(0);
-      await SettingsStore.setPairState(PAIR_NONE, '');
+      await ProfileSettingsService.forgetPair();
     } catch (e) {
       return fail('操作失败：' + (e as Error).message);
     }
@@ -330,6 +456,8 @@ export class ProfileSettingsService {
     }
     try {
       const privacyWas = SettingsStore.isPrivacyAccepted();
+      // 协商密钥要跟着一起毁：pairId 随 Preferences 清掉之后，HUKS 里那把别名就成了没人认领的钥匙
+      await PairKeyStore.dropPairKey(SettingsStore.getPairId());
       await ScheduleRepo.clearAllData();
       await SettingsStore.clearAllSettings();
       if (privacyWas) {

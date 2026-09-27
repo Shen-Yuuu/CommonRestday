@@ -7,7 +7,9 @@ import {
   withKeepCarried
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
-import { AgcSnapshotSync, SnapshotCrypto, partnerIntervalsFromSnapshot } from 'cloud';
+import {
+  aadOf, AgcSnapshotSync, newRequestId, PairKeyStore, partnerIntervalsFromSnapshot, SNAPSHOT_SCHEMA_VERSION
+} from 'cloud';
 import { FeatureFlags } from '../config/FeatureFlags';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { AppConst, Logger } from 'commons';
@@ -62,8 +64,14 @@ export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
  */
 export const CLOCK_TICK_KEY = 'crdClockTick';
 
+/** 合并同步窗口（协议 §7）：同一窗口内的多次触发只推送一次最新版本。 */
+const SYNC_MERGE_WINDOW_MS = 5000;
+
 /** 班表用例层：仓库 → 领域引擎 的装配与编排。 */
 export class ScheduleUseCase {
+  /** 挂起中的合并同步定时器 id；-1 = 没有排在路上的推送。 */
+  private static syncTimer: number = -1;
+
   /** 首次使用时写入内置班次类型（按 owner 维度各自种子一份，双侧体验一致）。 */
   static async ensureSeeded(owner: string = OWNER_ME): Promise<void> {
     const existing = await ScheduleRepo.listShiftTypes(owner);
@@ -71,12 +79,12 @@ export class ScheduleUseCase {
       return;
     }
     const seeds: ShiftType[] = [
-      ScheduleUseCase.mkType('day', '白班', '#E8833A', 540, 1080, false, 30, 30, 0),
-      ScheduleUseCase.mkType('early', '早班', '#3AA6E8', 420, 900, false, 30, 30, 0),
-      ScheduleUseCase.mkType('mid', '中班', '#8A63D2', 660, 1140, false, 20, 20, 0),
-      ScheduleUseCase.mkType('late', '晚班', '#D24A7E', 900, 1380, false, 20, 30, 0),
-      ScheduleUseCase.mkType('night', '夜班', '#2B4C9B', 1350, 480, true, 20, 40, 360),
-      ScheduleUseCase.mkType('train', '培训', '#4E9A63', 540, 720, false, 20, 20, 0)
+      ScheduleUseCase.mkType('day', '白班', '#EF6F42', 540, 1080, false, 30, 30, 0),
+      ScheduleUseCase.mkType('early', '早班', '#4E97DB', 420, 900, false, 30, 30, 0),
+      ScheduleUseCase.mkType('mid', '中班', '#9A6BDC', 660, 1140, false, 20, 20, 0),
+      ScheduleUseCase.mkType('late', '晚班', '#F0568C', 900, 1380, false, 20, 30, 0),
+      ScheduleUseCase.mkType('night', '夜班', '#5B6ACF', 1350, 480, true, 20, 40, 360),
+      ScheduleUseCase.mkType('train', '培训', '#3A9E6E', 540, 720, false, 20, 20, 0)
     ];
     for (let i = 0; i < seeds.length; i++) {
       // owner 必须透传：否则伴侣侧首次进入会把种子写入 ME 侧，反复覆写"我"的同 id 班次类型
@@ -212,8 +220,11 @@ export class ScheduleUseCase {
   }
 
   /**
-   * 拉取并解密对方快照（AGC 就绪后生效）：
-   * 开关关闭 / 未配对 / 密钥缺失 / 云端不可用 / 解密或解码失败一律返回 null（调用方降级本机代录），不抛异常。
+   * 拉取并解密对方快照：
+   * 开关关闭 / 未配对 / HUKS 里没有本配对的协商密钥 / 云端不可用 / 解密或解码失败一律返回 null
+   * （调用方降级本机代录），不抛异常。
+   *
+   * "没有协商密钥"是换机与卸载后的常态，不是错误：它意味着必须重新配对，重试没有意义。
    */
   static async pullPartnerSnapshot(): Promise<PartnerBusyResult | null> {
     // 关闭态第一道：一条云请求都不发（阶段 6R.2）。档位在 source 里，编译期就翻不出来。
@@ -222,17 +233,15 @@ export class ScheduleUseCase {
     }
     try {
       const pairId = SettingsStore.getPairId();
-      // 只读：本应用已不往 Preferences 写长期密钥（阶段 6R.2），读不到密钥就是没钥匙——快照链路自然停住。
-      const keyHex = await SettingsStore.getPairKey();
-      if (pairId === '' || keyHex === '') {
+      if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
         return null;
       }
       const sync = new AgcSnapshotSync();
-      const snap = await sync.pullSnapshot(pairId, SettingsStore.getPartnerSnapVer());
+      const snap = await sync.getSnapshot(pairId, SettingsStore.getPartnerSnapVer());
       if (snap == null) {
         return null;
       }
-      const ivs = partnerIntervalsFromSnapshot(snap, keyHex);
+      const ivs = await partnerIntervalsFromSnapshot(snap, pairId);
       if (ivs == null) {
         Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
         return null;
@@ -249,7 +258,7 @@ export class ScheduleUseCase {
       };
       return r;
     } catch (e) {
-      // CloudApiError(1001/1002) 等：云端路径不可用，静默降级本机代录
+      // CloudApiError（网络/配额/服务端语义码）等：云端路径不可用，静默降级本机代录
       Logger.warn('ScheduleUseCase', 'pull snapshot degraded: ' + (e as Error).message);
       return null;
     }
@@ -257,7 +266,7 @@ export class ScheduleUseCase {
 
   /**
    * 构建并加密推送我的快照（我的 shareLevel + 单调递增版本）。
-   * 全链路 try-catch：开关关闭/未配对/AGC 未就绪/加密失败均静默返回 false，绝不影响本机主流程。
+   * 全链路 try-catch：开关关闭/未配对/HUKS 无密钥/AGC 未就绪/加密失败均静默返回 false，绝不影响本机主流程。
    */
   static async pushMySnapshot(startEpochDay: number): Promise<boolean> {
     if (!FeatureFlags.cloudPairing) {
@@ -265,19 +274,21 @@ export class ScheduleUseCase {
     }
     try {
       const pairId = SettingsStore.getPairId();
-      const keyHex = await SettingsStore.getPairKey();
-      if (pairId === '' || keyHex === '') {
+      if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
         return false;
       }
+      const uid = await SettingsStore.getOrCreateUid();
       const params = SettingsStoreParams();
       const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
       const shareLevel = SettingsStore.getShareLevel();
       const version = await SettingsStore.nextSnapshotVersion();
       const data = SnapshotBuilder.build(my, params, startEpochDay, shareLevel, version);
-      const payload = SnapshotCrypto.encryptWithKey(keyHex, SnapshotCodec.encode(data));
-      const sync = new AgcSnapshotSync();
-      await sync.pushSnapshot(pairId, version, shareLevel, payload);
-      Logger.info('ScheduleUseCase', 'snapshot pushed v' + version + ' level=' + shareLevel);
+      // 密文在 HUKS 内产出，端上任何一处都不曾持有密钥；AAD 绑住"这条快照属于这个配对+这个 uid+这个版本"
+      const payload = await PairKeyStore.seal(pairId,
+        aadOf(pairId, uid, version, SNAPSHOT_SCHEMA_VERSION), SnapshotCodec.encode(data));
+      const stored = await new AgcSnapshotSync().putSnapshot(pairId, uid, version, shareLevel, payload, newRequestId());
+      Logger.info('ScheduleUseCase', 'snapshot pushed v' + version + ' level=' + shareLevel
+        + ' stored=' + stored);
       return true;
     } catch (e) {
       Logger.warn('ScheduleUseCase', 'push snapshot degraded: ' + (e as Error).message);
@@ -405,16 +416,42 @@ export class ScheduleUseCase {
   }
 
   /**
-   * UI 保存动作后的统一事件入口：重算 + AppStorage 重算计数广播。
+   * UI 保存动作后的统一事件入口：重算 + AppStorage 重算计数广播 + 排一次合并同步。
    * 页面通过 AppStorage 监听 recomputeCount 变化刷新（毫秒级同步计算，无需发布订阅）。
-   * 已配对时尽力推送我的加密快照（fire-and-forget，内部全捕获不产生未处理拒绝）。
    */
   static async onScheduleChanged(): Promise<void> {
     await ScheduleUseCase.recompute(todayEpochDay());
     const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
     AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
-    if (SettingsStore.getPairState() === PAIRED) {
-      ScheduleUseCase.pushMySnapshot(todayEpochDay());
+    ScheduleUseCase.scheduleMergedSync();
+  }
+
+  /**
+   * 排一次"合并同步"（协议 §7 触发时机表）：同一 5 秒窗口内的多次触发只推送一次。
+   *
+   * 合并掉的只是重复调用，不是内容——到点时 `pushMySnapshot` 读的是**当时**的最新班表，
+   * 所以用户连改三次班表只花掉一次云配额，推出去的那份仍包含全部三次。
+   * 关闭态与未配对（含 PENDING_CONFIRM）一个定时器都不建：触发点可以随便调，档位在这里收口。
+   */
+  static scheduleMergedSync(): void {
+    if (!FeatureFlags.cloudPairing || SettingsStore.getPairState() !== PAIRED) {
+      return;
+    }
+    if (ScheduleUseCase.syncTimer >= 0) {
+      return;
+    }
+    ScheduleUseCase.syncTimer = setTimeout(() => {
+      ScheduleUseCase.syncTimer = -1;
+      ScheduleUseCase.pushMySnapshot(todayEpochDay()).catch(() => {
+      });
+    }, SYNC_MERGE_WINDOW_MS);
+  }
+
+  /** 撤掉挂起中的合并同步：解除配对后不该再有一次推送排在路上。 */
+  static cancelMergedSync(): void {
+    if (ScheduleUseCase.syncTimer >= 0) {
+      clearTimeout(ScheduleUseCase.syncTimer);
+      ScheduleUseCase.syncTimer = -1;
     }
   }
 

@@ -1,164 +1,79 @@
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
-import { buffer } from '@kit.ArkTS';
+import { util } from '@kit.ArkTS';
 
 /**
- * AES-256-GCM 快照加解密（cloud 层职责；domain 保持零 Kit 依赖）。
+ * 快照信封与字节编码（cloud 层职责；domain 保持零 Kit 依赖）。
  *
- * 传输格式约定：
- * - ciphertext = hex(密文 + 16 字节 authTag 拼接)；
- * - iv = hex(12 字节随机 IV)；
- * - 密钥为 64 位 hex（32 字节），由调用方交给这里；**本模块不派生、不保存密钥**。
- *   阶段 6R.2 删掉了原先的 `deriveKeyHex(邀请码)`：6 位数字只有约 20 bit 熵，
- *   而它当时被明文写进 Preferences，两个条件加起来就不成密钥了。长期容器的唯一候选是 HUKS
- *   （Task 0.4 门禁未过 → 云端配对保持关闭）。
+ * 协议 v1 §5.1 的存储单元：`iv` / `authTag` / `ciphertext` 各自独立成字段、统一 base64。
+ * 旧原型把 16 字节 authTag 拼在密文尾部、整体转 hex，靠"末 16 字节"的隐式约定切分——
+ * 那种形态一旦有一侧记错约定就解出乱码而不是明确失败，所以这里显式拆开。
+ *
+ * 本模块**不做加解密**：密钥材料从阶段 3 起只活在 HUKS 里（`PairKeyStore`），
+ * 应用侧拿不到密钥，因此也不存在 `encryptWithKey(keyHex, …)` 这种入口。
  */
 
-/** 加密产物（hex 字符串）。 */
+/** 加密产物（base64）。`iv` 是 12 字节 GCM nonce。 */
 export interface EncryptedPayload {
-  ciphertext: string;
   iv: string;
+  authTag: string;
+  ciphertext: string;
+  algorithm: string;
 }
 
-const AAD_TEXT = 'crd-v1';
-const TAG_LEN = 16;
+export const ALG_AES_256_GCM = 'AES-256-GCM';
+/** 信封与 AAD 里的协议版本；改协议必须同步升它（docs/cloud/pairing-protocol-v1.md §5.1）。 */
+export const SNAPSHOT_SCHEMA_VERSION = 1;
 const IV_LEN = 12;
-const KEY_HEX_LEN = 64;
+const TAG_LEN = 16;
+
+const B64 = new util.Base64Helper();
 
 export class SnapshotCrypto {
   /**
-   * 加密明文。密钥 hex 非法时抛异常，调用方捕获后降级。
-   * GCM 特性：update 返回密文，doFinal(null) 返回 authTag。
+   * AAD = `pairId|ownerUid|version|schemaVersion`（UTF-8）。
+   *
+   * 把上下文绑进 AAD 之后，"把 A 的密文搬到 B 名下"或"拿旧版本冒充新版本"都会直接解密失败；
+   * 固定常量 `'crd-v1'` 那种写法给不出这个保证。设备实测依据见 `PairKeyStore` 顶部注释。
    */
-  static encryptWithKey(keyHex: string, plain: string): EncryptedPayload {
-    const key = SnapshotCrypto.keyOf(keyHex);
-    const ivBytes = cryptoFramework.createRandom().generateRandomSync(IV_LEN).data;
-    const ivBlob: cryptoFramework.DataBlob = { data: ivBytes };
-    const aadBlob: cryptoFramework.DataBlob = { data: SnapshotCrypto.bytesOf(AAD_TEXT) };
-    const gcmParams: cryptoFramework.GcmParamsSpec = {
-      iv: ivBlob,
-      aad: aadBlob,
-      authTag: { data: new Uint8Array(TAG_LEN) },
-      algName: 'GcmParamsSpec'
-    };
-    const cipher = cryptoFramework.createCipher('AES256|GCM');
-    cipher.initSync(cryptoFramework.CryptoMode.ENCRYPT_MODE, key, gcmParams);
-    const plainBlob: cryptoFramework.DataBlob = { data: SnapshotCrypto.bytesOf(plain) };
-    const cipherOut = cipher.updateSync(plainBlob);
-    const tagOut = cipher.doFinalSync(null);
-    if (cipherOut == null || tagOut == null) {
-      throw new Error('GCM encrypt produced empty output');
-    }
-    const merged = new Uint8Array(cipherOut.data.length + tagOut.data.length);
-    merged.set(cipherOut.data, 0);
-    merged.set(tagOut.data, cipherOut.data.length);
-    const payload: EncryptedPayload = {
-      ciphertext: SnapshotCrypto.toHex(merged),
-      iv: SnapshotCrypto.toHex(ivBytes)
-    };
-    return payload;
+  static aadOf(pairId: string, ownerUid: string, version: number, schemaVersion: number): string {
+    return pairId + '|' + ownerUid + '|' + version + '|' + schemaVersion;
   }
 
-  /** 解密；密钥失配/authTag 校验失败/格式非法一律返回 null（调用方据此降级本机代录）。 */
-  static decryptWithKey(keyHex: string, payload: EncryptedPayload): string | null {
+  /** 每次操作新生成的 12 字节随机 nonce（GCM 下 nonce 重用等于失去机密性）。 */
+  static randomIv(): Uint8Array {
+    return cryptoFramework.createRandom().generateRandomSync(IV_LEN).data;
+  }
+
+  static toB64(bytes: Uint8Array): string {
+    return B64.encodeToStringSync(bytes);
+  }
+
+  /** 非法 base64 抛异常：调用方都在 try 里，"格式坏了"必须表现为失败而不是解出垃圾。 */
+  static fromB64(text: string): Uint8Array {
+    return B64.decodeSync(text);
+  }
+
+  static encodeText(text: string): Uint8Array {
+    return new util.TextEncoder().encodeInto(text);
+  }
+
+  static decodeText(bytes: Uint8Array): string {
+    return util.TextDecoder.create('utf-8').decodeToString(bytes);
+  }
+
+  /** 信封字段形态自检：长度不对就直接判失败，不进密码学调用。 */
+  static isWellFormed(payload: EncryptedPayload): boolean {
     try {
-      const cipherBytes = SnapshotCrypto.fromHex(payload.ciphertext);
-      const ivBytes = SnapshotCrypto.fromHex(payload.iv);
-      if (cipherBytes.length < TAG_LEN || ivBytes.length !== IV_LEN) {
-        return null;
-      }
-      const bodyBytes = cipherBytes.subarray(0, cipherBytes.length - TAG_LEN);
-      const tagBytes = new Uint8Array(cipherBytes.subarray(cipherBytes.length - TAG_LEN));
-      const key = SnapshotCrypto.keyOf(keyHex);
-      const gcmParams: cryptoFramework.GcmParamsSpec = {
-        iv: { data: ivBytes },
-        aad: { data: SnapshotCrypto.bytesOf(AAD_TEXT) },
-        authTag: { data: tagBytes },
-        algName: 'GcmParamsSpec'
-      };
-      const decoder = cryptoFramework.createCipher('AES256|GCM');
-      decoder.initSync(cryptoFramework.CryptoMode.DECRYPT_MODE, key, gcmParams);
-      const bodyBlob: cryptoFramework.DataBlob = { data: bodyBytes };
-      const plainOut = decoder.updateSync(bodyBlob);
-      // GCM 特性：doFinal(null) 校验 init 时传入的 authTag，失败抛异常
-      decoder.doFinalSync(null);
-      if (plainOut == null) {
-        return null;
-      }
-      return buffer.from(plainOut.data).toString('utf-8');
+      return SnapshotCrypto.fromB64(payload.iv).length === IV_LEN
+        && SnapshotCrypto.fromB64(payload.authTag).length === TAG_LEN
+        && SnapshotCrypto.fromB64(payload.ciphertext).length > 0;
     } catch (e) {
-      return null;
+      return false;
     }
   }
 
-  /** 密码学安全随机整数 [0, max)；crypto 随机源异常时退化为 Math.random（仅用于演示邀请码，不用于密钥/IV）。 */
-  static randomInt(max: number): number {
-    try {
-      const rand = cryptoFramework.createRandom().generateRandomSync(4);
-      let v = 0;
-      for (let i = 0; i < rand.data.length; i++) {
-        v = (v * 256 + rand.data[i]) % max;
-      }
-      return v;
-    } catch (e) {
-      return Math.floor(Math.random() * max);
-    }
-  }
-
-  private static keyOf(keyHex: string): cryptoFramework.SymKey {
-    if (keyHex.length !== KEY_HEX_LEN) {
-      throw new Error('AES-256 key hex must be 64 chars');
-    }
-    const keyBytes = SnapshotCrypto.fromHex(keyHex);
-    const blob: cryptoFramework.DataBlob = { data: keyBytes };
-    const generator = cryptoFramework.createSymKeyGenerator('AES256');
-    return generator.convertKeySync(blob);
-  }
-
-  private static bytesOf(text: string): Uint8Array {
-    return new Uint8Array(buffer.from(text, 'utf-8').buffer);
-  }
-
-  private static toHex(bytes: Uint8Array): string {
-    let out = '';
-    for (let i = 0; i < bytes.length; i++) {
-      const v = bytes[i];
-      out += SnapshotCrypto.hexChar(v >> 4);
-      out += SnapshotCrypto.hexChar(v & 0x0F);
-    }
-    return out;
-  }
-
-  private static fromHex(hex: string): Uint8Array {
-    const out = new Uint8Array(Math.floor(hex.length / 2));
-    for (let i = 0; i + 1 < hex.length; i += 2) {
-      const hi = SnapshotCrypto.hexVal(hex.charAt(i));
-      const lo = SnapshotCrypto.hexVal(hex.charAt(i + 1));
-      if (hi < 0 || lo < 0) {
-        throw new Error('invalid hex string');
-      }
-      out[Math.floor(i / 2)] = hi * 16 + lo;
-    }
-    return out;
-  }
-
-  private static hexChar(v: number): string {
-    if (v < 10) {
-      return String.fromCharCode(48 + v);
-    }
-    return String.fromCharCode(87 + v);
-  }
-
-  private static hexVal(c: string): number {
-    const code = c.charCodeAt(0);
-    if (code >= 48 && code <= 57) {
-      return code - 48;
-    }
-    if (code >= 97 && code <= 102) {
-      return code - 87;
-    }
-    if (code >= 65 && code <= 70) {
-      return code - 55;
-    }
-    return -1;
+  /** 供 PairKeyStore 切分 HUKS 返回值用：密文 ‖ tag，tag 占末尾 16 字节。 */
+  static tagLen(): number {
+    return TAG_LEN;
   }
 }

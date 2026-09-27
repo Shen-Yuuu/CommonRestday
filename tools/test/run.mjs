@@ -132,6 +132,9 @@ export class ScheduleUseCase {
     const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
     AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
   }
+  /** 离线没有云层，合并同步的两个动作都只是空转：存在性为了签名对齐，行为由设备用例覆盖。 */
+  static scheduleMergedSync(): void {}
+  static cancelMergedSync(): void {}
   static defaultSectionTimes(): SectionTime[] {
     return [{ startMin: 480, endMin: 525 }];
   }
@@ -197,6 +200,7 @@ import { Course, defaultParams, EngineParams, ScheduleOverride, ShiftType, Windo
 export const PAIRED = 'PAIRED';
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
+export const PAIR_PENDING = 'PENDING_CONFIRM';
 
 export interface PlanRow {
   start: number; end: number; id: string; title: string; kind: string; status: string;
@@ -333,10 +337,7 @@ export class SettingsStore {
   static async savePairId(pairId: string): Promise<void> {
     settingsRows.set('pair_id', pairId);
   }
-  /** 只读：长期密钥不再由本应用写入（阶段 6R.2），读到的恒是空串或上一版原型留下的残留。 */
-  static async getPairKey(): Promise<string> {
-    return settingOf('pair_key', '') as string;
-  }
+  /** 只清理，不读取：密钥材料的读写口都在 HUKS（cloud/PairKeyStore），本应用侧不存在读密钥的 API。 */
   static async clearPairKey(): Promise<void> {
     settingsRows.delete('pair_key');
   }
@@ -379,42 +380,109 @@ export class SettingsStore {
 `;
 
 /**
- * 云客户端的离线桩：设备侧那份 import @kit.CloudFoundationKit，不参与转译。
+ * 云客户端的离线桩：设备侧那份 import @kit.CloudFoundationKit 与 @ohos.security.huks，不参与转译。
  * 关键差别：桩**必定成功**（返回一个会话），而真机上 AGC 未配置时 `cloudFunction.call` 必定抛错。
  * 只有"云端被误配置成功"这一格才能暴露缺失的开关守卫——少一次判断，pairId/pairState 就会被写进本机，
  * 这正是验收报告 B1 的原始风险。`calls` 与设备侧同名，用来断言关闭态一条请求都没发。
+ *
+ * `PairKeyStore` 同样带 `calls`：关闭态不仅不许发云请求，也不许在 HUKS 里建任何别名。
+ * 桩里刻意**没有任何返回密钥材料的函数**（生产签名里也没有），所以"密钥泄漏到应用层"
+ * 这类断言在结构上不成立，只能断言调用次数为 0。
  */
 const STUB_CLOUD = `
-export interface PairingSession {
-  sessionId: string;
-  code: string;
-  creatorUid: string;
+export interface PairSession {
+  pairId: string;
   status: string;
+  code: string;
+  peerUid: string;
+  peerPublicKey: string;
+  confirmToken: string;
   expiresAt: number;
+  serverTime: number;
+}
+
+export class CloudApiError extends Error {
+  readonly semantic: string;
+  readonly retryable: boolean;
+
+  constructor(semantic: string, retryable: boolean, message: string) {
+    super(message);
+    this.name = 'CloudApiError';
+    this.semantic = semantic;
+    this.retryable = retryable;
+  }
+}
+
+export const CLOUD_LOCAL = 'LOCAL';
+export const CLOUD_NETWORK = 'NETWORK';
+
+export function newRequestId(): string {
+  return 'request-offline';
 }
 
 export class AgcPairingClient {
-  /** 云函数调用计数（设备侧同名字段）：关闭态的断言就打这里。 */
+  /** 云对象调用计数（设备侧同名字段）：关闭态的断言就打这里。 */
   static calls: number = 0;
 
-  async createPairing(uid: string): Promise<PairingSession> {
+  async createPairing(uid: string, publicKey: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
-    return mkSession('session-from-the-cloud', '246810', uid);
+    return mkSession('WAITING', uid);
   }
 
-  async joinPairing(code: string, uid: string): Promise<PairingSession> {
+  async joinPairing(code: string, uid: string, publicKey: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
-    return mkSession('session-from-the-cloud', code, uid);
+    return mkSession('PENDING_CONFIRM', uid);
   }
 
-  async unpair(pairId: string, uid: string): Promise<void> {
+  async confirmPairing(pairId: string, uid: string, confirmToken: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return mkSession('ACTIVE', uid);
+  }
+
+  async pairStatus(pairId: string, uid: string): Promise<PairSession> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return mkSession('WAITING', uid);
+  }
+
+  async unpair(pairId: string, uid: string, requestId: string): Promise<number> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return 0;
+  }
+
+  async heartbeat(uid: string, pairId: string): Promise<number> {
+    AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    return 0;
   }
 }
 
-function mkSession(id: string, code: string, creator: string): PairingSession {
-  const s: PairingSession = {
-    sessionId: id, code: code, creatorUid: creator, status: 'WAITING', expiresAt: 0
+export class PairKeyStore {
+  /** HUKS 别名操作计数（设备侧同名字段）：关闭态一条别名都不许建。 */
+  static calls: number = 0;
+
+  static async ensureIdentity(uid: string): Promise<string> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+    return 'pk-offline';
+  }
+
+  static async agreeKey(uid: string, pairId: string, peerPublicKeyB64: string): Promise<void> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+  }
+
+  static async hasPairKey(pairId: string): Promise<boolean> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+    return false;
+  }
+
+  static async dropPairKey(pairId: string): Promise<void> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+  }
+}
+
+function mkSession(status: string, uid: string): PairSession {
+  const s: PairSession = {
+    pairId: 'session-from-the-cloud', status: status, code: '246810',
+    peerUid: 'peer-' + uid, peerPublicKey: 'pk-peer', confirmToken: 'token-from-the-cloud',
+    expiresAt: 0, serverTime: 0
   };
   return s;
 }

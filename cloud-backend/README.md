@@ -58,9 +58,15 @@ cloud-backend/
 2. 右键 `cloudfunctions/pairing` → **Deploy 'pairing'**；
 3. 右键 `cloudfunctions/snapshot` → **Deploy 'snapshot'**。
 4. `[实测]` 部署会在 `CloudProgram/build/target/<hash>/<对象>/` 留下 `<对象>.zip` 与 `template.yaml`，
-   **后者就是线上描述符**——用它确认"这个对象到底部署没有"，并在 AGC 控制台把
-   `runtime` 从向导默认的 `nodejs14.x` 改成 Node.js 20、`timeout` 从 60 改到 20
+   **后者就是线上描述符**（`runtime`/`timeout`/`memorySize` 都在里面）。但**别用它判断"部署过没有"**：
+   每次部署新建一个 `<hash>` 目录、成功后删掉上一个，磁盘上永远只剩最后一次。要核对成败看 DevEco 日志
+   （`idea.log` 里的 `DeployService - query deploy status response`，`"name"` 是对象名、`"reason"` 是结果）。
+   在 AGC 控制台把 `runtime` 从向导默认的 `nodejs14.x` 改成 Node.js 20、`timeout` 从 60 改到 20
    （60s 同时撞穿"同步调用上限 55s"和端侧 30s 超时，会造成"客户端先断、服务端还在写"的假不一致）。
+5. `[实测]` **`Deploy Cloud DB` 报 success ≠ 存储区存在**：本次三个云对象方法一读写库就是
+   `2002037: CloudDBZone does not exist`，日志里 `createDataBaseResource` 先报 `206766192`
+   （Failed to decode response body）再报 `206766200`（AuthenticationError），第三次"成功"其实只把
+   对象类型/schema 登记上。所以下面 §6 的第 0 步必须先跑。
 
 区名 `FortwoPair`：**不能含下划线**（AGC 实测报 `invalid CloudDBZone name`）。
 `db-config.json` 里的 `defaultCloudDBZoneName` 只是向导显示值——spike 实测过该字段写着

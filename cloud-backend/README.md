@@ -104,7 +104,7 @@ node ../CloudDevSpikeOfficial/CloudProgram/node_modules/typescript/bin/tsc \
 
 `envelope` 是 `{schemaVersion, algorithm, iv, authTag, ciphertext}` 五个字段的名字段。
 
-## 5. 三条会影响部署成败的写法约束
+## 5. 四条会影响部署成败的写法约束
 
 1. **导出方法签名里不得出现第三方类型。** DevEco 的接口生成脚本 `analyzeDependency()` 会顺着
    handler 的 `.d.ts` 引用链检查导入，一旦发现 `@hw-agconnect/...` 就打印
@@ -117,25 +117,71 @@ node ../CloudDevSpikeOfficial/CloudProgram/node_modules/typescript/bin/tsc \
 3. **对象类型 JSON 与 `*.js` 模型字段必须逐字对齐**（名字、类型、主键、notNull）。
    不一致时的表现是读回 `undefined` 或写库报字段不存在，而不是编译错误。
    `getIndexList()` 返回 `[]` 是有意的：SDK 只对它做 `typeof` 检查，真正的索引在 objecttype JSON 里。
+   `PairSession` 上 `code`、`creatorUid` 两个非主键列建了索引，因为服务端按它们做 `equalTo` 查询；
+   `pairId` 是主键，不需索引。`PairSnapshot` 只有"按主键读写"的用法，故 `indexes: []`。
 
-`PairSession` 上 `code`、`creatorUid` 两个非主键列建了索引，因为服务端按它们做 `equalTo` 查询；
-`pairId` 是主键，不需索引。`PairSnapshot` 只有"按主键读写"的用法，故 `indexes: []`。
+4. **公开方法里不许出现 `this`。** `[实测 2026-09-27]` 云对象框架按 `func.apply(?, data.params)` 派发，
+   方法是被**从实例上摘下来**调起来的，所以 `guarded(() => this.doPut(...))` 每一次调用都在读库之前抛
+   `Cannot read properties of undefined (reading 'doPut')`，最后塌成
+   `{"code":"INTERNAL","message":"cloud error "}`（尾部没有 dbCode，判据见 §6 第 0.5 步）。
+   向导样本 `IdGenerator.randomUUID()` 一个 `this` 都不碰，所以这个坑要到第一次真调用才露头。
+   写法：公开方法只留一行转调，业务函数放**模块级**（`pairing.ts` / `snapshot.ts` 已按此收口）。
+   编译器不会报，运行期才炸——所以改动后要做一次 detached 复核：把编译产物 require 进来，
+   用 `Pairing.prototype.heartbeat.apply(undefined, ['<十六进制形态 uid>',''])` 调，
+   期望 `{"code":"OK","paired":false}`；如果回空 dbCode 的 `INTERNAL`，就是新写了依赖 `this` 的路径。
 
-## 6. 首次部署探针（三步，全部在 DevEco 的 Node 侧或端上调一次即可）
+## 6. 首次部署探针
 
-1. **分派形态**：`call({name:'pairing', data:{method:'create', params:['<uid>','<pubkey>',1]}})`
-   → 期望 `code:"OK"` 且回包里带 6 位 `code`。拿到 `INTERNAL`/空包说明 `{method, params}`
-   这条形态在这个项目上不成立，先停下来核对 `function-config.json` 的 `handler`，
-   **不要**改端侧去迁就。
-2. **getter 读回**：紧接着用回包的 `pairId` 调 `status` → 期望 `status:"WAITING"`、
-   `peerUid` 为空串。这一步证明 `contract.ts` 的 `toSession()` 用 getter 取值这条路是对的
-   （`query().get()` 返回的是模型实例，不是普通对象）。
-   顺带这一步也是 **Node 运行时版本的探针**：`newSessionRow`/`confirmToken` 用了
-   `crypto.randomUUID()`（≥14.17）、`crypto.randomInt()`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），
-   向导默认给的 `nodejs14.x` 只要落在 14.17 以下，`create` 就会以 `INTERNAL` 冒出来——
-   这时先查运行时版本，别去怀疑加密口径。
-3. **Text 列写入**：`snapshot.put` 塞一份超过 200 字符的假密文（`ACTIVE` 会话下）→ 期望
-   `storedVersion` 回显；报 `2060` 就是 §5.2 那条字段类型没生效。
+第 0 / 0.5 步**不需要设备**，在 Node 里用服务端凭据直连就能跑完；第 1–3 步要读写库，
+所以必须等存储区建好，在 DevEco 的 Node 侧或端上调一次即可。
+
+**第 0 步 · 存储区存在性**：用服务端凭据对 `contract.ts` 里的 `ZONE` 发一次空查询。
+拿到 `2002037: CloudDBZone does not exist` ⇒ 区没建，走 `docs/cloud/operations-runbook.md` §4.7，
+**后面三步全都会失败，先别往下跑**；拿到 401/403 类 ⇒ 凭据或项目错配，也先解这个。
+
+**第 0.5 步 · 云对象入参形态 + this-free（免设备）**：`@hw-agconnect/cloud-server` 在 Node 里可以直接把
+已部署的云对象调起来，所以"形态对不对""handler 有没有依赖 `this`"这两件事不用等真机、也不用等区建好——
+选的都是不碰 CloudDB 的分支（`heartbeat` 明确不查库；其余用畸形入参让它在读库前就返回语义码）。
+
+```js
+// 凭据只经 AGC_CONFIG 传路径，输出里不出现其内容
+const { cloud, Region } = require('@hw-agconnect/cloud-server'); // 从 CloudProgram 下的目录 require
+const fn = cloud.createInstance(process.env.AGC_CONFIG, 'fortwo-fnprobe', Region.REGION_CN).function();
+await fn.call({ name: 'pairing', version: '$latest', timeout: 30000,
+  data: { method: 'heartbeat', params: ['abcdef01-2345-6789-abcd-ef0123456789', ''] } });
+```
+
+探针值必须长成 `isUid` 认的样子（`/^[0-9a-fA-F-]+$/` 且 8..128 位）：用 `probe000-…` 这种含
+非十六进制字母的串会得到 `BAD_REQUEST`，那是"值不合法"而不是"参数送到了"的证据，会把两件事混成一团。
+
+判读（每一行都指向不同处置，别合并）：
+
+| 回包 | 结论 |
+|---|---|
+| `code:"OK"`（heartbeat 正常）或 `BAD_REQUEST`/`SCHEMA_UNSUPPORTED` 等语义码 | 形态成立、handler 不依赖 `this`，可以往下 |
+| `Call handler error: cloud object method is empty` | `data` 里漏了 `method`——框架自己解析它 |
+| `Can't find cloud object method X` | 方法名与 `function-config.json` 的 `handler` 对不上 |
+| `code:180000` + `CreateListFromArrayLike called on non-object` | `params` 不是数组（它是按位置 `func.apply` 展开的） |
+| `INTERNAL` 且 `message` 尾部**带** dbCode（如 `cloud error 2002037`） | 云对象是好的，问题在库/区/权限，回第 0 步与 §4.7 |
+| `INTERNAL` 且 `message` 尾部**空**（就是 `"cloud error "`） | 抛的是没有 code 的 JS 异常，读库之前就炸了 ⇒ §5 第 4 条 / §4.8 |
+
+`[实测 2026-09-27]` 这一步已经把 `{method, params}` 这条端侧契约在线上证实（与
+`build/cache/CloudObjectInterface.js` 里 ImportObject 模板发的 `data: {method: prop, params: args}` 一致），
+所以形态对不上时**不要**改端侧 `CloudApi.ets` 去迁就，先核对云端。
+
+**第 1 步 · 分派形态（要读库）**：`call({name:'pairing', data:{method:'create', params:['<uid>','<pubkey>',1]}})`
+→ 期望 `code:"OK"` 且回包里带 6 位 `code`。`INTERNAL`/空包按上表分流。
+
+**第 2 步 · getter 读回**：紧接着用回包的 `pairId` 调 `status` → 期望 `status:"WAITING"`、
+`peerUid` 为空串。这一步证明 `contract.ts` 的 `toSession()` 用 getter 取值这条路是对的
+（`query().get()` 返回的是模型实例，不是普通对象）。
+顺带这一步也是 **Node 运行时版本的探针**：`newSessionRow`/`confirmToken` 用了
+`crypto.randomUUID()`（≥14.17）、`crypto.randomInt()`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），
+向导默认给的 `nodejs14.x` 只要落在 14.17 以下，`create` 就会以 `INTERNAL` 冒出来——
+这时先查运行时版本，别去怀疑加密口径。
+
+**第 3 步 · Text 列写入**：`snapshot.put` 塞一份超过 200 字符的假密文（`ACTIVE` 会话下）→ 期望
+`storedVersion` 回显；报 `2060` 就是 §5.2 那条字段类型没生效。
 
 探针用完执行 `unpair` 清掉会话与快照，别在正式项目里留测试行。
 

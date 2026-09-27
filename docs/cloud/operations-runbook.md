@@ -2,7 +2,9 @@
 
 > 配套：`docs/cloud/pairing-protocol-v1.md`（协议，唯一事实源）与 `cloud-backend/README.md`（代码放哪、怎么部署）。
 > 状态：**AGC 项目已建、两个云对象已部署、云数据库的对象类型已登记**（2026-09-27 首部署，实测记录见 §2.4）；
-> **卡点收敛为一条：存储区 `FortwoPair` 实际不存在（探针拿到 `2002037`，处置 §4.7）**，
+> **卡点两条**：① 存储区 `FortwoPair` 实际不存在（探针拿到 `2002037`，处置 §4.7）；
+> ② 首部署那一份云对象的方法依赖 `this`，被框架摘掉实例调用后每次炸在读库之前（§2.4 第 11 行，处置 §4.8）——
+> 仓库里已修，**需要把两个云对象重新部署一次**。
 > 所以整条链路还跑不通，§11 的设备证据一条没勾。
 > 已实测过的路径会标 `[实测]`，只有文档依据的标 `[文档]`，
 > 需要账号持有者本人在 AGC 控制台点的都标 `[需你操作]`。
@@ -40,9 +42,12 @@
    存储区 `FortwoPair`）。区名不能含下划线 `[实测]`（下划线形态报 `invalid CloudDBZone name`）；
 4. 右键 `cloudfunctions/pairing` → `Deploy 'pairing'`，再 `snapshot` 同理。
    部署前 `npm install`（SDK 版本已钉死在两个 `package.json` 里）；
-5. 端侧：关联签名配置 → 模拟器取 `clouddevelopproxy.debugToken` 注册到 AGC（模拟器无登录态，缺这步必然失败）
-   → 按 `cloud-backend/README.md` §6 的三步探针验一次 `create → status → put`；
-6. 探针用完 `unpair` 清掉测试行，别在正式项目里留脏数据。
+5. **免设备先验两件事**（`cloud-backend/README.md` §6 的第 0 / 0.5 步，在 Node 里用服务端凭据跑）：
+   第 0 步确认存储区真的在（拿到 `2002037` 就别往下走了，处置 §4.7）；第 0.5 步把云对象调起来，
+   一次证掉"入参形态对不对"和"公开方法依赖 `this` 没有"（拿到空 dbCode 的 `INTERNAL` 处置 §4.8）；
+6. 端侧：关联签名配置 → 模拟器取 `clouddevelopproxy.debugToken` 注册到 AGC（模拟器无登录态，缺这步必然失败）
+   → 按 `cloud-backend/README.md` §6 的第 1–3 步验一次 `create → status → put`；
+7. 探针用完 `unpair` 清掉测试行，别在正式项目里留脏数据。
 
 `[实测]` 部署是**本地执行**的（DevEco 把 TS 编译后上传），所以 Windows 上 `snapshot.ts` 与
 `function-config.json` 里 `Snapshot` 的大小写差异不阻塞部署——但别依赖这一点，
@@ -90,15 +95,17 @@
 
 | # | 实测到的事实 | 影响 / 处置 |
 |---|---|---|
-| 1 | **`Deploy Cloud DB` 报 success，存储区却根本不存在。** 用服务端凭据直连 `FortwoPair` 读两张表，两次都得到 `2002037: CloudDBZone does not exist`；而 DevEco 日志里同一时段前两次 cloudDB 部署分别以 `206766192`（`createDataBaseResource` → `Failed to decode response body`）和 `206766200`（`AuthenticationError: authentication failed`）失败，第三次才 `Success` 并把 `schemaVersion` 查询到 `1` | `[实测]` 说明"成功"只覆盖到**对象类型/schema**，`createDataBaseResource`（建存储区）那一步没落地。这是当前**唯一阻塞**：云对象再对，一读写库就是 2002037。处置见 §4.7——存储区要在 AGC 控制台单独建，名字必须等于 `contract.ts` 里的 `ZONE` |
+| 1 | **`Deploy Cloud DB` 报 success，存储区却根本不存在。** 用服务端凭据直连 `FortwoPair` 读两张表，两次都得到 `2002037: CloudDBZone does not exist`；而 DevEco 日志里同一时段前两次 cloudDB 部署分别以 `206766192`（`createDataBaseResource` → `Failed to decode response body`）和 `206766200`（`AuthenticationError: authentication failed`）失败，第三次才 `Success` 并把 `schemaVersion` 查询到 `1` | `[实测]` 说明"成功"只覆盖到**对象类型/schema**，`createDataBaseResource`（建存储区）那一步没落地。这是当时判定的唯一阻塞（第 11 行又查出第二条）：云对象再对，一读写库就是 2002037。处置见 §4.7——存储区要在 AGC 控制台单独建，名字必须等于 `contract.ts` 里的 `ZONE` |
 | 2 | **判断"某个云对象部署没有"要看 DevEco 日志，不能看 `build/target`**：每次部署建一个新的 `build/target/<hash>/`，成功后**上一个会被删掉**，所以磁盘上只剩最后一次的产物（本次 `751be` 已消失、只剩 `daf4c`）。日志里 `[pairing] reason=success` 与 `[snapshot] reason=success` 都在 | 我一度据"只剩 snapshot 目录"误判 `pairing` 未部署——**结论是错的**，两个云对象 16:57:41 / 16:57:54 各部署成功一次。日志行 `DeployService - query deploy status response` 里的 `"name"` 与 `"reason"` 才是准的 |
-| 3 | 向导给的默认资源参数是 **`runtime: nodejs14.x`、`timeout: 60`、`memorySize: 500`、`instanceConcurrency: 100`**（读 `build/target/<hash>/<对象>/template.yaml` 得到），**与 §2.3 的建议值无关** | `timeout: 60` 同时超过同步调用上限 55s 和端侧 30s 超时——正好制造 §2.3 警告的"客户端先断、服务端还在写"；必须改到 20s。`nodejs14.x` 要单独验：`contract.ts` 用了 `crypto.randomUUID`（≥14.17）、`crypto.randomInt`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），任一不支持就会以 `INTERNAL` 冒出来，探针第 2 步（`create`）会直接把它暴露 |
+| 3 | 向导给的默认资源参数是 **`runtime: nodejs14.x`、`timeout: 60`、`memorySize: 500`、`instanceConcurrency: 100`**（读 `build/target/<hash>/<对象>/template.yaml` 得到），**与 §2.3 的建议值无关** | `timeout: 60` 同时超过同步调用上限 55s 和端侧 30s 超时——正好制造 §2.3 警告的"客户端先断、服务端还在写"；必须改到 20s。`nodejs14.x` 要单独验：`contract.ts` 用了 `crypto.randomUUID`（≥14.17）、`crypto.randomInt`（≥14.10）、`Buffer.toString('base64url')`（≥14.18），任一不支持就会以 `INTERNAL` 冒出来，探针第 1 步（`create`）会直接把它暴露 |
 | 4 | 触发器配置逐字落地：`enableUrlDecode: true / authFlag: 'true' / authType: apigw-client / authAlgor: HDA-SYSTEM`，`functionType: 1` | 与我们写的 `function-config.json` 一致，无需再调 |
 | 5 | 打包内容 = 编译产物 + 依赖 + **源文件**：zip 里同时有 `snapshot.js`/`contract.js` 和 `snapshot.ts`/`contract.ts`/`*.js.map`，两份对象类型 `.js` 也在 | 编译与打包形状符合预期（模型 `.js` 没被 tsc 吞掉）；源码随包上传是向导行为，云侧代码里没有凭据，可接受 |
 | 6 | **`clouddb/objecttype/` 是整个目录一起部署的**，向导自带的示例表 `Post.json` 因此进入 schema，而它的 `permissions` 是四角色**全开**（World 可 Read/Upsert/Delete），配套的 `dataentry/d_Post.json` 还会写示例行 | 这是 §2.2 那条警告的现成事故：一旦存储区建起来，里面就躺着一张公网可写的表。处置＝删 `objecttype/Post.json` + `dataentry/d_Post.json`（以及示例函数 `cloudfunctions/id-generator/`）后重新 `Deploy Cloud DB`。我们两张表的权限核对无误：World/Authenticated/Creator 全空，仅 Administrator 有 Read/Upsert/Delete |
 | 7 | `Deploy Cloud DB` 会在**应用侧**生成 `Application/AppScope/resources/rawfile/schema.json`，`permissions` 从对象类型 JSON 里提到根数组按表分列；索引如实落地（`PairSession` 的 `code`/`creatorUid`，`PairSnapshot` 无索引按复合主键读） | 这份 `schema.json` 是**端侧直连**用的，本产品不直连，因此不需要把它拷进 `cloud/` HAR；但它是一份很好的"云侧 schema 与仓库源码是否一致"的核对材料——本次就是靠它确认 `ciphertext` 真的是 `Text` |
 | 8 | 云工程绑到的是**另一个 AGC 应用**：向导的示例应用是 `com.common.fortwocloud`，`cloud-config.json` 的 `appId` ≠ 本仓库 `agconnect-services.json` 里 `com.common.fortwo` 的 `app_id`（**`projectId` 相同**，同项目下两个应用记录） | spike 的结论是"同 bundle name 关联 + 签名 + debugToken"，所以跨 appId 调用会不会 403 **属未知**。正式开闸（§6 探针、以及 U3b）之前必须在控制台把云工程关联到 `com.common.fortwo`，否则真机路径第一天就撞鉴权 |
 | 9 | 服务端凭据（`ForTwoPrivate/agc-apiclient-*.json`）的 `project_id` 与云工程、与仓库里那份 `agconnect-services.json` **三者相同**，且用它直连能拿到 CloudDB 的业务错误码而不是 401 | `[实测]` 凭据没拿错项目——上面第 1 行的 2002037 是"区不存在"，不是"你没权限"，这条排除了凭据错配这个嫌疑 |
+| 10 | **云对象可以用服务端凭据从 Node 直接调起来，不需要设备。** 框架自己解析 `data.method`：缺它回 `Call handler error: cloud object method is empty`，写错回 `Can't find cloud object method X`；`params` 走 `func.apply(?, params)` 按位置展开——把 `params` 换成 JSON 字符串会得到 V8 的 `CreateListFromArrayLike called on non-object` | `[实测]` 两点用处：① 端侧 `{method, params}` 这条契约被线上证实（与 `CloudObjectInterface.js` 里 ImportObject 模板发的 `data: {method: prop, params: args}` 对上），协议 §3.3 不用改；② README §6 的"分派形态"探针从此可以在**没有设备**的时候先跑一遍，不必等真机 |
+| 11 | **框架把方法从实例上摘下来调，`this` 不是实例。** 原来的公开方法写成 `guarded(() => this.doX(...))`，于是每一次调用都在读库之前抛 `Cannot read properties of undefined (reading 'doX')`，被 guarded 塌成 `{"code":"INTERNAL","message":"cloud error "}`。拿 `build/target` 里那份**线上编译产物**在本地按同样方式调，复现出逐字节相同的包络 | `[实测]` 这条最容易踩，因为向导样本 `IdGenerator.randomUUID()` 一个 `this` 都不碰，坑被掩盖到第一次真调用。修法＝公开方法只做转调、业务函数放模块级（本次已改两个云对象，**必须重新部署一次**）。判据留下：`INTERNAL` 且 message 尾部**没有** dbCode ⇒ 云对象在读库前就炸；尾部带 dbCode（如 `cloud error 2002037`）⇒ 云对象是好的，问题在库/权限/区，见 §4.7。细则 §4.8 |
 
 ## 3. 日常巡检（每周一次，10 分钟）
 
@@ -172,11 +179,31 @@
    控制台把区改成 `FortwoPair`，或改 `ZONE` 重新部署云对象。**别两边都改**，那会让下一次对账失去唯一参照；
 3. `Deploy Cloud DB` 的 "success" 只代表 schema/对象类型登记上了，**不能当作区存在的证据**；
    区要在 AGC 控制台 → 云数据库里单独建，并把两张对象类型加进去；
-4. 建好后**先复跑第 1 步**再回到端侧探针（`cloud-backend/README.md` §6）——顺序反了会把"区没建"误诊成"云对象写错了"。
+4. 建好后**先复跑第 1 步**（库侧），再跑云对象侧的免设备探针（`cloud-backend/README.md` §6 第 0.5 步），
+   最后才是端侧探针——顺序反了会把"区没建"误诊成"云对象写错了"。
 
 端侧不需要为这条做任何事：云对象内部失败会塌成 `INTERNAL` 包络，端侧照 §4.1 静默降级到本机。
 
-### 4.8 云侧完全不可用
+### 4.8 云对象回 `INTERNAL` 且 `message` 尾部没有 dbCode
+
+`{"code":"INTERNAL","message":"cloud error ","retryable":true}` ——**尾部那个空位是关键**：
+`guarded` 的失败包络固定是 `'cloud error ' + dbCode`，带码（例如 `cloud error 2002037`）说明异常来自
+CloudDB，空着说明抛的是**没有 code 的 JS 异常**，也就是云对象在读库之前就炸了。这两种 `INTERNAL` 的
+处置完全不同，别混成一条。
+
+读库之前就炸的，本次实测到的只有一种成因：**云对象框架不绑定实例地调用方法**（§2.4 第 11 行）。
+
+1. 定性：拿 `CloudProgram/build/target/<hash>/<对象>/<对象>.js`（就是线上那份编译产物）在本地
+   `Snapshot.prototype.get.apply(undefined, [pairId, uid, 1])` 调一次——回空 dbCode 的 `INTERNAL`、
+   而 `new Snapshot().get(...)` 回正常语义码，就是这一条；
+2. 修法：公开方法只做转调，业务逻辑放模块级函数（`pairing.ts` / `snapshot.ts` 已经这么写了），
+   **不要**试图用构造函数里 `bind` 绕过——框架从实例上摘下来调的时候绑不绑得住没保证；
+3. 反查自己：以后新增任何云对象方法，第一行之前先确认它不读 `this`。向导样本永远不读 `this`，
+   所以它永远给不出这个警告。
+
+改完必须**重新部署两个云对象**再看探针；只改仓库不部署，线上还是旧字节码。
+
+### 4.9 云侧完全不可用
 
 预期表现：本机录入、共同时间计算、计划、冲突全部正常，只有「伴侣与同步」显示降级。
 这是验收项（`docs/testing-checklist.md` §9.3），不是事故。真正的事件是"云端故障导致本机功能变慢或崩溃"——那是降级路径有洞，按缺陷处理。

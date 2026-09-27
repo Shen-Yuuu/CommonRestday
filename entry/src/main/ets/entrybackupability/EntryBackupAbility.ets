@@ -61,6 +61,8 @@ export default class EntryBackupAbility extends BackupExtensionAbility {
    *
    * HUKS 别名不在备份范围内（密钥材料出不了这台设备），所以恢复后 `hasPairKey(pairId)` 必然为假：
    * 这里清的是 Preferences 里那份"声称已配对"的标记，顺带把旧原型残留的明文 `pair_key` 也带走。
+   * 对方快照的信封（`partner_snap_cache`）也在清理之列：它跟着备份过来了，可这台机器上没有别名
+   * 解得开它——留着就是一块永久读不出来的死数据（读侧的 pairId 比对只是兜底）。
    * 少清这一格，新机界面就会对着一个解不开的 pairId 报"正在同步"。
    */
   private async dropDeviceLocalHandles(): Promise<void> {
@@ -69,6 +71,7 @@ export default class EntryBackupAbility extends BackupExtensionAbility {
       await SettingsStore.clearPairKey();
       await SettingsStore.savePairId('');
       await SettingsStore.setPartnerSnapVer(0);
+      await SettingsStore.clearPartnerSnapCache();
       // 强制首启重算一次：恢复来的窗口缓存可能是旧引擎算的，重算比让它一直准更便宜
       await SettingsStore.setLastRecomputeDay(-1);
       await SettingsStore.setPairState(PAIR_NONE, '');

@@ -275,6 +275,8 @@ export default function profileSettingsGuardTest() {
       // 上一轮配对留下的「已降级」：语义是"排不动推送，直到某次拉成功"，留着它，下一轮配对
       // 从第一版配对起就静默不推，而界面上那条提示讲的是上一个配对的事。
       await SettingsStore.setCloudSyncState(encodeSyncState(SYNC_STATE_BLOCKED, 20453, 'FORBIDDEN'));
+      // 最后一次有效快照的信封：HUKS 别名一删它永久解不开，留着就是挂在下一轮配对上的死数据。
+      await SettingsStore.setPartnerSnapCache('{"pairId":"session-left-by-the-prototype","version":7}');
       AgcPairingClient.calls = 0;
 
       const res = await ProfileSettingsService.unpair();
@@ -286,6 +288,7 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
       expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
+      expect(SettingsStore.getPartnerSnapCache()).assertEqual('');
       expect(SettingsStore.getCloudSyncState()).assertEqual('');
     });
 

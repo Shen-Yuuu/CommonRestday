@@ -347,6 +347,16 @@ export class SettingsStore {
   static async setPartnerSnapVer(v: number): Promise<void> {
     settingsRows.set('partner_snap_ver', v);
   }
+  /** 最后一次有效快照的信封（设备侧同名）：真机才有拉取路径，桩只保证名字与形态对齐。 */
+  static getPartnerSnapCache(): string {
+    return settingOf('partner_snap_cache', '') as string;
+  }
+  static async setPartnerSnapCache(envelope: string): Promise<void> {
+    settingsRows.set('partner_snap_cache', envelope);
+  }
+  static async clearPartnerSnapCache(): Promise<void> {
+    settingsRows.delete('partner_snap_cache');
+  }
   /** 云同步三态的编码串（设备侧同名）：桩同样把 setter 露出来，用例据此摆出待重试/已降级两种形状。 */
   static getCloudSyncState(): string {
     return settingOf('cloud_sync_state', '') as string;

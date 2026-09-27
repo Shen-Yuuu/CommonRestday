@@ -186,7 +186,8 @@ export class ScheduleUseCase {
   /**
    * 装配伴侣忙区间（"伴侣不可用"语义，与我的 notAvailable 同构）：
    * - 云端快照路径：已配对且 pairId/密钥就绪时先拉快照解密（快照已含对方缓冲，不二次加缓冲）；
-   *   AGC 未就绪/解密失败一律返回 null 静默降级，走本机代录；
+   *   没有新版本/云端不可用/解密失败一律退回**本机缓存的最后一次有效快照**（协议 §2 规则 3），
+   *   连缓存都没有才继续降级本机代录；
    * - 本机代录路径：存在伴侣档案或 owner='PARTNER' 有任何班表数据时，
    *   用伴侣自己的班表 + 伴侣参数走与"我"完全相同的 expand → buffer 管线；
    * - 两者皆无 → 返回 null（单人模式）。
@@ -226,8 +227,8 @@ export class ScheduleUseCase {
 
   /**
    * 拉取并解密对方快照：
-   * 开关关闭 / 未配对 / HUKS 里没有本配对的协商密钥 / 云端不可用 / 解密或解码失败一律返回 null
-   * （调用方降级本机代录），不抛异常。
+   * 开关关闭 / 未配对 / HUKS 里没有本配对的协商密钥 / 云端不可用 / 解密或解码失败一律静默降级，
+   * 降级顺序是"沿用最后一次有效快照 → 本机代录"（协议 §2 规则 3、§7 的解密失败行），不抛异常。
    *
    * "没有协商密钥"是换机与卸载后的常态，不是错误：它意味着必须重新配对，重试没有意义。
    */
@@ -236,8 +237,8 @@ export class ScheduleUseCase {
     if (!FeatureFlags.cloudPairing) {
       return null;
     }
+    const pairId = SettingsStore.getPairId();
     try {
-      const pairId = SettingsStore.getPairId();
       if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
         return null;
       }
@@ -247,33 +248,72 @@ export class ScheduleUseCase {
       // 走到这里这次云往返是通的：把可能挂着的降级结论清回「已同步」。
       // "没有更新"（snap 缺席）也算通——协议 §4.8 明说那是常态，不是失败。
       ScheduleUseCase.noteSyncOk();
-      if (snap == null) {
+      if (snap != null) {
+        const ivs = await partnerIntervalsFromSnapshot(snap, pairId);
+        if (ivs == null) {
+          Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
+          // 解密/解码炸了不是网络问题，重试同一份只会再炸一次：按不可重试落「已降级」（协议 §7 的解密失败行）
+          ScheduleUseCase.noteSyncFailure(new Error('SNAPSHOT_UNDECODEABLE'));
+          return await ScheduleUseCase.cachedPartnerBusy(pairId);
+        }
+        // 先落信封再进游标：反过来的话一次崩溃就是"游标前进了、这一版却再也拉不回来"（服务端按版本过滤，不重发）
+        await SettingsStore.setPartnerSnapCache(JSON.stringify(snap));
+        await SettingsStore.setPartnerSnapVer(snap.version);
+        return ScheduleUseCase.snapshotResult(ivs, snap.shareLevel);
+      }
+    } catch (e) {
+      // CloudApiError（网络/配额/服务端语义码）等：云端路径不可用，静默沿用最后一次有效快照
+      Logger.warn('ScheduleUseCase', 'pull snapshot degraded: ' + (e as Error).message);
+      ScheduleUseCase.noteSyncFailure(e);
+    }
+    return await ScheduleUseCase.cachedPartnerBusy(pairId);
+  }
+
+  /**
+   * 这一趟没有新快照时的兜底：把本地缓存的**最后一次有效信封**重新解密出来。
+   *
+   * 少了这一步，"无更新"这条常态路径会让游标前进之后的每一次重算/日视图都退回本机代录；
+   * 两台设备都没代录数据时，就是 TA 的数据凭空消失（§11 第 2 条取证撞上）。
+   * 信封里带着 pairId，所以上一轮配对的残留会在下一行被挡掉，不跨配对复用。
+   * 这里是整条链路的最后一级，往下没有可退的口径，所以它自己一颗异常都不许抛。
+   */
+  private static async cachedPartnerBusy(pairId: string): Promise<PartnerBusyResult | null> {
+    const raw = SettingsStore.getPartnerSnapCache();
+    if (raw === '' || pairId === '') {
+      return null;
+    }
+    try {
+      // 回读走与网络回包同一个解析器（字段完整性 + 版本门），避免两套口径漂
+      const snap = AgcSnapshotSync.parseSnapshot(raw, pairId, 0);
+      if (snap == null || snap.pairId !== pairId) {
         return null;
       }
       const ivs = await partnerIntervalsFromSnapshot(snap, pairId);
       if (ivs == null) {
-        Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
-        // 解密/解码炸了不是网络问题，重试同一份只会再炸一次：按不可重试落「已降级」（协议 §7 的解密失败行）
-        ScheduleUseCase.noteSyncFailure(new Error('SNAPSHOT_UNDECODEABLE'));
+        Logger.warn('ScheduleUseCase', 'cached snapshot undecryptable');
         return null;
       }
-      await SettingsStore.setPartnerSnapVer(snap.version);
-      // 快照分段已含对方缓冲；剥离 SLEEP 段得到"不含睡眠"不可用
-      // （L1 位图解码后标签全为 BUSY，剥离结果仍含睡眠 → 引擎侧同休日/旅行判定自然保守）
-      const tripIvs = ivs.filter((iv: Interval) => iv.tag !== 'SLEEP');
-      const r: PartnerBusyResult = {
-        busy: ivs,
-        tripBusy: tripIvs,
-        source: 'SNAPSHOT',
-        shareLevel: snap.shareLevel
-      };
-      return r;
+      Logger.info('ScheduleUseCase', 'partner busy from cached snapshot v' + snap.version);
+      return ScheduleUseCase.snapshotResult(ivs, snap.shareLevel);
     } catch (e) {
-      // CloudApiError（网络/配额/服务端语义码）等：云端路径不可用，静默降级本机代录
-      Logger.warn('ScheduleUseCase', 'pull snapshot degraded: ' + (e as Error).message);
-      ScheduleUseCase.noteSyncFailure(e);
+      Logger.warn('ScheduleUseCase', 'cached snapshot rejected: ' + (e as Error).message);
       return null;
     }
+  }
+
+  /**
+   * 解码后的对方区间 → 装配结果。快照产出时已并入对方缓冲，接收侧不再二次加缓冲；
+   * 剥离 SLEEP 段得到"不含睡眠"不可用（L1 位图解码后标签全为 BUSY，剥离结果仍含睡眠
+   * → 引擎侧同休日/旅行判定自然保守）。
+   */
+  private static snapshotResult(ivs: Interval[], shareLevel: number): PartnerBusyResult {
+    const r: PartnerBusyResult = {
+      busy: ivs,
+      tripBusy: ivs.filter((iv: Interval) => iv.tag !== 'SLEEP'),
+      source: 'SNAPSHOT',
+      shareLevel: shareLevel
+    };
+    return r;
   }
 
   /**

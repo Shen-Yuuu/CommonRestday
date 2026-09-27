@@ -22,6 +22,7 @@ const KEY_DEVICE_UID = 'device_uid';
 const KEY_PAIR_KEY = 'pair_key';
 const KEY_PAIR_ID = 'pair_id';
 const KEY_PARTNER_SNAP_VER = 'partner_snap_ver';
+const KEY_PARTNER_SNAP_CACHE = 'partner_snap_cache';
 const KEY_CLOUD_SYNC_STATE = 'cloud_sync_state';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
 const KEY_LAST_HEARTBEAT_AT = 'last_heartbeat_at';
@@ -230,6 +231,27 @@ export class SettingsStore {
 
   static async setPartnerSnapVer(v: number): Promise<void> {
     await SettingsStore.p().put(KEY_PARTNER_SNAP_VER, v);
+    await SettingsStore.p().flush();
+  }
+
+  /**
+   * 最后一次**有效**对方快照的信封（协议 §5.1 的 JSON，含密文与明文元数据）；未拉到过为空串。
+   *
+   * 存密文而不是存解码后的区间：解码仍要每次走 HUKS 别名 + 信封自带的 AAD，
+   * 于是"把 A 配对的信封搬到 B 配对下"在读取时自然解不开，键值文件里也始终没有明文忙碌时段。
+   * 密钥材料一格都不写（长期密钥只活在 HUKS 别名里，见 `clearPairKey` 的注释）。
+   */
+  static getPartnerSnapCache(): string {
+    return SettingsStore.p().getSync(KEY_PARTNER_SNAP_CACHE, '') as string;
+  }
+
+  static async setPartnerSnapCache(envelope: string): Promise<void> {
+    await SettingsStore.p().put(KEY_PARTNER_SNAP_CACHE, envelope);
+    await SettingsStore.p().flush();
+  }
+
+  static async clearPartnerSnapCache(): Promise<void> {
+    await SettingsStore.p().delete(KEY_PARTNER_SNAP_CACHE);
     await SettingsStore.p().flush();
   }
 

@@ -413,11 +413,15 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 本机配对痕迹的一次性清理：pairId、对方快照游标、云同步三态、HUKS 协商别名、内存里的确认凭据。
+   * 本机配对痕迹的一次性清理：pairId、对方快照游标、最后一次有效快照信封、云同步三态、
+   * HUKS 协商别名、内存里的确认凭据。
    * 身份别名（`crd-id-<uid>`）留着——它是这台设备的长期身份，下一轮配对还要用同一把公钥。
    *
    * 三态必须跟着清：「已降级」的语义是"排不动推送，直到某次拉成功"，留着它，
    * 下一轮配对从第一版快照起就静默不推——而界面上那条提示说的是上一个配对的事。
+   *
+   * 信封也必须跟着清：HUKS 别名一删，这份密文就永久解不开了——留着它只是让上一轮配对的
+   * 字节一直躺在键值文件里，而读侧那道 pairId 比对是兜底，不是留着它的理由。
    */
   private static async forgetPair(): Promise<void> {
     ScheduleUseCase.cancelMergedSync();
@@ -425,6 +429,7 @@ export class ProfileSettingsService {
     await SettingsStore.savePairId('');
     await SettingsStore.clearPairKey();
     await SettingsStore.setPartnerSnapVer(0);
+    await SettingsStore.clearPartnerSnapCache();
     await SettingsStore.setCloudSyncState('');
     await SettingsStore.setPairState(PAIR_NONE, '');
     ProfileSettingsService.outboundToken = '';

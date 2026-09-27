@@ -11,8 +11,9 @@ interface PolicySection {
 /**
  * 《隐私政策》全文（阶段 6R.4 / 发布清单 G4-1）。
  *
- * 首发包不申请联网权限，所以全文只能随包出厂、离线可读——"去浏览器打开托管页"
- * 在这个档位不成立。文本与 docs/legal/privacy-policy.md（商店与托管用的那一份）、
+ * 全文随包出厂、离线可读——即使开闸批之后这个包带了联网权限，"政策只在浏览器里有一份"
+ * 仍不成立（提审材料的在线版地址只是同一份文字的镜像）。
+ * 文本与 docs/legal/privacy-policy.md（商店与托管用的那一份）、
  * docs/legal/privacy-policy.html、以及 string.json 的 `pp_*` 条目**逐字同源**，
  * 增删一节必须四处同批改；漂移由 `node tools/test/run.mjs` 的文案口径审计拦下
  * （`tools/test/copy-audit.mjs`），它会同时核对这里的**节序**。

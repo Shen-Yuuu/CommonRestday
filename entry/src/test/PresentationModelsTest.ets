@@ -164,23 +164,25 @@ export default function presentationModelsTest() {
     });
 
     it('feature_flags_gate_unreleased_capabilities', 0, () => {
-      // 只有云端两档受 Task 0.4 门禁（CLOUD_BLOCKED）压制；本机三档已交付且各自有读取方。
-      // 档位含义与回退口径见 docs/release/rollout-and-rollback.md，改这里必须同时改那份文档。
+      // 开闸批（批次 U·U3b）之后云端档位是源码常量 true，所以这里断言的是**跨档位不变量**：
+      // 扫码以云配对为前提，前提关着结论不许开着（反之不成立——扫码仍未做设备验证）。
+      // 两个档位的包各跑一遍由 tools/verify.mjs 的 CRD_TIER 保证，档位含义见 rollout §2。
+      const cloudOn: boolean = FeatureFlags.cloudPairing;
       expect(FeatureFlags.calendarFlow).assertTrue();
-      expect(FeatureFlags.cloudPairing).assertFalse();
-      expect(FeatureFlags.scanPairing).assertFalse();
+      expect(cloudOn || !FeatureFlags.scanPairing).assertTrue();
       expect(FeatureFlags.newCard).assertTrue();
       expect(FeatureFlags.responsiveV2).assertTrue();
 
       // 启动日志摘要：五档一个都不能漏，缺档 = 这个包的现场状态无法从日志复原
       const line: string = FeatureFlags.summary();
+      const cloudToken: string = 'cloudPairing=' + (cloudOn ? 'on' : 'off');
       expect(line.indexOf('calendarFlow=on') >= 0).assertTrue();
-      expect(line.indexOf('cloudPairing=off') >= 0).assertTrue();
+      expect(line.indexOf(cloudToken) >= 0).assertTrue();
       expect(line.indexOf('scanPairing=off') >= 0).assertTrue();
       expect(line.indexOf('newCard=on') >= 0).assertTrue();
       expect(line.indexOf('responsiveV2=on') >= 0).assertTrue();
       // 摘要按 rollout 顺序排列：日志读法与文档一致，不靠人记
-      expect(line.indexOf('cloudPairing=off') < line.indexOf('scanPairing=off')).assertTrue();
+      expect(line.indexOf(cloudToken) < line.indexOf('scanPairing=off')).assertTrue();
       // 关档时日历不给补写入口：入口和链路一起退场，不留点了没反应的按钮
       expect(canRetryCalendarSync(CalendarState.LOCAL_ONLY)).assertTrue();
       expect(canRetryCalendarSync(CalendarState.UNSUPPORTED)).assertFalse();

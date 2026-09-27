@@ -526,6 +526,36 @@ export class CalendarGateway {
 `
 };
 
+/**
+ * 档位覆盖：`CRD_TIER=closed|open` 改写**编译副本**里 `FeatureFlags.cloudPairing` 的字面量，
+ * 源码不动。开闸批之后源码常量是 true，而"关档时一条请求都不发"这条边界仍然要被证明，
+ * 所以 tools/verify.mjs 会两种档位各跑一遍，谁也没能悄悄少跑一个桶。
+ * 只认 cloudPairing 一个常量：其余档位没有闭态专属用例。
+ */
+function overrideTier(say) {
+  const tier = (process.env.CRD_TIER || '').trim().toLowerCase();
+  if (tier === '') {
+    say('tier: 源码档位（未设 CRD_TIER）');
+    return true;
+  }
+  if (tier !== 'closed' && tier !== 'open') {
+    say('tier: FAILED（CRD_TIER=' + tier + ' 只认 closed / open）');
+    return false;
+  }
+  const file = path.join(OUT, 'feature/main/ets/config/FeatureFlags.ts');
+  const src = fs.readFileSync(file, 'utf8');
+  const want = tier === 'open' ? 'true' : 'false';
+  const re = /(static readonly cloudPairing: boolean = )\b(true|false)\b/;
+  if (!re.test(src)) {
+    // 找不到就是这一跑**没有**跑在声称的档位上——静默继续会让两个桶看起来都绿。
+    say('tier: FAILED（CRD_TIER=' + tier + '，但副本里找不到 cloudPairing 的布尔字面量，审计跟着改）');
+    return false;
+  }
+  fs.writeFileSync(file, src.replace(re, '$1' + want));
+  say('tier: CRD_TIER=' + tier + ' → 编译副本 cloudPairing=' + want);
+  return true;
+}
+
 function prepare() {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.rmSync(JS, { recursive: true, force: true });
@@ -618,6 +648,11 @@ function main() {
     say('  - ' + v);
   }
   prepare();
+  if (!overrideTier(say)) {
+    say('tests: FAILED（档位覆盖没落地，这一跑的结论不属于任何档位）');
+    finish(1);
+    return;
+  }
   const tsc = findTsc();
   if (tsc === null) {
     say('未找到 TypeScript 编译器。装好 DevEco Studio 后设 CRD_TSC=<.../typescript/bin/tsc> 重试。');

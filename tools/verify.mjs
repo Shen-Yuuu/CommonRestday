@@ -34,9 +34,9 @@ const arg = (name, dflt) => {
   return hit === undefined ? dflt : hit.slice(name.length + 3);
 };
 
-function run(cmd, args, logFile) {
+function run(cmd, args, logFile, extraEnv) {
   const r = spawnSync(cmd, args, { cwd: REPO, encoding: 'utf8', env: {
-    ...process.env, DEVECO_SDK_HOME: SDK
+    ...process.env, DEVECO_SDK_HOME: SDK, ...(extraEnv || {})
   } });
   const out = (r.stdout || '') + (r.stderr || '');
   if (logFile !== null) {
@@ -73,14 +73,31 @@ function buildStep(name, module, buildMode, baseline) {
     + limit + '），日志 ' + log.replace(/\\/g, '/') };
 }
 
+/**
+ * 离线用例跑两遍，两档各一次：开闸批把源码常量变成 `cloudPairing=true` 之后，
+ * 「关档时一条云请求都不发」这条边界（验收报告 B1）就没有别的现场能证明它了，
+ * 而只跑开档又会让闭档那一桶用例悄悄失去意义。`run.mjs` 的 `CRD_TIER` 只改写编译副本。
+ * 两个桶都必须自己绿，且各自日志里要有本档的生效标记——少跑一遍 = 这一步失败。
+ */
 function offlineStep() {
-  const r = run('node', [path.join(REPO, 'tools/test/run.mjs')], null);
-  const type = (r.out.match(/typecheck: (.*)/) || [, '?'])[1];
-  const tests = (r.out.match(/tests: (.*)/) || [, '?'])[1];
-  const count = (r.out.match(/(\d+) passed, (\d+) failed/) || [, '?', '?']);
-  return { ok: r.status === 0,
-    line: 'offline typecheck=' + type + ' tests=' + tests + ' → ' + count[1] + ' passed / '
-      + count[2] + ' failed，exit ' + r.status };
+  const parts = [];
+  for (const tier of ['closed', 'open']) {
+    const log = path.join(LOG_DIR, 'verify-offline-' + tier + '.log');
+    const r = run('node', [path.join(REPO, 'tools/test/run.mjs')], log, { CRD_TIER: tier });
+    const type = (r.out.match(/typecheck: (.*)/) || [, '?'])[1];
+    const tests = (r.out.match(/tests: (.*)/) || [, '?'])[1];
+    const count = (r.out.match(/(\d+) passed, (\d+) failed/) || [, '?', '?']);
+    const marker = new RegExp('tier: CRD_TIER=' + tier + ' → 编译副本 cloudPairing='
+      + (tier === 'open' ? 'true' : 'false'));
+    const ok = r.status === 0 && marker.test(r.out);
+    parts.push({ ok, tier, line: 'offline[' + tier + '] typecheck=' + type + ' tests=' + tests
+      + ' → ' + count[1] + ' passed / ' + count[2] + ' failed，exit ' + r.status
+      + (marker.test(r.out) ? '' : '（档位生效标记缺失）') });
+  }
+  const bad = parts.filter((p) => !p.ok);
+  return { ok: bad.length === 0,
+    line: parts.map((p) => p.line).join('\n  ')
+      + (bad.length === 0 ? '' : '\n  两个档位必须各跑各绿：' + bad.map((p) => p.tier).join(',')) };
 }
 
 function perfStep() {

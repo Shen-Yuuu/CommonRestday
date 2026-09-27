@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { PAIRED, PAIR_NONE, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
+import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { AgcPairingClient, PairKeyStore } from 'cloud';
 import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, encodeSyncState, FeatureFlags,
@@ -7,15 +7,23 @@ import {
 } from 'feature';
 
 /**
- * 阶段 6R.2（独立验收 B1）：`cloudPairing=false` 必须是一条**真边界**，而不是"AGC 恰好没配、
- * 云调用必然抛错"这种靠环境成立的安静。所以这几条用例打的正是最坏那一格：
+ * 阶段 6R.2（独立验收 B1）＋批次 U·U3b：这几条用例打的是**两个档位各一格**。
+ *
+ * 开闸之前只有关闭态可跑，所以整份文件都是"关闭态一条请求都不发"。开闸之后源码常量是
+ * `cloudPairing=true`，关闭态从此没有别的现场能证明它（真机上的包一定是开档的），
+ * 于是 `tools/test/run.mjs` 支持 `CRD_TIER=closed|open` 改写**编译副本**的常量，
+ * `tools/verify.mjs` 的两趟离线各跑一档、少跑任何一趟即判失败。每条用例因此读
+ * `CLOUD_ON` 分桶，而不是把关闭态的用例删掉——守卫一旦哪天被挪动，闭档那一桶还是会红。
+ *
+ * 关闭态的三条主张保持不变：
  *
  * 1. 离线的云客户端**必定成功**（真机上 AGC 未配置时才必定失败）——少了开关守卫，
  *    pairId/pairState 就会在这一格里被写进本机，用例立刻响；
  * 2. 关闭态要求"一条云请求都不发"，所以断言的是同名计数器 `AgcPairingClient.calls` 为 0；
+ *    开档则反过来要求**至少发出去一次**，否则守卫就成了把开着的门也挡住的黑洞；
  * 3. 关闭态不许把本机数据一起关掉：等级、代录、解除配对、清空数据照常（改造文档 §0.1「开关只关能力，不关数据」）；
  * 4. 长期密钥既不进 Preferences 也不进应用层：读/写密钥的 API 都不存在了，密钥只在 HUKS 别名里。
- *    所以这一格断言的是**关闭态一次 HUKS 别名操作都不发生**（`PairKeyStore.calls`），
+ *    所以关闭态断言的是**一次 HUKS 别名操作都不发生**（`PairKeyStore.calls`），
  *    比旧版那句"读回来是空串"更硬——旧断言能证明没写过，证明不了后来谁建了钥匙。
  *
  * 解除配对与取消等待是例外：它们允许调 `dropPairKey`，因为那是撤销而不是建立能力。
@@ -23,6 +31,19 @@ import {
  * 每条用例自己先把设置摆成已知的形状（上一版原型配对过的残留态），因此与文件顺序无关。
  */
 const CLOSED = FeatureFlags.cloudClosedMessage;
+
+/** 本跑生效的云端档位（`CRD_TIER` 改写的是编译副本，源码常量两档都读得到）。 */
+const CLOUD_ON = FeatureFlags.cloudPairing;
+
+/**
+ * 让 fire-and-forget 的 promise 链跑完再断言。用 `setTimeout(…, 0)` 而不是空 `await`：
+ * 心跳链里混着 Preferences 写入（真机上是异步 IO），宏任务一拍能把微任务队列整段排干。
+ */
+async function letItSettle(): Promise<void> {
+  await new Promise<number>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
 
 /** 只读内存表里的计划行，用来判断"清空"到底清没清。 */
 async function activePlanCount(): Promise<number> {
@@ -117,7 +138,7 @@ class OkReminder implements ReminderCapability {
 export default function profileSettingsGuardTest() {
   describe('profileSettingsGuardTest', () => {
 
-    it('create_invite_returns_before_uid_cloud_and_writes', 0, async () => {
+    it('create_invite_reaches_the_cloud_only_when_open', 0, async () => {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, 'stale-partner');
       AgcPairingClient.calls = 0;
@@ -125,6 +146,18 @@ export default function profileSettingsGuardTest() {
 
       const res = await ProfileSettingsService.createInvite();
 
+      if (CLOUD_ON) {
+        // 开档：守卫不许顺手把真的路径也挡掉。替身必定成功，所以这一格要看到一次别名、
+        // 一次云调用，以及会话真的落进本机（关闭态那半句"残留态原样保留"反过来成立）。
+        expect(res.ok).assertTrue();
+        expect(res.code).assertEqual('246810');
+        expect(AgcPairingClient.calls).assertEqual(1);
+        expect(PairKeyStore.calls).assertEqual(1);
+        expect(SettingsStore.getPairId()).assertEqual('session-from-the-cloud');
+        expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
+        expect(SettingsStore.getPartnerUid()).assertEqual('');
+        return;
+      }
       expect(res.ok).assertFalse();
       expect(res.code).assertEqual('');
       expect(res.message).assertEqual(CLOSED);
@@ -145,6 +178,19 @@ export default function profileSettingsGuardTest() {
       const res = await ProfileSettingsService.joinByCode('246810');
       const junk = await ProfileSettingsService.joinByCode('abc');
 
+      if (CLOUD_ON) {
+        // 开档：加入停在 PENDING，绝不就地 PAIRED（协议 §4.2），非法码也不许先发请求
+        expect(res.ok).assertTrue();
+        expect(junk.ok).assertFalse();
+        expect(junk.message).assertEqual('请输入对方分享的 6 位配对码');
+        expect(AgcPairingClient.calls).assertEqual(1);
+        // ensureIdentity + agreeKey：加入方就地完成协商，钥匙不在手就不写 pairId
+        expect(PairKeyStore.calls).assertEqual(2);
+        expect(SettingsStore.getPairState()).assertEqual(PAIR_PENDING);
+        expect(SettingsStore.getPairId()).assertEqual('session-from-the-cloud');
+        expect(ProfileSettingsService.getOutboundToken()).assertEqual('token-from-the-cloud');
+        return;
+      }
       expect(res.ok).assertFalse();
       expect(res.message).assertEqual(CLOSED);
       // 非法码也不许先发请求：守卫在校验之前，两句都停在同一格
@@ -164,50 +210,79 @@ export default function profileSettingsGuardTest() {
 
       const res = await ProfileSettingsService.reconcilePair();
 
-      // 「检查配对状态」的语义是"去云端对一次账"，关闭态既不许发请求也不许改本机进度。
+      // 「检查配对状态」的语义是"去云端对一次账"：两个档位都不许凭空造出 PAIRED，
+      // 区别只在关闭态连门都不敲、且本机进度一格不动。
       expect(res.ok).assertFalse();
+      expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
+      if (CLOUD_ON) {
+        // 替身回的 WAITING → 照实回落并说出"对方还没有输入配对码"，不替云端谎报进度
+        expect(res.message).assertEqual('对方还没有输入配对码');
+        expect(AgcPairingClient.calls).assertEqual(1);
+        expect(PairKeyStore.calls).assertEqual(0);
+        return;
+      }
       expect(res.message).assertEqual(CLOSED);
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(PairKeyStore.calls).assertEqual(0);
-      expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
     });
 
     /**
      * 确认链接这条入口最坏的一格：本机什么都没做过，只凭别人发来的一串凭据就能转 PAIRED。
-     * 关闭态必须一句拒绝，且不留 pairId、不建别名、不发云对象（协议 §4.3 的能力，开关关着就不该有）。
+     * 关闭态一句拒绝、不留 pairId、不建别名、不发云对象；开档则是"云端没说 ACTIVE 就不许写"
+     * ——协议 §4.3 的这条前置在两个档位都得成立，写 PAIRED 的唯一凭据是云端的回答。
      */
-    it('confirm_with_token_is_refused_before_any_write', 0, async () => {
+    it('confirm_with_token_needs_the_cloud_to_say_active', 0, async () => {
       // 上一条用例留下了 pairId 与 WAITING，这里自己摆回"本机从没配过对"的形状
       await SettingsStore.savePairId('');
       await SettingsStore.setPairState(PAIR_NONE, '');
       AgcPairingClient.calls = 0;
       PairKeyStore.calls = 0;
+      // 上一条 join 留下的确认凭据（关闭态它本该是空串）：这条用例要证的是"拒绝不许改动它"
+      const tokenBefore = ProfileSettingsService.getOutboundToken();
 
       const res = await ProfileSettingsService.confirmWithToken('token-from-a-shared-link');
 
       expect(res.ok).assertFalse();
-      expect(res.message).assertEqual(CLOSED);
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
-      expect(ProfileSettingsService.getOutboundToken()).assertEqual('');
+      expect(ProfileSettingsService.getOutboundToken()).assertEqual(tokenBefore);
+      if (CLOUD_ON) {
+        // 开档：手里没有会话时，别人发来的凭据本身不算数（拒绝话术换成"还没有配对会话"）
+        expect(res.message !== CLOSED).assertTrue();
+        // 有会话、且云端回的正是 ACTIVE，才轮到写 PAIRED
+        await SettingsStore.savePairId('session-from-the-cloud');
+        AgcPairingClient.calls = 0;
+        PairKeyStore.calls = 0;
+        const done = await ProfileSettingsService.confirmWithToken('token-from-the-cloud');
+        await letItSettle();
+        expect(done.ok).assertTrue();
+        expect(AgcPairingClient.calls >= 1).assertTrue();
+        expect(PairKeyStore.calls >= 1).assertTrue();
+        expect(SettingsStore.getPairState()).assertEqual(PAIRED);
+        // 确认完成，本机手里这份一次性凭据就地作废（协议 §4.3：它换过一次 ACTIVE 就没用了）
+        expect(ProfileSettingsService.getOutboundToken()).assertEqual('');
+        return;
+      }
+      expect(res.message).assertEqual(CLOSED);
     });
 
-    it('unpair_still_clears_local_marks_without_a_cloud_call', 0, async () => {
+    it('unpair_clears_local_marks_in_every_tier', 0, async () => {
       await SettingsStore.savePairId('session-left-by-the-prototype');
       await SettingsStore.setPairState(PAIRED, 'old-partner-uid');
       await SettingsStore.setPartnerSnapVer(7);
       // 上一轮配对留下的「已降级」：语义是"排不动推送，直到某次拉成功"，留着它，下一轮配对
-      // 从第一版快照起就静默不推，而界面上那条提示讲的是上一个配对的事。
+      // 从第一版配对起就静默不推，而界面上那条提示讲的是上一个配对的事。
       await SettingsStore.setCloudSyncState(encodeSyncState(SYNC_STATE_BLOCKED, 20453, 'FORBIDDEN'));
       AgcPairingClient.calls = 0;
 
       const res = await ProfileSettingsService.unpair();
 
       // 入口藏着但退出必须留着：残留的 PAIRED 说不清来源，用户要能亲手撤掉。
+      // 这一半两档相同；不同的只是开档要顺手把云端那两行也删掉（隐私政策「怎么撤」说的就是它）。
       expect(res.ok).assertTrue();
-      expect(AgcPairingClient.calls).assertEqual(0);
+      expect(AgcPairingClient.calls).assertEqual(CLOUD_ON ? 1 : 0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
       expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
@@ -227,12 +302,12 @@ export default function profileSettingsGuardTest() {
     });
 
     /**
-     * 心跳（协议 §4.6，U3b-1 接线）在关闭态必须完全静默：`beatIfDue` 是回前台挂的 fire-and-forget，
-     * 一旦漏了守卫，每台装了本机的设备都会替一个从没配过对的用户去敲 AGC 的门。
+     * 心跳（协议 §4.6，U3b-1 接线）跟着档位走：关闭态必须**完全静默**——`beatIfDue` 是回前台挂的
+     * fire-and-forget，一旦漏了守卫，每台装了本机的设备都会替一个从没配过对的用户去敲 AGC 的门。
      * 这里刻意把设置摆成"已配对且游标为 0"（也就是最该发的一格），好让这条断言打的是守卫本身，
-     * 而不是顺带被节流挡掉。
+     * 而不是顺带被节流挡掉。开档则要求这一格**真的发出去并且落下游标**，否则守卫是堵死而不是开关。
      */
-    it('beat_if_due_is_silent_when_cloud_is_closed', 0, async () => {
+    it('beat_if_due_follows_the_cloud_tier', 0, async () => {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIRED, 'stale-partner');
       await SettingsStore.setLastHeartbeatAt(0);
@@ -241,6 +316,12 @@ export default function profileSettingsGuardTest() {
 
       ProfileSettingsService.beatIfDue();
 
+      if (CLOUD_ON) {
+        await letItSettle();
+        expect(AgcPairingClient.calls).assertEqual(1);
+        expect(SettingsStore.getLastHeartbeatAt() > 0).assertTrue();
+        return;
+      }
       // 守卫是 `beatIfDue` 的第一句，所以这里可以同步断言：连 uid 都没去取，谈不上发请求
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(PairKeyStore.calls).assertEqual(0);
@@ -250,9 +331,9 @@ export default function profileSettingsGuardTest() {
 
     /**
      * 「该不该跳」的判断单独断言（`heartbeatDue` 是纯函数）。为什么不能只靠上一条：
-     * 档位是源码常量，离线用例改不动它，所以开档之后的四格（未心跳 / 窗口内 / 窗口满 / 时钟回拨）
-     * 在这一层没有云可打；而设备侧又改不了系统钟（无 root，`date -s` 回 Operation not permitted），
-     * 于是"隔一周"这类按时间的分支两头都拿不到现场证据，权威覆盖只能落在这几条断言上（同 D-39）。
+     * 上一条按档位分桶，闭档那一跑只证明守卫，开档那一跑只证明"会发"，而**按时间的四格**
+     * （未心跳 / 窗口内 / 窗口满 / 时钟回拨）在两跑里都只走同一格；设备侧又改不了系统钟
+     * （无 root，`date -s` 回 Operation not permitted），所以权威覆盖只能落在这几条断言上（同 D-39）。
      */
     it('heartbeat_due_predicate_covers_eligibility_and_window', 0, async () => {
       const now = 1777000000000;
@@ -274,8 +355,6 @@ export default function profileSettingsGuardTest() {
     });
 
     it('local_only_features_keep_working_with_cloud_closed', 0, async () => {
-      expect(FeatureFlags.cloudPairing).assertFalse();
-
       const level = await ProfileSettingsService.setShareLevel(3);
       expect(level.ok).assertTrue();
       expect(ProfileSettingsService.getShareLevel()).assertEqual(3);

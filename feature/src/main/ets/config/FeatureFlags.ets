@@ -20,16 +20,23 @@ export class FeatureFlags {
    */
   static readonly calendarFlow: boolean = true;
   /**
-   * 云端配对与加密快照（阶段 3）。Task 0.4 门禁结论是 CLOUD_BLOCKED，HUKS 托管长期密钥
-   * 未验证前不得开启，也不允许退回"短码派生长期密钥"。
+   * 云端配对与加密快照（阶段 3，批次 U·U3b 开闸）。Task 0.4 的 CLOUD_BLOCKED 结论已解除：
+   * 两台 API 26 设备实测 ECDH 协商出的 AES-256 密钥只落在 HUKS 的
+   * `HUKS_STORAGE_ONLY_USED_IN_HUKS` 别名里、`outData` 全零取不出来，跨端 GCM 往返与 AAD
+   * 篡改拒绝也已验证（docs/validation/clouddev-api26-spike.md §2 实验 #5）。
+   * 仍不允许退回"短码派生长期密钥"：开闸的前提就是密钥必须由 HUKS 托管。
+   * 本档与 `ohos.permission.INTERNET`、隐私政策 v1.1 同批出入包（rollout §3.3）。
    */
-  static readonly cloudPairing: boolean = false;
-  /** 扫码配对（阶段 4）。以 cloudPairing 为前提，门禁未过前保持 false。 */
+  static readonly cloudPairing: boolean = true;
+  /**
+   * 扫码配对（阶段 4）。以 cloudPairing 为前提，但**开闸不等于扫码就绪**：二维码通道至今没有
+   * 设备证据（rollout §6 明令不为它开档），所以它停在 false，配对入口只走配对码/分享链接。
+   */
   static readonly scanPairing: boolean = false;
   /**
-   * `cloudPairing=false` 时**唯一**允许的用户口径（阶段 6R.2，验收报告 B1）。
-   * 放在档位旁边而不是页面里，是因为这句话有三个出口必须逐字一致：service 层的拒绝
-   * （ProfileSettingsService）、网关层的拒绝（PairingShareGateway）与「我的」页的说明文本。
+   * 回退档（`cloudPairing=false`）下**唯一**允许的用户口径（阶段 6R.2，验收报告 B1）。
+   * 开档的包读不到这句话，但常量必须留着：回退是"改一行 + 重新出包"，那时三个出口
+   * （service 层的拒绝、网关层的拒绝、「我的」页的说明文本）要逐字一致地回到同一句上。
    * 少一处、或措辞变一点，就会出现"UI 说没开放但代码还在发请求"的那种假安全。
    */
   static readonly cloudClosedMessage: string = '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录';

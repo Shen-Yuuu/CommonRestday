@@ -156,20 +156,42 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getPairId()).assertEqual('');
     });
 
-    it('mark_paired_cannot_fabricate_a_paired_state', 0, async () => {
+    it('reconcile_pair_cannot_fabricate_a_paired_state', 0, async () => {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, '');
       AgcPairingClient.calls = 0;
       PairKeyStore.calls = 0;
 
-      const res = await ProfileSettingsService.markPaired();
+      const res = await ProfileSettingsService.reconcilePair();
 
-      // 「本机标记已配对」是纯本地写库，但它的语义是"已经在同步了"：关闭态一并拒绝。
+      // 「检查配对状态」的语义是"去云端对一次账"，关闭态既不许发请求也不许改本机进度。
       expect(res.ok).assertFalse();
       expect(res.message).assertEqual(CLOSED);
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
+    });
+
+    /**
+     * 确认链接这条入口最坏的一格：本机什么都没做过，只凭别人发来的一串凭据就能转 PAIRED。
+     * 关闭态必须一句拒绝，且不留 pairId、不建别名、不发云对象（协议 §4.3 的能力，开关关着就不该有）。
+     */
+    it('confirm_with_token_is_refused_before_any_write', 0, async () => {
+      // 上一条用例留下了 pairId 与 WAITING，这里自己摆回"本机从没配过对"的形状
+      await SettingsStore.savePairId('');
+      await SettingsStore.setPairState(PAIR_NONE, '');
+      AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
+
+      const res = await ProfileSettingsService.confirmWithToken('token-from-a-shared-link');
+
+      expect(res.ok).assertFalse();
+      expect(res.message).assertEqual(CLOSED);
+      expect(AgcPairingClient.calls).assertEqual(0);
+      expect(PairKeyStore.calls).assertEqual(0);
+      expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
+      expect(SettingsStore.getPairId()).assertEqual('');
+      expect(ProfileSettingsService.getOutboundToken()).assertEqual('');
     });
 
     it('unpair_still_clears_local_marks_without_a_cloud_call', 0, async () => {

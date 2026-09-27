@@ -342,12 +342,12 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 「完成配对」按钮：现在只做**对账**，不再直接置 PAIRED。
+   * 「检查配对状态」：只做**对账**，不再直接置 PAIRED。
    *
-   * 原版这条是协议 §8 明令修掉的偏离——本地写 PAIRED 而云端仍是 WAITING，界面上就是"正在同步"那句谎。
+   * 旧名 `markPaired` 那条是协议 §8 明令修掉的偏离——本地写 PAIRED 而云端仍是 WAITING，界面上就是"正在同步"那句谎。
    * 以 pairing-status 为准：云端 ACTIVE 才转 PAIRED（并补上缺席的协商），其余状态照实回落本机配对态。
    */
-  static async markPaired(): Promise<SettingsResult> {
+  static async reconcilePair(): Promise<SettingsResult> {
     if (ProfileSettingsService.cloudBlocked()) {
       return fail(FeatureFlags.cloudClosedMessage);
     }

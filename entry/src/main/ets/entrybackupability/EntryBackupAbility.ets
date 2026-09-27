@@ -58,6 +58,10 @@ export default class EntryBackupAbility extends BackupExtensionAbility {
    * 抹掉随备份过来但在这台机器上不成立的配对凭据。
    * 伴侣档案（本机代录的那份）是用户输入、不是设备投影，保留。
    * 计划行的日历/提醒句柄不在这里清：RESTORE_PENDING 标记会让首启把它们降级重挂（Task 6.1）。
+   *
+   * HUKS 别名不在备份范围内（密钥材料出不了这台设备），所以恢复后 `hasPairKey(pairId)` 必然为假：
+   * 这里清的是 Preferences 里那份"声称已配对"的标记，顺带把旧原型残留的明文 `pair_key` 也带走。
+   * 少清这一格，新机界面就会对着一个解不开的 pairId 报"正在同步"。
    */
   private async dropDeviceLocalHandles(): Promise<void> {
     try {

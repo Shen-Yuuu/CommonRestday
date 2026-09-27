@@ -1,5 +1,5 @@
 import { OWNER_ME, PairLink, PairOffer } from 'domain';
-import { PAIRED, PAIR_NONE, PAIR_WAITING, SettingsStore } from 'data';
+import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'data';
 import {
   FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
   PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult
@@ -52,8 +52,10 @@ export struct MeView {
   @State private myCode: string = '';
   @State private joinCode: string = '';
   /**
-   * 服务端签发的一次性配对凭据。门禁（Task 0.4 = CLOUD_BLOCKED）解除前恒为空——
-   * 6 位配对码不进二维码，所以没有 token 就没有二维码可画，页面退回"突出短码"。
+   * 一次性确认凭据（协议 §4.2 下发给加入方，由加入方交回发起方，§4.3 才转 ACTIVE）。
+   * 只活在进程里：冷启动回来就没了，那时这一侧只剩「检查配对状态」可点——§4.4 要不要把凭据
+   * 回传给发起方，是开闸前必须定的协议修订项（记在批次 U 的欠账里）。
+   * 6 位配对码不进二维码，所以没有凭据就没有链接可画，页面退回"突出短码"。
    */
   @State private pairToken: string = '';
   /** 扫码/分享入口由能力探测决定，不在页面里硬编机型。 */
@@ -140,16 +142,16 @@ export struct MeView {
   }
 
   /**
-   * 确认页：扫到/点开链接都不直接绑，先让用户看清"这是谁的哪一次请求"。
+   * 确认页：点开链接不直接绑，先让用户看清"这是谁的哪一次请求"（协议 §4.3 由发起方按确认）。
    * token 只露首尾，整条凭据不进屏幕文本、不进日志。
    */
   confirmPair(offer: PairOffer): void {
     askConfirm(this.getUIContext(), {
       title: '确认配对请求',
-      message: '收到一次性配对凭据 ' + PairLink.mask(offer.token)
-        + '。接受后由云端确认，本应用不会自动绑定。',
+      message: '对方已输入你的配对码，并发来一次性确认凭据 ' + PairLink.mask(offer.token)
+        + '。确认后两边才开始加密同步。',
       cancelText: '忽略',
-      confirmText: '接受',
+      confirmText: '确认配对',
       onCancel: () => {
         PairingShareGateway.ignoreOffer();
       },
@@ -166,6 +168,7 @@ export struct MeView {
   reload(): void {
     this.shareLevel = ProfileSettingsService.getShareLevel();
     this.pairState = ProfileSettingsService.getPairState();
+    this.pairToken = ProfileSettingsService.getOutboundToken();
     this.channels = PairingShareGateway.channels();
     this.reloadPartner();
     this.reloadMyParams();
@@ -249,6 +252,9 @@ export struct MeView {
     if (this.pairState === PAIR_WAITING) {
       return '等待对方输码';
     }
+    if (this.pairState === PAIR_PENDING) {
+      return '等待确认';
+    }
     return '未配对';
   }
 
@@ -259,6 +265,21 @@ export struct MeView {
     }
     return '本机已标记为已配对，但云端未开通：TA 的班表不会自动同步。'
       + '现在就要共同时间，请用上方「伴侣（本机代录）」。';
+  }
+
+  /**
+   * 等待态的一句现况：这一侧到底在等什么，只由"手上有什么"决定——
+   * 有确认凭据说明本机是加入方（要把链接交回去），只有短码说明本机是发起方（还在等对方输码）。
+   * 不另存"我是发起方还是加入方"这一位：云端 §4.4 认得成员表，本机跟着它给的进度说就够了。
+   */
+  waitingNote(): string {
+    if (this.pairLink() !== '') {
+      return '把这条链接发给对方：对方点开后按「确认配对」，两边才开始同步。';
+    }
+    if (this.pairState === PAIR_PENDING) {
+      return '对方还需要点一次确认；如果没收到对方发来的链接，让对方重新分享一次，或点「检查配对状态」看云端进度。';
+    }
+    return '对方输入配对码后，本机不会自动往下走；点「检查配对状态」可对一次云端的账。';
   }
 
   /**
@@ -304,19 +325,25 @@ export struct MeView {
       this.pairingBusy = false;
       appToast(res.message);
       if (res.ok) {
-        this.pairState = PAIRED;
+        // 输码不等于配对：协议 §4.2 之后还要 §4.3，本机先落在"等待确认"
+        this.pairState = PAIR_PENDING;
+        this.pairToken = ProfileSettingsService.getOutboundToken();
         this.showJoinInput = false;
         this.joinCode = '';
       }
     });
   }
 
-  /** 创建方确认完成配对（体验版：无服务端推送，对方输码后手动确认）。 */
-  markPaired(): void {
-    ProfileSettingsService.markPaired().then((res: SettingsResult) => {
-      if (res.ok) {
-        this.pairState = PAIRED;
-      }
+  /** 对一次云端的账（协议 §4.4）：本机配对态跟着云端走，不自己造"已配对"。 */
+  reconcilePair(): void {
+    if (this.pairingBusy) {
+      return;
+    }
+    this.pairingBusy = true;
+    ProfileSettingsService.reconcilePair().then((res: SettingsResult) => {
+      this.pairingBusy = false;
+      this.pairState = ProfileSettingsService.getPairState();
+      this.pairToken = ProfileSettingsService.getOutboundToken();
       appToast(res.message);
     });
   }
@@ -447,6 +474,9 @@ export struct MeView {
   private identitySub(): string {
     if (this.pairState === PAIR_WAITING) {
       return '等待对方输入配对码';
+    }
+    if (this.pairState === PAIR_PENDING) {
+      return '已加入 · 还差对方确认，尚未同步';
     }
     if (this.pairState === PAIRED) {
       return FeatureFlags.cloudPairing
@@ -872,7 +902,7 @@ export struct MeView {
         Text('现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
-        // 退出通道留着：上一版原型可能在单机上留下 WAITING/PAIRED 标记，藏了入口就不能再撤了
+        // 退出通道留着：上一版原型可能在单机上留下 WAITING/PENDING/PAIRED 标记，藏了入口就不能再撤了
         if (this.pairState === PAIRED) {
           Button('解除配对')
             .width('100%')
@@ -882,7 +912,7 @@ export struct MeView {
             .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
             .fontColor(DesignTokens.danger)
             .onClick(() => this.askUnpair())
-        } else if (this.pairState === PAIR_WAITING) {
+        } else if (this.pairState === PAIR_WAITING || this.pairState === PAIR_PENDING) {
           Button('取消配对')
             .width('100%')
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -904,7 +934,7 @@ export struct MeView {
           .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
           .fontColor(DesignTokens.danger)
           .onClick(() => this.askUnpair())
-      } else if (this.pairState === PAIR_WAITING) {
+      } else if (this.pairState === PAIR_WAITING || this.pairState === PAIR_PENDING) {
         if (this.pairLink() !== '') {
           // 二维码只画一次性链接：黑白固定对比色，不随深浅色反转，保证扫码可读
           Row() {
@@ -921,7 +951,7 @@ export struct MeView {
           .width('100%')
           .justifyContent(FlexAlign.Center)
 
-          Text('让对方点「扫码配对」对准这个二维码，或直接把链接分享过去。')
+          Text('把这条链接发给对方：对方点开后按「确认配对」，两边才开始同步。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
@@ -945,7 +975,7 @@ export struct MeView {
             // 视觉上是"384106"，朗读必须逐位报数，否则会被读成"三十八万四千一百零六"
             .accessibilityText(this.codeRead())
           Text('对方在 TA 的「我的 · 伴侣与同步」输入此码即可。'
-            + '二维码与分享链接只承载服务端签发的一次性凭据，云端配对开通后自动出现。')
+            + '输完 TA 会发回一条确认链接，你点开按「确认配对」才开始同步。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
@@ -959,17 +989,20 @@ export struct MeView {
             .fontColor(DesignTokens.textSecondary)
             .onClick(() => this.copyPairCode())
         } else {
-          Text('配对码已生成（本次进入页面未显示）。如对方未收到，可重新生成。')
+          Text(this.pairState === PAIR_PENDING
+            ? '这台设备重启过，一次性确认凭据已经不在了：让对方再发一次，或直接点下面的「检查配对状态」。'
+            : '配对码已生成（本次进入页面未显示）。如对方未收到，可重新生成。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
         }
         Row({ space: DesignTokens.space3 }) {
-          Button('本机标记已配对').layoutWeight(1)
+          Button(this.pairingBusy ? '检查中…' : '检查配对状态').layoutWeight(1)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor(DesignTokens.primary)
             .fontWeight(FontWeight.Bold)
             .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-            .onClick(() => this.markPaired())
+            .enabled(!this.pairingBusy)
+            .onClick(() => this.reconcilePair())
           Button('取消配对').layoutWeight(1)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor(DesignTokens.fillWeak)
@@ -977,7 +1010,9 @@ export struct MeView {
             .onClick(() => this.cancelWaiting())
         }.width('100%')
 
-        Text('这个按钮只改本机显示：云端未开通时不会有任何数据同步过去。')
+        // 这条按钮从前叫「本机标记已配对」，点了就把本机写成已配对——云端还停在 WAITING，
+        // 界面上"正在同步"就是句谎话（协议 §8 记的偏离）。现在它只查一次 §4.4，进度跟着云端走。
+        Text(this.waitingNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       } else {

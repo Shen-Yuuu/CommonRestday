@@ -1,4 +1,5 @@
-import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, todayEpochDay, weekdayOf } from 'domain';
+import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, nowEpochMin, todayEpochDay,
+  weekdayOf } from 'domain';
 import { DateLabel } from 'commons';
 import {
   CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
@@ -106,7 +107,7 @@ export struct WeekScheduleView {
 
   /** 重新看一眼钟：不排定时器、不做常驻动画，进页面/回前台时准就够了（K-4③ 的口径）。 */
   refreshNow(): void {
-    this.nowMin = this.nowEpochMin();
+    this.nowMin = nowEpochMin();
   }
 
   reload(): void {
@@ -138,11 +139,6 @@ export struct WeekScheduleView {
 
   private isCommon(): boolean {
     return this.mode === WEEK_MODE_COMMON;
-  }
-
-  private nowEpochMin(): number {
-    const d = new Date();
-    return todayEpochDay() * MIN_PER_DAY + d.getHours() * 60 + d.getMinutes();
   }
 
   loadWeek(): void {
@@ -184,7 +180,7 @@ export struct WeekScheduleView {
         key: WindowFilterKey.ALL,
         fromEpochMin: this.weekStart * MIN_PER_DAY
       };
-      const page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowEpochMin());
+      const page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowMin);
       const weekEnd = (this.weekStart + 7) * MIN_PER_DAY;
       const wins: WindowSummary[] = [];
       for (let i = 0; i < page.windows.length; i++) {
@@ -452,6 +448,14 @@ export struct WeekScheduleView {
   }
 
   /**
+   * 游标所在的那天取自 `nowMin` 自己，不再于渲染时另读一次表：
+   * 分两次读数时，跨午夜那一瞬会把游标摆到隔壁日子（纵向偏移正好一整天）。
+   */
+  private nowDay(): number {
+    return Math.floor(this.nowMin / MIN_PER_DAY);
+  }
+
+  /**
    * 「现在」游标画不画（K-4③）：落在纵轴覆盖的那段里才有容身之处。
    * 凌晨缩略掉的那几段不画——游标停不出轴，画在边缘反而像标错了日子。
    */
@@ -471,14 +475,14 @@ export struct WeekScheduleView {
     Row()
       .width('100%')
       .height(1.5)
-      .position({ x: 0, y: this.blockY(this.nowMin, todayEpochDay()) })
+      .position({ x: 0, y: this.blockY(this.nowMin, this.nowDay()) })
       .linearGradient({ angle: 90, colors: [[DesignTokens.primary, 0], [Color.Transparent, 1]] })
       .accessibilityLevel('no')
     Circle()
       .width(5)
       .height(5)
       .fill(DesignTokens.primary)
-      .position({ x: 0, y: this.blockY(this.nowMin, todayEpochDay()) - 2 })
+      .position({ x: 0, y: this.blockY(this.nowMin, this.nowDay()) - 2 })
       .accessibilityLevel('no')
   }
 
@@ -696,7 +700,7 @@ export struct WeekScheduleView {
             }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
 
             // 「现在」游标画在色块之上：压在被遮住的班次下面就等于没有（K-4③）
-            if (ed === todayEpochDay() && this.nowShown()) {
+            if (ed === this.nowDay() && this.nowShown()) {
               this.nowMarker()
             }
           }
@@ -861,7 +865,7 @@ export struct WeekScheduleView {
             }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start)
 
             // 「现在」游标：与日程模式同一枚画法，画在所有块之上（K-4③）
-            if (ed === todayEpochDay() && this.nowShown()) {
+            if (ed === this.nowDay() && this.nowShown()) {
               this.nowMarker()
             }
           }

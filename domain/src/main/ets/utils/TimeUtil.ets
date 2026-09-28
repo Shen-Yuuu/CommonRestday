@@ -21,9 +21,19 @@ export function todayEpochDay(now: number = Date.now()): number {
   return epochDayOf(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-/** epochDay → 本地零点的时间戳（毫秒）。 */
-export function epochDayToMs(epochDay: number): number {
-  return epochDay * MIN_PER_DAY * 60 * 1000;
+/**
+ * 由**一个**时刻读出「自 epoch 起的本地分钟」（epochMin）。
+ * 日和时分必须同源：分两次读表时，跨午夜那一瞬两次读数会各说各话，
+ * 拼出偏整整一天的 epochMin，页面据此挑错「今天」。
+ */
+export function epochMinOf(now: Date): number {
+  return epochDayOf(now.getFullYear(), now.getMonth() + 1, now.getDate()) * MIN_PER_DAY
+    + now.getHours() * 60 + now.getMinutes();
+}
+
+/** 当下的 epochMin；只在这里读一次表，测试可注入时刻。 */
+export function nowEpochMin(now: number = Date.now()): number {
+  return epochMinOf(new Date(now));
 }
 
 /** epochDay 是否为周六或周日（周一=1 … 周日=7）。 */

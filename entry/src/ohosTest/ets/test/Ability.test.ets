@@ -3,7 +3,7 @@ import { abilityDelegatorRegistry, Driver } from '@kit.TestKit';
 import { Want } from '@kit.AbilityKit';
 import { afterAll, beforeAll, describe, expect, it } from '@ohos/hypium';
 import {
-  CONFLICT_REASON_MY_SHIFT, CONFLICT_SOURCE_MINE, MIN_PER_DAY, OWNER_ME, todayEpochDay
+  CONFLICT_REASON_MY_SHIFT, CONFLICT_SOURCE_MINE, MIN_PER_DAY, OWNER_ME, nowEpochMin
 } from 'domain';
 import { Db, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import {
@@ -78,11 +78,6 @@ class E2eReminder implements ReminderCapability {
 }
 
 const CAL = new E2eCalendar();
-
-function nowEpochMin(): number {
-  const d = new Date();
-  return todayEpochDay() * MIN_PER_DAY + d.getHours() * 60 + d.getMinutes();
-}
 
 /** 共同时间页的全量窗口（未归并）：与首页答案同源，只是没按通道筛。 */
 async function pageWindows(from: number): Promise<WindowSummary[]> {

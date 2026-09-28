@@ -1,5 +1,5 @@
 import { Chip } from '@kit.ArkUI';
-import { Interval, MIN_PER_DAY, todayEpochDay } from 'domain';
+import { Interval, MIN_PER_DAY, nowEpochMin, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
 import {
   CreatePlanOptions, isOnSystemCalendar, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, OTHER_PLAN_KIND_KEY,
@@ -91,7 +91,7 @@ export struct WindowDetailSheet {
   /** 按当前窗口重置草稿（口径在 PlanFlow.defaultDraft，和恢复/换窗口重开共用一份）。 */
   resetDraft(): void {
     const draft: PlanDraft = defaultDraft(this.winStart, this.winEnd, PLAN_KINDS[0].label,
-      PLAN_KINDS[0].key, null, this.nowMin());
+      PLAN_KINDS[0].key, null, nowEpochMin());
     this.kindIdx = 0;
     this.titleTouched = false;
     this.timeTouched = false;
@@ -99,12 +99,6 @@ export struct WindowDetailSheet {
     this.planStart = draft.start;
     this.planEnd = draft.end;
     this.arrangePastOwnRhythm();
-  }
-
-  /** 当下，用的是模型那套"自 epoch 起的分钟"刻度（与 winStart/winEnd 同轴才能直接比）。 */
-  private nowMin(): number {
-    const d = new Date();
-    return todayEpochDay() * MIN_PER_DAY + d.getHours() * 60 + d.getMinutes();
   }
 
   /**
@@ -131,7 +125,7 @@ export struct WindowDetailSheet {
       return;
     }
     const draft: PlanDraft = defaultDraft(winStart, winEnd, this.title, PLAN_KINDS[this.kindIdx].key,
-      unavailable, this.nowMin());
+      unavailable, nowEpochMin());
     this.planStart = draft.start;
     this.planEnd = draft.end;
   }

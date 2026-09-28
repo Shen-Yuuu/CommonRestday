@@ -1,4 +1,4 @@
-import { MIN_PER_DAY, todayEpochDay } from 'domain';
+import { nowEpochMin, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
 import { PAIRED } from 'data';
 import {
@@ -82,30 +82,27 @@ export struct HomeView {
 
   // ---------- 数据 ----------
 
-  private nowEpochMin(): number {
-    const d = new Date();
-    return todayEpochDay() * MIN_PER_DAY + d.getHours() * 60 + d.getMinutes();
-  }
-
   /**
    * 读首页读模型。allowRecompute=true（首次进入 / 用户点重试或重新计算）时，
    * 缓存为空或跨天过期才补一次本机重算；手动刷新传 false，只重读读模型，
    * 不触发重算、通知注册与云端推送。
    */
   private async load(allowRecompute: boolean): Promise<void> {
+    // 一次加载只读一次表：三次读数各算各的"现在"，跨午夜那瞬能把同一次渲染劈成两天
+    const now = nowEpochMin();
     for (let attempt = 1; attempt <= LOAD_ATTEMPTS; attempt++) {
       try {
-        let summary = await CommonTimeQueryService.getHomeSummary(this.nowEpochMin());
+        let summary = await CommonTimeQueryService.getHomeSummary(now);
         if (allowRecompute && (summary.computedAt <= 0 || summary.stale)) {
           // 冷启动重算可能还在路上：此时缓存为空或属于昨天，补算一次再渲染，
           // 否则首页会先告诉用户"没有窗口"，等到下一次广播才纠正
           await ScheduleUseCase.ensureSeeded();
           await ScheduleUseCase.recompute(todayEpochDay());
-          summary = await CommonTimeQueryService.getHomeSummary(this.nowEpochMin());
+          summary = await CommonTimeQueryService.getHomeSummary(now);
           if (summary.computedAt <= 0) {
             // 自己刚写完就读到空表，只能是另一路重算正在 DELETE/INSERT：等它落盘再读一次
             await this.delay(SETTLE_DELAY_MS);
-            summary = await CommonTimeQueryService.getHomeSummary(this.nowEpochMin());
+            summary = await CommonTimeQueryService.getHomeSummary(now);
           }
         }
         this.home = summary;

@@ -1,5 +1,5 @@
 import { Course, Interval, MIN_PER_DAY, SectionTime } from '../model/Types';
-import { epochDayToMs, termWeekOf, weekdayOf } from '../utils/TimeUtil';
+import { termWeekOf, weekdayOf } from '../utils/TimeUtil';
 import { mkIv } from '../merge/IntervalOps';
 
 /**
@@ -50,9 +50,4 @@ function courseInterval(course: Course, sectionTimes: SectionTime[], epochDay: n
   }
   const base = epochDay * MIN_PER_DAY;
   return mkIv(base + first.startMin, base + last.endMin, 'COURSE');
-}
-
-/** 课程占用（分钟）→ 显示用（供确认页预览等）。 */
-export function courseIntervalToMs(iv: Interval): number {
-  return epochDayToMs(Math.floor(iv.start / MIN_PER_DAY)) + (iv.start % MIN_PER_DAY) * 60 * 1000;
 }

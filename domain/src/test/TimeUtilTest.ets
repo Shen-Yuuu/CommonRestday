@@ -1,5 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { epochDayOf, minToHHmm, hhmmToMin, weekdayOf, termWeekOf, isWeekend } from '../main/ets/utils/TimeUtil';
+import { MIN_PER_DAY } from '../main/ets/model/Types';
+import { epochDayOf, minToHHmm, hhmmToMin, weekdayOf, termWeekOf, isWeekend,
+  epochMinOf, nowEpochMin, todayEpochDay } from '../main/ets/utils/TimeUtil';
 
 export default function timeUtilTest() {
   describe('timeUtil', () => {
@@ -37,6 +39,22 @@ export default function timeUtilTest() {
       expect(termWeekOf(start, start + 6)).assertEqual(1);
       expect(termWeekOf(start, start + 7)).assertEqual(2);
       expect(termWeekOf(start, start - 1)).assertEqual(0);
+    });
+
+    it('epochMin_single_clock_reading_across_midnight', 0, () => {
+      const late = new Date(2026, 8, 28, 23, 59, 59, 999);
+      const next = new Date(2026, 8, 29, 0, 0, 0, 0);
+      const day = epochDayOf(2026, 9, 28);
+      const m1 = epochMinOf(late);
+      const m2 = epochMinOf(next);
+      expect(m1).assertEqual(day * MIN_PER_DAY + 23 * 60 + 59);
+      expect(m2).assertEqual((day + 1) * MIN_PER_DAY);
+      // 跨午夜只差 1 分钟：日和时分同源于一次读数，拼不出偏一整天的 epochMin
+      expect(m2 - m1).assertEqual(1);
+      expect(Math.floor(m1 / MIN_PER_DAY)).assertEqual(todayEpochDay(late.getTime()));
+      expect(Math.floor(m2 / MIN_PER_DAY)).assertEqual(todayEpochDay(next.getTime()));
+      expect(nowEpochMin(late.getTime())).assertEqual(m1);
+      expect(nowEpochMin(next.getTime())).assertEqual(m2);
     });
   });
 }

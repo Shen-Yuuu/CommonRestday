@@ -1,4 +1,4 @@
-import { MIN_PER_DAY, todayEpochDay } from 'domain';
+import { nowEpochMin, todayEpochDay } from 'domain';
 import { AppConst, DateLabel, Logger } from 'commons';
 import { PAIRED } from 'data';
 import {
@@ -163,29 +163,26 @@ export struct CoTimeView {
 
   // ---------- 数据 ----------
 
-  private nowEpochMin(): number {
-    const d = new Date();
-    return todayEpochDay() * MIN_PER_DAY + d.getHours() * 60 + d.getMinutes();
-  }
-
   /**
    * 读页面读模型。allowRecompute=true（首次进入 / 用户点重试或重新计算）时，
    * 缓存为空或跨天过期才补一次本机重算；下拉刷新与切筛选传 false，只重读。
    * 筛选档是查询条件：换档就是换一次查询，页面不再自己过滤一遍。
    */
   private async load(allowRecompute: boolean): Promise<void> {
-    const filter: WindowFilter = { key: this.filterKey, fromEpochMin: this.nowEpochMin() };
+    // 一次加载只读一次表：筛选下界与查询用的"现在"分两次读数时，跨午夜那瞬会劈成两天
+    const now = nowEpochMin();
+    const filter: WindowFilter = { key: this.filterKey, fromEpochMin: now };
     for (let attempt = 1; attempt <= LOAD_ATTEMPTS; attempt++) {
       try {
-        let page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowEpochMin());
+        let page = await CommonTimeQueryService.getCommonTimePage(filter, now);
         if (allowRecompute && (page.computedAt <= 0 || page.stale)) {
           await ScheduleUseCase.ensureSeeded();
           await ScheduleUseCase.recompute(todayEpochDay());
-          page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowEpochMin());
+          page = await CommonTimeQueryService.getCommonTimePage(filter, now);
           if (page.computedAt <= 0) {
             // 自己刚写完就读到空表，只能是另一路重算正在 DELETE/INSERT：等它落盘再读一次
             await this.delay(SETTLE_DELAY_MS);
-            page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowEpochMin());
+            page = await CommonTimeQueryService.getCommonTimePage(filter, now);
           }
         }
         this.page = page;

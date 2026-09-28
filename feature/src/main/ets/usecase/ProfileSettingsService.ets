@@ -101,7 +101,7 @@ export class ProfileSettingsService {
     try {
       p = SettingsStore.getParams();
     } catch (e) {
-      return fail('设置尚未就绪，请稍后再试');
+      return fail('设置还没读出来，稍后再试');
     }
     p.wakeMin = hhmmToMin(input.wakeText);
     p.bedMin = hhmmToMin(input.bedText);
@@ -114,7 +114,7 @@ export class ProfileSettingsService {
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
-    return ok('参数已保存，已重新计算');
+    return ok('已保存，共同时间重新算好了');
   }
 
   // ---------- 伴侣档案（本机代录） ----------
@@ -140,7 +140,7 @@ export class ProfileSettingsService {
   static async savePartner(input: PartnerInput): Promise<SettingsResult> {
     const nick = input.nick.trim();
     if (nick === '') {
-      return fail('请填写伴侣昵称');
+      return fail('先填 TA 的昵称');
     }
     const err = rhythmError(input.wakeText, input.bedText, input.windText);
     if (err !== '') {
@@ -156,7 +156,7 @@ export class ProfileSettingsService {
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
-    return ok('伴侣档案已保存，共同时间已重算');
+    return ok('TA 的作息已保存，共同时间重新算好了');
   }
 
   /** 删除档案同时清掉本机代录的 TA 班表，回退单人模式。 */
@@ -168,7 +168,7 @@ export class ProfileSettingsService {
     } catch (e) {
       return fail('删除失败：' + (e as Error).message);
     }
-    return ok('已删除伴侣数据，回退单人模式');
+    return ok('已删除 TA 的数据，回到单人模式');
   }
 
   // ---------- 隐私共享等级 ----------
@@ -189,7 +189,7 @@ export class ProfileSettingsService {
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
-    return ok('已保存，重启后仍保持');
+    return ok('共享等级已保存');
   }
 
   // ---------- 云端配对（协议 v1 §8：UNPAIRED ─create→ WAITING ─join→ PENDING_CONFIRM ─confirm→ ACTIVE） ----------
@@ -250,21 +250,21 @@ export class ProfileSettingsService {
       return FeatureFlags.cloudClosedMessage;
     }
     if (semantic === CLOUD_NETWORK) {
-      return '网络不可达，稍后再试';
+      return '连不上网络，稍后再试';
     }
     if (semantic === 'CODE_EXPIRED' || semantic === 'CODE_TAKEN') {
-      return '配对码已失效或已被使用，请让对方重新生成';
+      return '配对码失效或已经被用过，让 TA 重新生成一个';
     }
     if (semantic === 'UNAUTHORIZED' || semantic === 'FORBIDDEN' || semantic === 'NOT_FOUND') {
-      return '这次配对已失效，请重新发起（本机数据不受影响）';
+      return '这次配对已经失效，重新配对一次就行；本机数据不受影响';
     }
     if (semantic === 'QUOTA_EXHAUSTED') {
-      return '今天的云同步次数已用完，明天自动恢复';
+      return '今天的同步次数用完了，明天自动恢复';
     }
     if (semantic === 'SCHEMA_UNSUPPORTED') {
-      return '云端版本与本应用不匹配，请更新后再试';
+      return '云端版本和手机上的应用对不上，更新后再试';
     }
-    return '配对服务暂时不可用，请稍后再试';
+    return '配对服务暂时用不了，请稍后再试';
   }
 
   /**
@@ -312,7 +312,7 @@ export class ProfileSettingsService {
       const session: PairSession = await new AgcPairingClient().joinPairing(code, uid, publicKey);
       // 协商失败就是没有钥匙：宁可不写 pairId，也不留下一个"显示已配对但永远同步不动"的态
       if (session.peerPublicKey === '') {
-        return fail('对方密钥未就绪，请让对方重新生成配对码');
+        return fail('TA 那边还没准备好，让 TA 重新生成配对码');
       }
       await PairKeyStore.agreeKey(uid, session.pairId, session.peerPublicKey);
       await SettingsStore.savePairId(session.pairId);
@@ -323,9 +323,9 @@ export class ProfileSettingsService {
       return fail(ProfileSettingsService.degradedMessage(e));
     }
     if (ProfileSettingsService.outboundToken === '') {
-      return ok('已加入，但这次没有拿到确认凭据：请让对方用配对码重新发起');
+      return ok('已加入，但这次没拿到确认用的链接：让 TA 用配对码重新发起一次');
     }
-    return ok('已加入，把配对链接发给 TA 确认后才会开始同步');
+    return ok('已加入，把配对链接发给 TA，TA 确认后才开始同步');
   }
 
   /**
@@ -338,23 +338,23 @@ export class ProfileSettingsService {
     }
     const pairId = SettingsStore.getPairId();
     if (pairId === '' || confirmToken === '') {
-      return fail('没有待确认的配对请求');
+      return fail('现在没有要确认的配对');
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
       const session: PairSession = await new AgcPairingClient().confirmPairing(pairId, uid, confirmToken);
       if (session.status !== 'ACTIVE') {
-        return fail('云端还没有确认这次配对，请稍后重试');
+        return fail('云端还没确认这次配对，稍后再试');
       }
       if (session.peerPublicKey === '') {
-        return fail('对方密钥未就绪，请重新发起配对');
+        return fail('TA 那边还没准备好，重新配对一次');
       }
       await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
       await SettingsStore.setPairState(PAIRED, session.peerUid);
       ProfileSettingsService.outboundToken = '';
       ScheduleUseCase.onScheduleChanged().catch(() => {
       });
-      return ok('配对完成，班表将按隐私等级加密同步');
+      return ok('配对完成，班表会按你选的等级加密同步');
     } catch (e) {
       Logger.warn(TAG, 'confirmPairing degraded: ' + (e as Error).message);
       return fail(ProfileSettingsService.degradedMessage(e));
@@ -373,7 +373,7 @@ export class ProfileSettingsService {
     }
     const pairId = SettingsStore.getPairId();
     if (pairId === '') {
-      return fail('还没有配对会话，先生成配对码');
+      return fail('还没有生成配对码，先生成一个');
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
@@ -381,22 +381,22 @@ export class ProfileSettingsService {
       if (session.status === 'ACTIVE') {
         if (!await PairKeyStore.hasPairKey(pairId)) {
           if (session.peerPublicKey === '') {
-            return fail('对方密钥未就绪，请重新发起配对');
+            return fail('TA 那边还没准备好，重新配对一次');
           }
           await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
         }
         await SettingsStore.setPairState(PAIRED, session.peerUid);
         ScheduleUseCase.onScheduleChanged().catch(() => {
         });
-        return ok('已连接云端，班表将按隐私等级加密同步');
+        return ok('已经连上云端，班表会按你选的等级加密同步');
       }
       if (session.status === 'PENDING_CONFIRM') {
         await SettingsStore.setPairState(PAIR_PENDING, session.peerUid);
-        return ok('等 TA 确认：把配对链接发给对方，确认后自动开始同步');
+        return ok('还在等 TA 确认：把配对链接发给 TA，确认后自动开始同步');
       }
       // WAITING / EXPIRED / REVOKED / 未知：本机跟着回落，不替云端谎报进度
       await SettingsStore.setPairState(session.status === 'WAITING' ? PAIR_WAITING : PAIR_NONE, '');
-      return fail(session.status === 'WAITING' ? '对方还没有输入配对码' : '这次配对已失效，请重新发起');
+      return fail(session.status === 'WAITING' ? '对方还没有输入配对码' : '这次配对已经失效，重新配对一次');
     } catch (e) {
       Logger.warn(TAG, 'pairStatus degraded: ' + (e as Error).message);
       return fail(ProfileSettingsService.degradedMessage(e));

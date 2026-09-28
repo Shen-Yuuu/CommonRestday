@@ -164,8 +164,8 @@ export struct MeView {
   confirmPair(offer: PairOffer): void {
     askConfirm(this.getUIContext(), {
       title: '确认配对请求',
-      message: '对方已输入你的配对码，并发来一次性确认凭据 ' + PairLink.mask(offer.token)
-        + '。确认后两边才开始加密同步。',
+      message: 'TA 已经输入你的配对码（确认号 ' + PairLink.mask(offer.token)
+        + '）。你确认后两边才开始同步。',
       cancelText: '忽略',
       confirmText: '确认配对',
       onCancel: () => {
@@ -238,7 +238,7 @@ export struct MeView {
   confirmDeletePartner(): void {
     askConfirm(this.getUIContext(), {
       title: '删除伴侣档案',
-      message: '将同时清除 TA 的全部班表/课表数据，并回退到单人模式。确定删除？',
+      message: 'TA 的班表和课表会一起删掉，之后回到单人模式。',
       confirmText: '删除',
       danger: true,
       onConfirm: () => this.doDeletePartner()
@@ -257,7 +257,7 @@ export struct MeView {
 
   /** 跨零点作息要说成人话，否则"就寝 01:00"看着像漏填。 */
   private bedNote(wakeStr: string, bedStr: string): string {
-    return isCrossMidnight(wakeStr, bedStr) ? '就寝已过零点，按次日凌晨计入' : '';
+    return isCrossMidnight(wakeStr, bedStr) ? '就寝已过零点，算作第二天' : '';
   }
 
   // ---------- 云端配对（US9 / FR-015：AGC 未就绪时全程降级提示，不影响本机代录） ----------
@@ -278,10 +278,9 @@ export struct MeView {
   /** 「已配对」不许说成"正在同步"：云端开关关着时它只是本机状态（验收清单 §9.5 的偏离口径）。 */
   pairedNote(): string {
     if (FeatureFlags.cloudPairing) {
-      return '已与另一台设备配对：班表变更会按你的隐私等级加密后同步给 TA。';
+      return '已配对：班表改动会按你选的共享等级加密同步给 TA。';
     }
-    return '本机已标记为已配对，但云端未开通：TA 的班表不会自动同步。'
-      + '现在就要共同时间，请用上方「伴侣（本机代录）」。';
+    return '云端还没开通，TA 的班表不会自动同步。想现在就算，用上方「伴侣（本机代录）」。';
   }
 
   /**
@@ -301,12 +300,12 @@ export struct MeView {
    */
   waitingNote(): string {
     if (this.pairLink() !== '') {
-      return '把这条链接发给对方：对方点开后按「确认配对」，两边才开始同步。';
+      return '把这条链接发给 TA：TA 点开后按「确认配对」，两边才开始同步。';
     }
     if (this.pairState === PAIR_PENDING) {
-      return '对方还需要点一次确认；如果没收到对方发来的链接，让对方重新分享一次，或点「检查配对状态」看云端进度。';
+      return '还差 TA 点一次确认。没收到链接就请 TA 重新分享一次。';
     }
-    return '对方输入配对码后，本机不会自动往下走；点「检查配对状态」可对一次云端的账。';
+    return 'TA 输完配对码不会自动往下走，点「检查配对状态」同步一次进度。';
   }
 
   /**
@@ -321,7 +320,7 @@ export struct MeView {
         s += ' ';
       }
     }
-    return s + '，逐位输入给对方';
+    return s + '，逐位念给 TA 输入';
   }
 
   /** 生成邀请码（创建方）：云函数调用与配对标记读写都在 feature，这里只管按钮态与展示。 */
@@ -386,7 +385,7 @@ export struct MeView {
   /** 解除配对（二次确认）：云端尽力解绑，本地配对标记一律清干净。 */
   askUnpair(): void {
     askConfirm(this.getUIContext(), {
-      message: '解除配对后不再同步 TA 的加密快照（本机代录数据不受影响）。确定解除？',
+      message: '解除后不再同步 TA 的数据，本机代录的内容会留着。',
       confirmText: '解除配对',
       danger: true,
       onConfirm: () => this.doUnpair()
@@ -412,8 +411,8 @@ export struct MeView {
     }
     askConfirm(this.getUIContext(), {
       title: '清空全部数据',
-      message: '将删除本机全部班表/课表/计划/窗口/伴侣档案与设置项，并清除本应用写入「同休日」日历的日程，且不可恢复。'
-        + '导出到系统日历的日程删不动，需要你自己在系统日历里删除。确定清空？',
+      message: '班表、课表、计划、伴侣档案和设置全部删掉，「同休日」日历里的日程也一起删，删了就找不回来。'
+        + '只有导出到系统日历的那条删不动，要你自己去系统日历里删。',
       confirmText: '清空',
       danger: true,
       onConfirm: () => this.doClearAll()
@@ -527,12 +526,12 @@ export struct MeView {
   /** 各等级"对方可见内容"对照说明。 */
   levelDesc(level: number): string {
     if (level === 1) {
-      return '对方只见你有空/忙碌，看不到原因与具体时间';
+      return 'TA 只看得到你有空还是在忙，看不到原因和具体时间';
     }
     if (level === 2) {
-      return '对方可见忙碌类型（如上课/上班），不含精确时段';
+      return 'TA 看得到你在做什么（比如上课、上班），看不到几点到几点';
     }
-    return '对方可见完整忙碌时段，共同时间计算最精准';
+    return 'TA 看得到你完整的忙碌时段，共同时间算得最准';
   }
 
   levelTitle(level: number): string {
@@ -856,7 +855,7 @@ export struct MeView {
           }
           .width('100%')
 
-          Text('作息格式 HH:MM。TA 的起床/就寝/收整独立参与计算；就寝早于起床即次日凌晨睡。')
+          Text('时间按 HH:MM 填。TA 的作息单独参与计算，就寝早于起床就算第二天。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
           Row({ space: DesignTokens.space3 }) {
@@ -875,7 +874,7 @@ export struct MeView {
         }
         .width('100%')
       } else if (!this.partnerExists) {
-        Text('还没有伴侣。添加后就能在这台手机上代录 TA 的课表/班表，自动算出你们的共同时间。')
+        Text('还没有伴侣。添加后就能替 TA 在这台手机上记班表和课表，一起算共同时间。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
         Button('添加伴侣（本机代录）')
@@ -910,7 +909,7 @@ export struct MeView {
             .padding(DesignTokens.space2)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
-            .accessibilityText('编辑 TA 的作息参数')
+            .accessibilityText('编辑 TA 的作息')
             .onClick(() => this.startEditPartner())
           Text('删除')
             .fontSize(DesignTokens.fontCaption)
@@ -940,7 +939,7 @@ export struct MeView {
         Text(FeatureFlags.cloudClosedMessage)
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
-        Text('现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。')
+        Text('想现在就算，请用上方「伴侣（本机代录）」。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
         // 退出通道留着：上一版原型可能在单机上留下 WAITING/PENDING/PAIRED 标记，藏了入口就不能再撤了
@@ -1005,12 +1004,12 @@ export struct MeView {
               .padding(10)
               .borderRadius(8)
               // 读屏用户扫不到屏上的码，这里把替代路径说出来
-              .accessibilityText('配对二维码。无法扫描时，改用配对码或分享链接')
+              .accessibilityText('配对二维码。扫不了就改用配对码或分享链接')
           }
           .width('100%')
           .justifyContent(FlexAlign.Center)
 
-          Text('把这条链接发给对方：对方点开后按「确认配对」，两边才开始同步。')
+          Text('把这条链接发给 TA：TA 点开后按「确认配对」，两边才开始同步。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
@@ -1033,8 +1032,7 @@ export struct MeView {
             .textAlign(TextAlign.Center)
             // 视觉上是"384106"，朗读必须逐位报数，否则会被读成"三十八万四千一百零六"
             .accessibilityText(this.codeRead())
-          Text('对方在 TA 的「我的 · 伴侣与同步」输入此码即可。'
-            + '输完 TA 会发回一条确认链接，你点开按「确认配对」才开始同步。')
+          Text('让 TA 在「我的 · 伴侣与同步」里输入这 6 位码，之后 TA 会发回一条确认链接。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .textAlign(TextAlign.Center)
@@ -1049,8 +1047,8 @@ export struct MeView {
             .onClick(() => this.copyPairCode())
         } else {
           Text(this.pairState === PAIR_PENDING
-            ? '这台设备重启过，一次性确认凭据已经不在了：让对方再发一次，或直接点下面的「检查配对状态」。'
-            : '配对码已生成（本次进入页面未显示）。如对方未收到，可重新生成。')
+            ? '这台手机重启过，确认信息丢了：让 TA 再发一次，或点「检查配对状态」。'
+            : '配对码已经生成，但这次没显示出来。TA 没收到的话可以重新生成。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
         }
@@ -1075,7 +1073,7 @@ export struct MeView {
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       } else {
-        Text('一端生成 6 位配对码，另一端输入后按隐私等级加密同步。')
+        Text('一台手机生成 6 位配对码，另一台输入，之后按你选的等级加密同步。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
         Row({ space: DesignTokens.space3 }) {
@@ -1111,7 +1109,7 @@ export struct MeView {
         }
 
         if (this.channels.emphasizeCode) {
-          Text('这台设备不支持扫码：配对以 6 位短码为准，让对方手动输入。')
+          Text('这台手机不能扫码，让 TA 手动输入 6 位配对码。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
         }
@@ -1140,7 +1138,7 @@ export struct MeView {
           }.width('100%')
         }
 
-        Text('需开通 AGC 云服务；没开通时这里只会提示改用本机代录，上面的代录照常可用。')
+        Text('配对同步需要云服务能力。没开通时这里只会提示改用本机代录，不影响上面的功能。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       }
@@ -1152,7 +1150,7 @@ export struct MeView {
   @Builder
   levelBlock() {
     Column({ space: DesignTokens.space2 }) {
-      Text('共享等级（配对后对方可见内容）')
+      Text('共享等级（配对后 TA 能看到多少）')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
       ForEach([1, 2, 3], (lv: number) => {
@@ -1211,7 +1209,7 @@ export struct MeView {
         })
 
         this.navRow($r('sys.symbol.calendar'), '班表与班次',
-          '循环模板 · 单日改班 · 课程 · 班次时段与通勤', false, () => {
+          '循环模板、单日改班、课程、上下班时间与通勤', false, () => {
             this.onOpenRoute(NavRoutes.SCHEDULE_HUB, ownerParam(OWNER_ME));
           })
       }
@@ -1306,16 +1304,16 @@ export struct MeView {
               .fontColor(DesignTokens.textSecondary)
           }
 
-          Text('决定你的睡眠与收整如何参与计算，改完立刻重算共同时间。')
+          Text('改完就会重新计算共同时间。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
 
           this.advancedHead()
           if (this.advanced) {
-            Text('视界 ' + this.myHorizon + ' 天 · 最短共同时段 ' + this.minSlotLabel(this.myMinSlot))
+            Text('往后算 ' + this.myHorizon + ' 天 · 最短共同时段 ' + this.minSlotLabel(this.myMinSlot))
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textSecondary)
-            Text('其余阈值（夜班窗口、半天/整日/可出行判定）用引擎默认值。')
+            Text('夜班窗口等其他判定都用默认值，不用管。')
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textHint)
           }
@@ -1348,7 +1346,7 @@ export struct MeView {
   @Builder
   advancedHead() {
     Row({ space: DesignTokens.space1 }) {
-      Text('高级设置（视界 / 最短时段）')
+      Text('高级设置（算多少天 / 最短时段）')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textSecondary)
         .layoutWeight(1)
@@ -1361,7 +1359,7 @@ export struct MeView {
     .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .focusable(true)
     .accessibilityGroup(true)
-    .accessibilityText('高级设置（视界 / 最短时段），' + (this.advanced ? '已展开' : '已收起'))
+    .accessibilityText('高级设置（算多少天 / 最短时段），' + (this.advanced ? '已展开' : '已收起'))
     .onClick(() => {
       this.advanced = !this.advanced;
     })
@@ -1371,7 +1369,7 @@ export struct MeView {
   advancedForm() {
     Column({ space: DesignTokens.space2 }) {
       Row({ space: DesignTokens.space2 }) {
-        Text('计算视界(天)').fontSize(DesignTokens.fontCaption)
+        Text('往后算多少天').fontSize(DesignTokens.fontCaption)
         TextInput({ text: this.myHorizon })
           .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
           .type(InputType.Number)
@@ -1379,9 +1377,9 @@ export struct MeView {
           .borderRadius(DesignTokens.radiusInput)
           .border({ width: 1.5, color: DesignTokens.primaryBorder })
           .backgroundColor(DesignTokens.card)
-          .accessibilityText('计算视界，未来多少天参与计算，7 到 366')
+          .accessibilityText('往后算多少天，可以填 7 到 366')
           .onChange((v: string) => this.myHorizon = v)
-        Text('未来多少天参与计算（7–366）')
+        Text('7–366 天')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       }.width('100%')
@@ -1407,7 +1405,7 @@ export struct MeView {
       }
       .width('100%')
 
-      Text('短于此段的共同空闲会被直接丢掉，不算成一个窗口。')
+      Text('比这更短的空闲会直接忽略，不算成一个窗口。')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textHint)
     }
@@ -1433,7 +1431,7 @@ export struct MeView {
           })
         } else {
           this.navRow($r('sys.symbol.trash'), '清空我的全部数据',
-            '删除本机全部班表/课表/计划与设置，不可恢复', true, () => this.askClearAll())
+            '删掉全部班表、课表、计划和设置，删了就找不回来', true, () => this.askClearAll())
         }
       }
       .width('100%')

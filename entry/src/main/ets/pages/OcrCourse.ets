@@ -77,7 +77,7 @@ struct OcrCourse {
       pixelMap.release();
       source.release();
       if (this.parsed.length === 0) {
-        appToast('未识别到课表行，可手动核对文本后解析');
+        appToast('没认出课程，检查上面的文字再点「重新解析」');
       }
     } catch (e) {
       Logger.error(TAG, 'ocr failed: ' + (e as Error).message);
@@ -131,11 +131,11 @@ struct OcrCourse {
               .onClick(() => this.pickImage())
           }.width('100%')
 
-          Text('识别在手机本地完成（Core Vision Kit），课程表图片不会上传。识别后请逐行核对再保存。')
+          Text('识别在手机本地完成，课表图片不会上传。识别后请逐行核对再保存。')
             .fontSize(11).fontColor($r('app.color.text_hint'))
 
           Column({ space: 8 }) {
-            Text('识别文本（可手工修正后重新解析）').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('识别出的文字，可以改了再重新解析').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.ocrText, placeholder: '识别结果将显示在这里' })
               .height(110).fontSize(13).width('100%')
               .borderRadius(DesignTokens.radiusInput)

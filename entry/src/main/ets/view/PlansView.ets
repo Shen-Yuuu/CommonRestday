@@ -175,10 +175,10 @@ export struct PlansView {
   /** 取消前关于系统日历的一句实话：导出的那份本应用删不动。 */
   private cancelCalendarNote(calendarState: string): string {
     if (isAppManagedEvent(calendarState)) {
-      return '应用写入的系统日历日程会一并删除。';
+      return '应用写进系统日历的那条也会一起删掉。';
     }
     if (isOnSystemCalendar(calendarState)) {
-      return '导出的那条日程由系统日历管理，需要你在系统日历里删除。';
+      return '导出的那条已经交给系统日历，要去系统日历里删。';
     }
     return '';
   }
@@ -190,7 +190,7 @@ export struct PlansView {
     this.working = true;
     const r: PlanOpResult = await PlanUseCase.cancelPlan(p.id);
     // 本机一定取消；系统侧没清掉的部分由 cleanupNote 说，不留"已全部清理干净"的错觉
-    this.say(r.ok ? joinNote('已取消计划，该时段恢复空闲', r.cleanupNote) : r.error);
+    this.say(r.ok ? joinNote('已取消，这段时间空出来了', r.cleanupNote) : r.error);
     this.reload();
     this.working = false;
   }
@@ -206,7 +206,7 @@ export struct PlansView {
     askConfirm(this.getUIContext(), {
       title: '改到替代时间',
       message: (when !== '' ? '新时间：' + when + '。' : '')
-        + (isAppManagedEvent(p.calendarState) ? '系统日历日程会一并更新。'
+        + (isAppManagedEvent(p.calendarState) ? '系统日历里的那条会跟着改。'
           : '计划会改到新时间；' + this.cancelCalendarNote(p.calendarState)),
       cancelText: '暂不',
       confirmText: '确认改期',
@@ -238,7 +238,7 @@ export struct PlansView {
     }
     this.working = true;
     const kept = await PlanUseCase.keepOriginalPlan(p.id);
-    this.say(kept ? '已按原时间保留，不再提示改期' : '这条计划已经没有待处理的冲突');
+    this.say(kept ? '先按原时间留着，不再提示改期' : '这条计划没有要处理的冲突了');
     this.reload();
     this.working = false;
   }
@@ -485,12 +485,12 @@ export struct PlansView {
         Text(arg.c.affectedText).fontSize(11).fontColor($r('app.color.text_tertiary'))
       }
       if (arg.c.kept) {
-        Text('已按原时间保留，你们的安排再变动时会重新提示')
+        Text('已按原时间保留，你们的安排再有变动时会重新提示')
           .fontSize(11).fontColor($r('app.color.text_hint'))
       } else if (arg.c.altText !== '') {
         Text(arg.c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
       } else {
-        Text('未来暂无合适的替代窗口，可以保留原计划或另找时间')
+        Text('暂时找不到合适的替代时间，可以保留原计划或另约')
           .fontSize(11).fontColor($r('app.color.text_hint'))
       }
       Row({ space: 10 }) {

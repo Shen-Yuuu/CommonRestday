@@ -49,19 +49,19 @@ interface EntryItem {
 const MAIN_ENTRIES: EntryItem[] = [
   {
     key: 'shift', glyph: $r('sys.symbol.gearshape'), title: '班次类型',
-    desc: '定义上下班时刻、通勤与夜班恢复', page: PAGE_SHIFT
+    desc: '设置上下班时间、通勤和夜班恢复', page: PAGE_SHIFT
   },
   {
     key: 'cycle', glyph: $r('sys.symbol.arrow_clockwise'), title: '循环模板',
-    desc: '白白夜夜休休等序列 + 锚点，自动铺开未来视界内的每一天', page: PAGE_CYCLE
+    desc: '按「白白夜夜休休」这样的序列排班，自动铺开往后每一天', page: PAGE_CYCLE
   },
   {
     key: 'course', glyph: $r('sys.symbol.square_and_pencil'), title: '课程表',
-    desc: '学生场景：粘贴课表文本或手动添加每周固定课程', page: PAGE_COURSE
+    desc: '学生用：粘贴课表文本，或手动加每周固定的课', page: PAGE_COURSE
   },
   {
     key: 'today', glyph: $r('sys.symbol.paintbrush'), title: '临时调整',
-    desc: '给某一天单独改班或请假，优先于循环模板', page: ''
+    desc: '单独改某一天或请假，这天优先于循环模板', page: ''
   }
 ];
 
@@ -185,7 +185,7 @@ export struct ScheduleHub {
   /** 循环入口的视界天数用户可改：文案跟着读模型给的实际值走，不写死默认常量。 */
   private descOf(item: EntryItem): string {
     return item.key === 'cycle'
-      ? '白白夜夜休休等序列 + 锚点，自动铺开未来 ' + this.horizon + ' 天' : item.desc;
+      ? '按「白白夜夜休休」这样的序列排班，自动铺开未来 ' + this.horizon + ' 天' : item.desc;
   }
 
   /** 条目行：图标 + 主副文本 + 箭头，整行 44vp 以上热区。 */
@@ -262,7 +262,7 @@ export struct ScheduleHub {
         .width('100%')
 
         if (this.statusFailed) {
-          Text('统计暂时读不到，已录入的班表没有受影响；退出这一页重进即可重试。')
+          Text('统计暂时读不到，班表数据没受影响；退出这一页重进可以再试一次。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
             .width('100%')
@@ -373,7 +373,7 @@ export struct ScheduleHub {
               StatePanel({
                 kind: StatePanelKind.EMPTY,
                 title: '还没有代录 TA 的日程',
-                description: '在「我的 · 伴侣与同步」添加伴侣后，就能在这台手机上为 TA 录班表，一起算共同时间。',
+                description: '先在「我的 · 伴侣与同步」添加伴侣，就能在这里替 TA 记班表。',
                 actionLabel: '去添加伴侣',
                 onAction: () => {
                   pushPendingRoute(NavRoutes.ME);
@@ -443,7 +443,7 @@ export struct ScheduleHub {
   @Builder
   mainEntriesCard() {
     EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-      EditorialSection({ eyebrow: 'MAIN', title: '四个主入口' }) {
+      EditorialSection({ eyebrow: 'MAIN', title: '四种排班方式' }) {
         ForEach(MAIN_ENTRIES, (item: EntryItem) => {
           this.entryRow(item)
         }, (item: EntryItem) => this.side + '-' + item.key)

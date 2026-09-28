@@ -96,7 +96,7 @@ struct CourseImport {
     }
     const times = this.parseSectionText(this.sectionText);
     if (times == null) {
-      appToast('节次格式有误：每行一节，形如 08:00-08:45');
+      appToast('节次没填对：一行一节，写成 08:00-08:45');
       return;
     }
     const r = await ScheduleCommandService.saveTerm(this.termStart, times);
@@ -135,7 +135,7 @@ struct CourseImport {
   /** 导入结果提示；未设置学期锚点时附带提醒（课程暂不产生忙碌时间，spec 边缘用例）。 */
   reportImport(r: ScheduleCommandResult, n: number): void {
     const done = '已导入 ' + n + ' 门课程'
-      + (r.ok && n > 0 && this.termStart <= 0 ? '；注意：未设置学期起点，暂不参与计算' : '');
+      + (r.ok && n > 0 && this.termStart <= 0 ? '；还没设学期起点，这些课暂时不参与计算' : '');
     toastCommand(r, done);
   }
 
@@ -238,7 +238,7 @@ struct CourseImport {
             .onClick(() => this.showSections = !this.showSections)
 
             if (this.showSections) {
-              TextArea({ text: this.sectionText, placeholder: '每行一节，形如 08:00-08:45' })
+              TextArea({ text: this.sectionText, placeholder: '一行一节，比如 08:00-08:45' })
                 .height(120).fontSize(12).width('100%')
                 .onChange((v: string) => this.sectionText = v)
               Row({ space: 10 }) {
@@ -250,10 +250,10 @@ struct CourseImport {
                   .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
                   .onClick(() => this.resetSections())
               }
-              Text('第 N 节对应第 N 行；课程按"第 X-X 节"映射到这里的起止时间。')
+              Text('第几行就是第几节，课表里的「第 1-2 节」按这里的时间算。')
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             } else {
-              Text('默认每节 45+10 分钟，08:00 / 14:00 / 19:00 起；点「编辑」可自定义。')
+              Text('默认 45 分钟一节、课间 10 分钟，从 08:00 / 14:00 / 19:00 起，点「编辑」可改')
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             }
           }
@@ -265,7 +265,7 @@ struct CourseImport {
         // 粘贴导入
         ListItem() {
           Column({ space: 8 }) {
-            Text('粘贴课表文本（每行一门：课程名 周X 第X-X节 周次范围 单/双周）')
+            Text('粘贴课表：一行一门，写课程名、周几、第几节、周次')
               .fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.pasteText, placeholder: '高等数学 周一 第1-2节 1-16周 单周\n大学英语 周三 3,4节' })
               .height(88).fontSize(13).width('100%')

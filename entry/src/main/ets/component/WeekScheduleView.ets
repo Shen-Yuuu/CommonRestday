@@ -423,7 +423,7 @@ export struct WeekScheduleView {
     if (this.isCommon()) {
       if (!this.isKnown(epochDay)) {
         // 视界外的列画的是「·」，读屏不能把它念成"空闲 —"，要说明是没算
-        s += '，超出计算视界';
+        s += '，超出计算范围';
       } else {
         s += '，当天共同空闲 ' + this.dayTotalLabel(epochDay);
         if (this.hasTrip(epochDay)) {
@@ -482,7 +482,7 @@ export struct WeekScheduleView {
       return '这一周已经过去了，点「本周」回到当前周。';
     }
     if (this.weekStart >= today + this.horizonDays) {
-      return '超出计算视界，到「我的」里放宽视界天数。';
+      return '已经超出计算范围，到「我的」里把天数调大。';
     }
     let sum = 0;
     const days = this.weekDays();
@@ -490,7 +490,7 @@ export struct WeekScheduleView {
       sum += this.isKnown(days[i]) ? this.dayFreeMin(days[i]) : 0;
     }
     if (sum <= 0) {
-      return '本周没有共同空闲，改班表或放宽起床/就寝后再看。';
+      return '这周没有共同空闲，改改班表或放宽作息再看。';
     }
     return '点色块直接去计划，点空白处看当日明细。';
   }
@@ -517,7 +517,7 @@ export struct WeekScheduleView {
         this.scheduleHead()
         this.scheduleCols()
         if (this.weekItems.length === 0) {
-          Text('本周暂无班次 / 课程 / 计划')
+          Text('这周还没有班次、课程和计划')
             .fontSize(11).fontColor($r('app.color.text_hint'))
             .width('100%').textAlign(TextAlign.Center)
         }

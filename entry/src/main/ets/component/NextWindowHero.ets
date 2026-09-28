@@ -62,9 +62,9 @@ export struct NextWindowHero {
 
   private needBody(): string {
     if (this.experience === ExperienceMode.SOLO) {
-      return '在「我的」里代录 TA 的作息与班表，这里就会出现你们的第一个共同时间。';
+      return '到「我的」里替 TA 记上班表，这里就会出现你们的第一个共同时间。';
     }
-    return '今天的共同时间要等 TA 的数据；重新同步或补充代录后再看。';
+    return '今天的共同时间还缺 TA 的数据，同步或补录之后再看。';
   }
 
   build() {
@@ -75,7 +75,7 @@ export struct NextWindowHero {
           .fontSize(DesignTokens.fontBody)
           .fontFamily(DesignTokens.fontRound)
           .fontColor(DesignTokens.textSecondary)
-        Text('双方班表可能完全错开。检查班次与作息参数，或到共同时间页放宽筛选。')
+        Text('两人的班表可能完全错开了。检查一下班次和作息，或者到共同时间页放宽筛选。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
           .lineHeight(DesignTokens.space5)

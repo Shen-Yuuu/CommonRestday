@@ -293,7 +293,7 @@ export struct DayDetailSheet {
                 })
               })
               if (this.data.partnerBusy == null) {
-                Text('暂无对方数据（当前为单人模式）')
+                Text('还没有 TA 的数据，现在是单人模式')
                   .fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
                 Text(this.partnerNote()).fontSize(11).fontColor($r('app.color.text_hint'))

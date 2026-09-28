@@ -248,7 +248,7 @@ export struct HomeView {
 
   private noticeTitle(): string {
     if (this.failed) {
-      return '刷新失败，展示的是上次结果';
+      return '刷新失败，下面是上次的结果';
     }
     const h = this.home;
     const day = h == null ? todayEpochDay() : todayEpochDay(h.computedAt);
@@ -257,9 +257,9 @@ export struct HomeView {
 
   private noticeBody(): string {
     if (this.failed) {
-      return '本机数据没有变化，可以稍后再试';
+      return '数据没变，稍后再下拉一次就行';
     }
-    return '班表可能已变化，重算后再确认';
+    return '班表可能变了，重新算一次再确认';
   }
 
   private tonightQuestion(): string {
@@ -465,7 +465,7 @@ export struct HomeView {
                   StatePanel({
                     kind: StatePanelKind.ERROR,
                     title: '首页读取失败',
-                    description: '本机日程数据没有变化，重试一次通常就能恢复。',
+                    description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
                     actionLabel: '重试',
                     onAction: () => {
                       this.load(true);

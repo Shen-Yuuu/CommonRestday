@@ -49,7 +49,7 @@ const STATUS_CANCELLED = 'CANCELLED';
 const CREATE_LATCH = new SubmitLatch();
 
 /** 清理之后仍然卡在系统侧的说法（本机已经改完，只是投影没跟上）。 */
-const CLEANUP_RETRY_ERROR = '系统侧还没清干净，可以稍后再试一次';
+const CLEANUP_RETRY_ERROR = '系统日历里还没清干净，稍后可以再试一次';
 
 /**
  * 共同计划用例（US5 / FR-009 / FR-017 / FR-014，阶段 6R.1 按权限边界重做日历生命周期）——
@@ -125,7 +125,7 @@ export class PlanUseCase {
       return { ok: true, planId: planId, calendarState: state, error: '' };
     } catch (e) {
       Logger.warn(TAG, 'createPlan failed: ' + (e as Error).message);
-      return PlanUseCase.fail('创建失败，请重试');
+      return PlanUseCase.fail('没创建成功，再试一次');
     } finally {
       CREATE_LATCH.release();
     }
@@ -142,7 +142,7 @@ export class PlanUseCase {
   static async cancelPlan(id: string): Promise<PlanOpResult> {
     const row = await PlanUseCase.findPlan(id);
     if (row == null) {
-      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '计划已不存在', cleanupNote: '' };
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '这条计划已经不在了', cleanupNote: '' };
     }
     const report = await PlanProjectionCleanupService.cleanupPlan(row);
     let state: string = CalendarState.LOCAL_ONLY;
@@ -153,7 +153,7 @@ export class PlanUseCase {
       Logger.warn(TAG, 'cancelPlan persist failed: ' + (e as Error).message);
       return {
         ok: false, calendarState: row.calendarState,
-        error: '取消失败，计划仍在列表里', cleanupNote: cleanupMessageOf(report)
+        error: '没取消成，计划还留在列表里', cleanupNote: cleanupMessageOf(report)
       };
     }
     await PlanUseCase.recomputeQuietly();
@@ -196,7 +196,7 @@ export class PlanUseCase {
       Logger.warn(TAG, 'reschedule persist failed: ' + (e as Error).message);
       return {
         ok: false, calendarState: row.calendarState,
-        error: '改期失败，计划仍在原时间', cleanupNote: ''
+        error: '没改期成，计划还在原时间', cleanupNote: ''
       };
     }
     // 到这里本地计划已经是新时间：后面的日历与提醒只做投影，失败都不把计划拉回去
@@ -221,13 +221,13 @@ export class PlanUseCase {
   static async syncToCalendar(id: string): Promise<PlanOpResult> {
     const row = await PlanUseCase.findPlan(id);
     if (row == null) {
-      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '计划已不存在', cleanupNote: '' };
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '这条计划已经不在了', cleanupNote: '' };
     }
     const state = await PlanUseCase.writeManaged(id, row.title, row.start, row.end);
     const written = isOnSystemCalendar(state);
     return {
       ok: written, calendarState: state,
-      error: written ? '' : '日历仍未写入，稍后可以再试一次', cleanupNote: ''
+      error: written ? '' : '日历还没写进去，稍后可以再试一次', cleanupNote: ''
     };
   }
 
@@ -240,7 +240,7 @@ export class PlanUseCase {
   static async exportToCalendar(id: string): Promise<PlanOpResult> {
     const row = await PlanUseCase.findPlan(id);
     if (row == null) {
-      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '计划已不存在', cleanupNote: '' };
+      return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '这条计划已经不在了', cleanupNote: '' };
     }
     if (!canExportToCalendar(row.calendarState)) {
       return {
@@ -258,8 +258,8 @@ export class PlanUseCase {
     const exported = result.outcome === CalendarOutcome.EXPORTED;
     return {
       ok: exported, calendarState: state,
-      error: exported ? '' : '没有导出到系统日历，稍后可以再试一次',
-      cleanupNote: exported ? '日程已交给系统日历，之后请在系统日历里修改或删除' : ''
+      error: exported ? '' : '还没导出到系统日历，稍后可以再试一次',
+      cleanupNote: exported ? '日程已经交给系统日历，之后请在系统日历里改或删除' : ''
     };
   }
 

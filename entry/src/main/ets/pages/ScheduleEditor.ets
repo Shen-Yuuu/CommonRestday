@@ -146,7 +146,7 @@ struct ScheduleEditor {
     const start = hhmmToMin(this.startText);
     const end = hhmmToMin(this.endText);
     if (this.name === '' || start < 0 || end < 0) {
-      appToast('请检查名称与时间格式（HH:MM）');
+      appToast('名称要填，时间写成 08:00 这样');
       return;
     }
     const st: ShiftType = {
@@ -324,9 +324,9 @@ struct ScheduleEditor {
         // AvailabilityBuilder.isNightShift），所以这里念规则本身而不是抄文案。
         ListItem() {
           Column({ space: 4 }) {
-            Text('夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入；「不触发夜班恢复」即使相交也不生成恢复块。')
+            Text('夜班看的是班次时段和夜班窗口有没有重叠，跨天不等于夜班。')
               .fontSize(11).fontColor($r('app.color.text_hint'))
-            Text('恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。')
+            Text('「夜班恢复」填 0 就不生成恢复块；班次删光后，内置的六个班次会回来。')
               .fontSize(11).fontColor($r('app.color.text_hint'))
           }
           .alignItems(HorizontalAlign.Start).width('100%').padding({ top: 4 })

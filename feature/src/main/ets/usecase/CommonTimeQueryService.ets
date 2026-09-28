@@ -230,10 +230,10 @@ function conflictReasonText(code: string): string {
     return '与你的班次冲突';
   }
   if (code === CONFLICT_REASON_MY_RHYTHM) {
-    return '落在你的作息时段外';
+    return '不在你的作息时间内';
   }
   if (code === CONFLICT_REASON_PARTNER_TIME) {
-    return 'TA 的这段时间已有安排';
+    return 'TA 这段时间有安排了';
   }
   if (code === CONFLICT_REASON_PARTNER_CHANGED) {
     return '对方时间发生变化';
@@ -820,7 +820,7 @@ export class CommonTimeQueryService {
     const noun = '完整同休日';
     if (w == null) {
       return CommonTimeQueryService.absentAnswer(AnswerKind.FULL_REST_DAY, noun, stale,
-        '近期没有' + noun, '放宽起床/就寝时间，或看更长的窗口');
+        '近期没有' + noun, '放宽作息，或往后多看几天');
     }
     const days = spanDays(w.start, w.end);
     const answer: QuickAnswer = {
@@ -840,7 +840,7 @@ export class CommonTimeQueryService {
     const noun = mode === ExperienceMode.SOLO ? '可出行时段' : '出行窗口';
     if (w == null) {
       return CommonTimeQueryService.absentAnswer(AnswerKind.TRIP, noun, stale,
-        '近期凑不出' + noun, '需要连续两天以上的共同空闲');
+        '近期凑不出' + noun, '要连续两天以上都有空');
     }
     const days = spanDays(w.start, w.end);
     const overnightOnly = !hasTagOf(w.tags, WindowTag.TRIP);
@@ -867,7 +867,7 @@ export class CommonTimeQueryService {
       kind: kind,
       state: stale ? AnswerState.STALE : AnswerState.UNAVAILABLE,
       headline: stale ? noun + '待重新计算' : headline,
-      supportingText: stale ? '班表可能已变化，重算后再确认' : hint,
+      supportingText: stale ? '班表可能变了，重新算一次再确认' : hint,
       windowStart: 0,
       windowEnd: 0,
       action: AnswerAction.OPEN_SCHEDULE
@@ -881,7 +881,7 @@ export class CommonTimeQueryService {
       kind: kind,
       state: AnswerState.UNKNOWN,
       headline: '还不知道 TA 的日程',
-      supportingText: '配对或代录 TA 的班表后，' + noun + '会自动出现',
+      supportingText: '配对或替 TA 记上班表后，' + noun + '会自动出现',
       windowStart: 0,
       windowEnd: 0,
       action: AnswerAction.OPEN_PARTNER

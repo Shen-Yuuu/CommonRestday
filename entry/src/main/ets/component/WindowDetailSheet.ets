@@ -569,7 +569,7 @@ export struct WindowDetailSheet {
       Row({ space: 10 }) {
         Column({ space: 2 }) {
           Text('写入系统日历').fontSize(13).fontColor($r('app.color.text_secondary'))
-          Text('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')
+          Text('写进「同休日」日历，改期和取消会跟着同步；关掉就只留在应用里')
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .layoutWeight(1)
@@ -581,7 +581,7 @@ export struct WindowDetailSheet {
           .switchPointColor(DesignTokens.heroText)
           // 开关自己没有任何文字标签，读屏只会念"开/关"，说不出关的是哪件事
           .accessibilityText('写入系统日历')
-          .accessibilityDescription('写进本应用专属的「同休日」日历，改期和取消会自动同步；关掉只留在应用里')
+          .accessibilityDescription('写进「同休日」日历，改期和取消会跟着同步；关掉就只留在应用里')
           .onChange((on: boolean) => {
             this.writeToCalendar = on;
           })

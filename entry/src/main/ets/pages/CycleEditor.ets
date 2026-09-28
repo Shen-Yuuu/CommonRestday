@@ -87,7 +87,7 @@ struct CycleEditor {
     if (r.changed) {
       this.hasTemplate = true;
     }
-    toastCommand(r, '循环模板已保存，班表已自动展开');
+    toastCommand(r, '已保存，班表自动铺好了');
   }
 
   /** 清空：已保存过模板时真删 DB（循环展开随之消失），并触发重算；未保存过仅重置编辑区。 */
@@ -99,7 +99,7 @@ struct CycleEditor {
       return;
     }
     askConfirm(this.getUIContext(), {
-      message: '删除已保存的循环模板？删除后按循环展开的班表会全部消失。',
+      message: '删掉循环模板？由它铺开的班表也会一起消失。',
       confirmText: '删除',
       onCancel: () => {
         this.reloadTemplate();
@@ -173,7 +173,7 @@ struct CycleEditor {
       Scroll() {
         Column({ space: 12 }) {
           Column({ space: 8 }) {
-            Text('循环序列（点击班次追加，点击序列中的项移除）')
+            Text('循环序列：点班次加进去，点序列里的项移除')
               .fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
             Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
               ForEach(this.types, (st: ShiftType) => {
@@ -214,7 +214,7 @@ struct CycleEditor {
           .shadow(DesignTokens.cardShadow())
 
           Column({ space: 8 }) {
-            Text('锚点：序列第 1 天对应的真实日期').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
+            Text('起点：序列第 1 天对应哪一天').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
             Row() {
               Text(DateLabel.mdw(this.anchor)).fontSize(15).fontWeight(FontWeight.Medium)
               Blank()
@@ -260,7 +260,7 @@ struct CycleEditor {
   @Builder
   anchorSheet() {
     Column({ space: 12 }) {
-      Text('选择锚点日期').fontSize(16).fontWeight(FontWeight.Medium)
+      Text('选择起点日期').fontSize(16).fontWeight(FontWeight.Medium)
       DatePicker({
         start: ANCHOR_RANGE_START,
         end: ANCHOR_RANGE_END,

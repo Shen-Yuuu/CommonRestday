@@ -131,7 +131,7 @@ export struct CoTimeView {
         borderRadius: DesignTokens.chipRadius(),
         // 选中档只有底色一种表达；声明为"已选中"语义，读屏才知道这颗是当前筛选
         accessibilitySelectedType: ChipV2AccessibilitySelectedType.SELECTED,
-        accessibilityDescription: '点按按该条件筛选共同时间',
+        accessibilityDescription: '按这个条件筛选共同时间',
         onClicked: () => {
           this.selectFilter(f.key);
         }
@@ -279,9 +279,9 @@ export struct CoTimeView {
 
   private emptyDesc(): ResourceStr {
     if (this.filterKey !== WindowFilterKey.ALL) {
-      return '试试「全部」，或到「我的」里放宽起床/就寝时间。';
+      return '试试换成「全部」，或者到「我的」里放宽作息。';
     }
-    return this.isSolo() ? $r('app.string.cotime_empty_partner_desc') : '检查双方班表与作息参数，或看更长的窗口。';
+    return this.isSolo() ? $r('app.string.cotime_empty_partner_desc') : '检查一下两人的班表和作息，或者把窗口放长一点。';
   }
 
   private emptyAction(): ResourceStr {
@@ -411,8 +411,8 @@ export struct CoTimeView {
             if (this.failed) {
               NoticeBar({
                 tone: NoticeTone.ERROR,
-                title: '刷新失败，展示的是上次结果',
-                body: '本机数据没有变化，可以稍后再试',
+                title: '刷新失败，下面是上次的结果',
+                body: '数据没变，稍后再下拉一次就行',
                 actionLabel: '重试',
                 onAction: () => {
                   this.load(true);
@@ -422,7 +422,7 @@ export struct CoTimeView {
               NoticeBar({
                 tone: NoticeTone.WARN,
                 title: this.staleTitle(),
-                body: '班表可能已变化，重算后再确认',
+                body: '班表可能变了，重新算一次再确认',
                 actionLabel: '重新计算',
                 onAction: () => {
                   this.load(true);
@@ -434,7 +434,7 @@ export struct CoTimeView {
                 tone: NoticeTone.WARN,
                 glyph: '?',
                 title: '还不知道 TA 今天的日程',
-                body: '下面的窗口只算到了我的空闲，拿到 TA 的数据后会自动纠正',
+                body: '下面的窗口只算了你的空闲，拿到 TA 的数据会自动纠正',
                 actionLabel: '去看看',
                 onAction: () => {
                   this.onOpenRoute(NavRoutes.PAIRING);
@@ -652,7 +652,7 @@ export struct CoTimeView {
               StatePanel({
                 kind: StatePanelKind.ERROR,
                 title: '共同时间读取失败',
-                description: '本机日程数据没有变化，重试一次通常就能恢复。',
+                description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
                 actionLabel: '重试',
                 onAction: () => {
                   this.load(true);

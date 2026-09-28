@@ -85,7 +85,7 @@ export class CardSummaryService {
     const question = solo ? '我的时间' : '共同时间';
     if (!input.hasSchedule) {
       return prompt(CardState.NO_SCHEDULE, '我的日程', '还没录入日程',
-        '添加班次或课程后自动开始计算', '现在去记一笔', CardRoutes.SCHEDULE_HUB, home.computedAt);
+        '记上班次或课程就会开始算', '去记一笔', CardRoutes.SCHEDULE_HUB, home.computedAt);
     }
     // UNKNOWN 只在"已标配对却拿不到对方任何数据"时出现（单人形态本来就算得出自己的空闲），
     // 卡面必须和"暂无空闲"分开：前者是等同步，后者是真没有。
@@ -96,7 +96,7 @@ export class CardSummaryService {
     // 过期优先于答案：卡上写着具体日期却属于昨天，比没有答案更容易误导
     if (home.stale) {
       return prompt(CardState.STALE, question, '结果是上一轮的',
-        '班表可能已变化，重算后再确认', '点开重新计算', CardRoutes.HOME, home.computedAt);
+        '班表可能已经变了，重新算过再确认', '点开重新计算', CardRoutes.HOME, home.computedAt);
     }
     if (tonight.state === AnswerState.AVAILABLE) {
       return answers(CardState.TONIGHT, tonight, full, home.computedAt, solo);
@@ -106,7 +106,7 @@ export class CardSummaryService {
     }
     // 有数据也算完了，但两个答案都给不出：说"暂无"而不是猜一个时间
     return prompt(CardState.NO_RESULT, question, '视界内暂无' + (solo ? '空闲' : '共同空闲'),
-      '放宽作息与收整，或看看更远的日子', '点开挑日子', CardRoutes.COMMON_TIME, home.computedAt);
+      '放宽作息，或往后多看几天', '点开挑日子', CardRoutes.COMMON_TIME, home.computedAt);
   }
 }
 

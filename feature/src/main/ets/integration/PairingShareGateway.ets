@@ -111,7 +111,7 @@ export class PairingShareGateway {
     }
     const ctx = PairingShareGateway.host();
     if (ctx == null || !canIUse(SYSCAP_SCAN)) {
-      return scanFail(ScanOutcome.UNSUPPORTED, '本机不支持扫码，请用 6 位配对码');
+      return scanFail(ScanOutcome.UNSUPPORTED, '这台手机不能扫码，请用 6 位配对码');
     }
     const types: scanCore.ScanType[] = [scanCore.ScanType.QR_CODE];
     const options: scanBarcode.ScanOptions = { scanTypes: types, enableMultiMode: false, enableAlbum: false };
@@ -128,7 +128,7 @@ export class PairingShareGateway {
         return scanFail(ScanOutcome.UNSUPPORTED, '扫码结果需真机复验（模拟器不具备完整扫码能力）');
       }
       Logger.warn(TAG, 'scan failed: ' + code);
-      return scanFail(ScanOutcome.FAILED, '扫码失败，请重试或改用 6 位配对码');
+      return scanFail(ScanOutcome.FAILED, '没扫上，再试一次或改用 6 位配对码');
     }
   }
 
@@ -141,10 +141,10 @@ export class PairingShareGateway {
       return fail(PAIR_CLOUD_CLOSED);
     }
     if (link === '') {
-      return fail('没有可分享的配对链接：链接只承载服务端签发的一次性凭据，请把 6 位配对码告诉 TA');
+      return fail('现在没有可分享的配对链接，把 6 位配对码告诉 TA 就行');
     }
     if (PairLink.parse(link).kind !== PairLinkKind.OFFER) {
-      return fail('配对链接已失效，请重新生成');
+      return fail('配对链接已经过期，重新生成一个');
     }
     const ctx = PairingShareGateway.host();
     if (ctx == null || !canIUse(SYSCAP_SHARE)) {
@@ -228,7 +228,7 @@ export class PairingShareGateway {
       return fail(PAIR_CLOUD_CLOSED);
     }
     if (offer === null) {
-      return fail('这次配对请求已经失效，请让对方重新分享');
+      return fail('这次配对已经失效，让 TA 重新分享一次');
     }
     const res = await ProfileSettingsService.confirmWithToken(offer.token);
     return res.ok ? ok(res.message) : fail(res.message);
@@ -249,10 +249,10 @@ function classify(text: string): ScanResult {
     return scanOffer(res.offer);
   }
   if (res.kind === PairLinkKind.EXPIRED) {
-    return scanFail(ScanOutcome.EXPIRED, '这个配对链接已过期，请对方重新生成');
+    return scanFail(ScanOutcome.EXPIRED, '这个配对链接已经过期，让 TA 重新生成');
   }
   if (res.kind === PairLinkKind.MALFORMED) {
-    return scanFail(ScanOutcome.FAILED, '二维码内容不是有效的配对链接');
+    return scanFail(ScanOutcome.FAILED, '这个二维码里不是配对链接');
   }
   return scanFail(ScanOutcome.FOREIGN, '这不是两人份的配对码');
 }

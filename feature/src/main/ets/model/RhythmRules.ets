@@ -19,13 +19,13 @@ export function rhythmError(wakeText: string, bedText: string, windText: string)
   const wake = hhmmToMin(wakeText);
   const bed = hhmmToMin(bedText);
   if (wake < 0 || bed < 0) {
-    return '时间格式应为 HH:MM（如 07:00）';
+    return '时间写成 07:00 这样';
   }
   if (bed === wake) {
-    return '起床与就寝是同一时刻，这样算不出一天的清醒区间';
+    return '起床和就寝填了同一个时间，算不出空闲';
   }
   if (toMinutes(windText) < 0) {
-    return '收整缓冲请填分钟数（如 20）';
+    return '收整缓冲填分钟数，比如 20';
   }
   return '';
 }
@@ -41,7 +41,7 @@ export function isCrossMidnight(wakeText: string, bedText: string): boolean {
 export function horizonError(horizonText: string): string {
   const v = toMinutes(horizonText);
   if (v < HORIZON_MIN || v > HORIZON_MAX) {
-    return '视界天数需在 ' + HORIZON_MIN + '–' + HORIZON_MAX + ' 天之间';
+    return '往后算的天数要在 ' + HORIZON_MIN + '–' + HORIZON_MAX + ' 之间';
   }
   return '';
 }
@@ -75,12 +75,12 @@ export function nightModeIndex(mode: number): number {
 /** 当前档的一句话说明：三档都要有，不能只有中间那档带解释。 */
 export function nightModeHint(index: number): string {
   if (index === 1) {
-    return '强制夜班：无论时段，下班后始终计入恢复时长';
+    return '强制夜班：不管几点下班，下班后都算恢复时间';
   }
   if (index === 2) {
-    return '不触发夜班恢复：即使与夜班窗口相交，也不生成恢复块';
+    return '不触发夜班恢复：即使撞上夜班窗口，也不生成恢复块';
   }
-  return '自动识别：班次时段与夜班窗口相交才算夜班';
+  return '自动识别：班次和夜班窗口有时间重叠才算夜班';
 }
 
 /**

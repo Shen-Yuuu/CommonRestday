@@ -104,7 +104,7 @@ export struct DayShiftSheet {
   /** 保存失败要说清是"没写进去"还是"写进去了但共同时间没刷新"，否则用户不知道要不要重试。 */
   private failNote(res: ScheduleCommandResult): string {
     return res.errorCode === 'RECOMPUTE_FAILED'
-      ? '已保存，但共同时间这轮没刷新，稍后会自动重算' : '保存失败，未做任何改动';
+      ? '已保存，共同时间稍后会自己刷新' : '保存失败，未做任何改动';
   }
 
   private write(shiftId: string): void {
@@ -238,7 +238,7 @@ export struct DayShiftSheet {
           }
           .width('100%')
 
-          Text('单日覆盖优先于循环模板，且会立刻重算共同时间；长期规律请到「循环模板」里改序列。')
+          Text('只改这一天，比循环模板优先；长期规律请去「循环模板」里改。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
             .margin({ top: DesignTokens.space2 })

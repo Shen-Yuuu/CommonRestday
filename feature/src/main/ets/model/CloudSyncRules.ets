@@ -83,7 +83,7 @@ export function outcomeOfFailure(retryable: boolean): string {
 /** 提示条标题：三态各有各的名字，不只靠颜色区分。已同步与从未试过回空串。 */
 export function syncStateTitleOf(s: SyncState): string {
   if (s.outcome === SYNC_STATE_RETRY) {
-    return '云同步待重试';
+    return '云同步暂时没成功';
   }
   if (s.outcome === SYNC_STATE_BLOCKED) {
     return '云同步已停止';
@@ -95,22 +95,21 @@ export function syncStateTitleOf(s: SyncState): string {
 export function syncStateNoteOf(s: SyncState): string {
   if (s.outcome === SYNC_STATE_RETRY) {
     if (s.code === 'QUOTA_EXHAUSTED') {
-      return '今天的云同步次数已经用完，明天会自动恢复；这期间 TA 看到的还是上一次同步的那份。';
+      return '今天的同步次数用完了，明天会自动恢复；这期间 TA 看到的还是上一次那一份。';
     }
-    return '云同步暂时没接上，今天不再重复尝试；明天改动班表时会自动再试一次。';
+    return '暂时连不上云端，今天不再重试；明天改班表时会自动再试一次。';
   }
   if (s.outcome !== SYNC_STATE_BLOCKED) {
     return '';
   }
   if (s.code === 'UNAUTHORIZED' || s.code === 'FORBIDDEN' || s.code === 'NOT_FOUND') {
-    return '云端已经不认这个配对了，要重新配对才能继续同步；本机数据不受影响。';
+    return '云端不认这个配对了，重新配对后才能继续同步；本机数据不受影响。';
   }
   if (s.code === 'SCHEMA_UNSUPPORTED') {
-    return '云端版本与本应用不匹配，更新这台手机上的应用之后才能继续同步。';
+    return '云端版本和手机上的应用对不上，更新应用后才能继续同步。';
   }
   if (s.code === SYNC_CODE_LOCAL) {
-    return '这台手机解不开你们的同步数据了，重发同一份也不会变。'
-      + '要恢复同步请解除配对后重新配对一次；本机数据不受影响。';
+    return '这台手机解不开你们的同步数据了，解除配对再重新配对一次就能恢复；本机数据不受影响。';
   }
-  return '云同步已停止：这次失败不是网络问题，重试也不会变。这期间你们的共同时间只用这台手机上的数据算。';
+  return '这次失败不是网络问题，重试也不会有变化。这期间共同时间只用这台手机上的数据算。';
 }

@@ -8,6 +8,19 @@ import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { NoticeBar, NoticeTone } from './NoticeBar';
 import { DayShiftSheet } from './DayShiftSheet';
 
+/**
+ * @Builder 的形参是值传参：父组件状态换了、节点没拆，那一颗就不重画（D-24 首页 / D-26 作息同一规则）。
+ * 本组件的忙碌条与明细行读的正是 `load()` 换掉的 `this.data`，所以入参一律合成对象字面量按引用传。
+ */
+interface BusyBarArg {
+  segs: BarSeg[];
+  color: ResourceColor;
+}
+
+interface BusyListArg {
+  ivs: Interval[];
+}
+
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
 interface BarSeg {
   pct: number;
@@ -290,8 +303,8 @@ export struct DayDetailSheet {
               SubHeaderV2({
                 title: new SubHeaderV2Title({ primaryTitle: this.busyTitle('我的忙碌', this.data.myTrueBusy) })
               })
-              this.busyBar(this.segmentsOf(this.clipped(this.data.myBusy)), $r('app.color.my_busy'))
-              this.busyList(this.clipped(this.data.myTrueBusy))
+              this.busyBar({ segs: this.segmentsOf(this.clipped(this.data.myBusy)), color: $r('app.color.my_busy') })
+              this.busyList({ ivs: this.clipped(this.data.myTrueBusy) })
             }.width('100%')
 
             // ---------- TA 的忙碌 ----------
@@ -306,8 +319,11 @@ export struct DayDetailSheet {
                   .fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
                 Text(this.partnerNote()).fontSize(11).fontColor($r('app.color.text_hint'))
-                this.busyBar(this.segmentsOf(this.clipped(this.data.partnerBusy)), $r('app.color.partner_busy'))
-                this.busyList(this.clipped(this.data.partnerTrueBusy))
+                this.busyBar({
+                  segs: this.segmentsOf(this.clipped(this.data.partnerBusy)),
+                  color: $r('app.color.partner_busy')
+                })
+                this.busyList({ ivs: this.clipped(this.data.partnerTrueBusy) })
               }
             }.width('100%')
           }
@@ -381,13 +397,13 @@ export struct DayDetailSheet {
 
   /** 忙碌比例条（gap/busy 顺序分段，宽度百分比布局）。 */
   @Builder
-  busyBar(segs: BarSeg[], color: ResourceColor) {
+  busyBar(row: BusyBarArg) {
     Row() {
-      ForEach(segs, (seg: BarSeg, i: number) => {
+      ForEach(row.segs, (seg: BarSeg, i: number) => {
         Column()
           .width(seg.pct + '%')
           .height(10)
-          .backgroundColor(seg.busy ? color : $r('app.color.bar_gap'))
+          .backgroundColor(seg.busy ? row.color : $r('app.color.bar_gap'))
       }, (seg: BarSeg, i: number) => '' + i + (seg.busy ? 'b' : 'g') + seg.pct)
     }
     .width('100%')
@@ -400,12 +416,12 @@ export struct DayDetailSheet {
 
   /** 忙碌明细行（起止 + 标签）。 */
   @Builder
-  busyList(ivs: Interval[]) {
-    if (ivs.length === 0) {
+  busyList(row: BusyListArg) {
+    if (row.ivs.length === 0) {
       Text('全天空闲').fontSize(12).fontColor($r('app.color.text_tertiary'))
     } else {
       Column({ space: 4 }) {
-        ForEach(ivs, (iv: Interval) => {
+        ForEach(row.ivs, (iv: Interval) => {
           Row({ space: 8 }) {
             Text(DateLabel.hm(iv.start) + ' – ' + DateLabel.hm(iv.end))
               .fontSize(12).fontColor($r('app.color.text_secondary'))

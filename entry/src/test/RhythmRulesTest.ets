@@ -1,7 +1,8 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { HORIZON_MAX_DAYS } from 'domain';
+import { defaultParams, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
 import {
-  greetingOf, horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, NIGHT_MODE_LABELS,
+  greetingOf, horizonError, horizonFromStore, horizonLabel, HORIZON_MAX, HORIZON_MIN,
+  isCrossMidnight, NIGHT_MODE_LABELS,
   nightModeHint, nightModeIndex, nightModeOf, rhythmError
 } from 'feature';
 
@@ -79,6 +80,30 @@ export default function rhythmRulesTest() {
       // 不足一个月不折成"0 个月"：允许的最短视界就是"只看本周"那一档
       expect(horizonLabel(7)).assertEqual('未来 7 天');
       expect(horizonLabel(14)).assertEqual('未来 14 天');
+    });
+
+    it('the_store_mouth_snaps_only_what_the_engine_cannot_expand', 0, () => {
+      // D-59：收界要发生在"刚离开存储的那一刻"。备份/换机带回一个引擎算不出来的天数时，
+      // 读回来就得是引擎真正会展开的那个数，否则周历会念出引擎从没算过的"视界内"空白周。
+      expect(horizonFromStore(5000)).assertEqual(HORIZON_MAX_DAYS);
+      expect(horizonFromStore(HORIZON_MAX_DAYS)).assertEqual(HORIZON_MAX_DAYS);
+      // 合法区间照原样返回：这一道闸不改配置，只挡算不出来的值
+      expect(horizonFromStore(90)).assertEqual(90);
+      expect(horizonFromStore(HORIZON_MIN)).assertEqual(HORIZON_MIN);
+      // 0 与负数回默认，而不是收成 1 天：那等于替用户把视界改成"只看明天"，是一次静默改配置
+      expect(horizonFromStore(0)).assertEqual(HORIZON_DEFAULT_DAYS);
+      expect(horizonFromStore(-7)).assertEqual(HORIZON_DEFAULT_DAYS);
+      // 1–6 天引擎算得出来，照原样返回：宁可界面念"未来 3 天"而设置页不让填 3，也不静默换成默认
+      expect(horizonFromStore(3)).assertEqual(3);
+    });
+
+    it('the_default_horizon_has_one_home_for_both_roads', 0, () => {
+      // 出厂默认与"读回来但没个可用值"两条路念同一个数（D-59 之前界面那份抄在 commons 的 AppConst）
+      expect(defaultParams().horizonDays).assertEqual(HORIZON_DEFAULT_DAYS);
+      expect(horizonFromStore(HORIZON_DEFAULT_DAYS)).assertEqual(HORIZON_DEFAULT_DAYS);
+      // 默认值自己过得了设置页的校验，也不越过引擎的上限
+      expect(horizonError('' + HORIZON_DEFAULT_DAYS)).assertEqual('');
+      expect(HORIZON_DEFAULT_DAYS <= HORIZON_MAX_DAYS).assertTrue();
     });
 
     it('greeting_has_a_small_hours_bucket_before_noon', 0, () => {

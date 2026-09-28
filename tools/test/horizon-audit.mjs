@@ -8,19 +8,29 @@
  * "同一份设置，两个读者算出不同的往后多少天"。X1／AE／AF 三轮修的都是这一族（抄写的口径分家），
  * 这一条把它拦在写下来的那一刻。
  *
- * 规则两条，都只认**代码**（注释与字符串字面量不算，AG 的说明本身要提到 366）：
+ * 规则三条，都只认**代码**（注释与字符串字面量不算，AG 的说明本身要提到 366）：
  * - H1：`Math.min(` 里出现裸 `366` 的那一行，只许在 `domain/src/main/ets/model/Types.ets`
  *   （`HORIZON_MAX_DAYS` 的定义处）。别处要收界就调 `clampHorizonDays()`。
  * - H2：**面向用户的字符串**里出现 `HORIZON_MAX_DAYS` 的字面值（界面上的"7–366 天"那一类）。
  *   读数要念常量，抄字面量就会跟引擎分家——AG 之前 `MeView` 的提示与无障碍朗读各写了一次 366。
+ * - H3：读 `AppConst.HORIZON_DAYS` 的那一行。默认天数从 D-59 起住在 domain 的
+ *   `HORIZON_DEFAULT_DAYS`（`defaultParams()` 用的就是它），commons 那份是它的第二份抄写，
+ *   而且它管着**给用户看的一句话**（班表编辑器那句"自动展开未来 120 天"）——改 domain 的人
+ *   不会想到去改 commons，那句界面话就替引擎承诺了一个它已经不用的数。
+ *   `AppConst.HORIZON_DAYS` 的定义本身不算违规（那是用户自己的文件，删不删由他定），这条只拦读者。
  *
  * 判不了的情形（不猜，也不冒充覆盖）：
  * - 别的数字（布局宽度、别的阈值）撞上车面 `Math.min(` 又恰好等于 366：今天没有，真遇到就在
  *   **这一行行尾**写 `// horizon-ceil-exempt 理由` 放行（独占一行的标记压不住别处），理由要能被人复核。
  * - H2 只认"整份源码里出现过的上限字面值"，不认算出来的表达式（`'' + (365 + 1)` 它看不见）。
  *   这条要拦的是顺手抄一个数，不是拦一个故意绕开的写法。
+ * - H3 只认 `AppConst.HORIZON_DAYS` 这个写法本身；把默认值改名或再抄第三份（例如某个页面
+ *   自己写 `120`）它看不见——那要靠 H2 那种"字面值扫字符串"的写法才抓得到，今天不做是因为
+ *   今天没有第三个读者，等出现了再加，不预先立一条空转的判据。
  * - 计算侧真正"有没有按这个天数展开"由 `EngineTest` 的 `compute_stops_at_the_horizon_ceiling_…`
  *   与 `SnapshotTest` 的 `oversized_horizon_…` 两格在离线跑，静态口径只负责"别再抄第二份"。
+ * - D-59 新加的"读取口收界"（`RhythmRules.horizonFromStore`）由 `RhythmRulesTest` 的四格离线用例
+ *   钉住数值行为，静态口径判不了"谁忘了调它"——那一句留给下一个读者。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +43,8 @@ const HOME = 'domain/src/main/ets/model/Types.ets';
 const TREES = ['domain/src/main/ets', 'feature/src/main/ets', 'data/src/main/ets',
   'commons/src/main/ets', 'entry/src/main/ets', 'cloud/src/main/ets'];
 const EXEMPT_MARK = 'horizon-ceil-exempt';
+/** 默认天数的旧抄写：D-59 起它没有读者了，出现读者就是违规（H3）。 */
+const OLD_DEFAULT = 'AppConst.HORIZON_DAYS';
 const STRING_LITERALS = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 
 /** 注释（`//` 与块注释的 `*` 续行）不参与判定：AG 的说明里就得写清 366 是多少。 */
@@ -54,12 +66,15 @@ function literalsOf(code) {
 }
 
 /**
- * 扫描主源码，返回 `{ violations, callSites, ceiling }`。
- * `callSites` 是给门禁看的水位：有几个地方在调那一道闸；`ceiling` 是定义处读到的上限。
+ * 扫描主源码，返回 `{ violations, callSites, defaultReads, ceiling }`。
+ * `callSites` 是给门禁看的水位：有几个地方在调那一道闸；`defaultReads` 是还在读 commons 那份默认值
+ * 的行数（D-59 起应为 0）；`ceiling` 是定义处读到的上限。
  */
 export function auditHorizonCeiling(repo) {
   const violations = [];
   let callSites = 0;
+  let defaultReads = 0;
+  let defaultHome = false;
   let ceiling = -1;
   for (const tree of TREES) {
     for (const rel of listEts(repo, tree)) {
@@ -75,9 +90,18 @@ export function auditHorizonCeiling(repo) {
           if (def != null) {
             ceiling = Number(def[1]);
           }
+          if (/export const HORIZON_DEFAULT_DAYS:\s*number\s*=\s*\d+/.test(code)) {
+            defaultHome = true;
+          }
         }
         if (code.includes('clampHorizonDays(')) {
           callSites++;
+        }
+        // H3：默认天数又从 commons 那份里读了一次
+        if (code.includes(OLD_DEFAULT)) {
+          defaultReads++;
+          violations.push(rel + ':' + (i + 1) + '：这里读了 ' + OLD_DEFAULT + '——视界的默认天数只在 '
+            + HOME + ' 的 HORIZON_DEFAULT_DAYS 定义一次，commons 那份是它的第二份抄写（AI·D-59）');
         }
         // H1：手抄一份上下界
         if (rel !== HOME && /\bMath\.min\s*\([^)]*\b366\b/.test(code)) {
@@ -103,7 +127,10 @@ export function auditHorizonCeiling(repo) {
   if (ceiling <= 0) {
     violations.push(HOME + '：读不到 HORIZON_MAX_DAYS 的字面量定义——这条口径判不了，别把它当成绿');
   }
-  return { violations: violations, callSites: callSites, ceiling: ceiling };
+  if (!defaultHome) {
+    violations.push(HOME + '：读不到 HORIZON_DEFAULT_DAYS 的字面量定义——H3 说的"默认值有家"就不成立');
+  }
+  return { violations: violations, callSites: callSites, defaultReads: defaultReads, ceiling: ceiling };
 }
 
 // 直接跑这个文件时打一份清单，供批次盘点与人工核对用。
@@ -111,8 +138,8 @@ const self = path.resolve(fileURLToPath(import.meta.url));
 if (process.argv[1] && path.resolve(process.argv[1]) === self) {
   const repo = path.resolve(path.dirname(self), '..', '..');
   const r = auditHorizonCeiling(repo);
-  console.log('上限 ' + r.ceiling + ' 天（定义在 ' + HOME + '），clampHorizonDays 调用 ' + r.callSites + ' 处，'
-    + '越界抄写 ' + r.violations.length + ' 处');
+  console.log('上限 ' + r.ceiling + ' 天（定义在 ' + HOME + '），clampHorizonDays 调用 ' + r.callSites
+    + ' 处，commons 那份默认值的读者 ' + r.defaultReads + ' 处，越界抄写 ' + r.violations.length + ' 处');
   for (const v of r.violations) {
     console.log('  ' + v);
   }

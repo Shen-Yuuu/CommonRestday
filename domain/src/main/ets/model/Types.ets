@@ -182,10 +182,19 @@ export interface EngineParams {
   studyMinMin: number;
 }
 
+/**
+ * 默认视界（天）。`defaultParams()` 与"从存储读回但没个可用值"两条路都念这一个数。
+ *
+ * 它在 D-59 之前抄在 `commons` 的 `AppConst.HORIZON_DAYS`（也是 120），于是"引擎默认算多远"
+ * 和"界面/兜底说默认多远"各有各的出处：改一处，另一处照样念旧数。默认值放这儿是因为
+ * 它就是引擎的属性，`commons` 那份是它下游的抄写。
+ */
+export const HORIZON_DEFAULT_DAYS: number = 120;
+
 /** 默认参数（与 PRD 示例口径一致）。 */
 export function defaultParams(): EngineParams {
   const p: EngineParams = {
-    horizonDays: 120,
+    horizonDays: HORIZON_DEFAULT_DAYS,
     wakeMin: 420,            // 07:00
     bedMin: 1350,            // 22:30
     windDownMin: 20,

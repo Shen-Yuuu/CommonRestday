@@ -1,5 +1,5 @@
-import { nowEpochMin, todayEpochDay } from 'domain';
-import { AppConst, DateLabel, Logger } from 'commons';
+import { HORIZON_DEFAULT_DAYS, nowEpochMin, todayEpochDay } from 'domain';
+import { DateLabel, Logger } from 'commons';
 import { PAIRED } from 'data';
 import {
   CommonTimePageData, CommonTimeQueryService, ExperienceMode, FeatureFlags, ProfileSettingsService,
@@ -284,7 +284,7 @@ export struct CoTimeView {
       // 那件事页内那条 NoticeBar 已经在解释，副标题只换主体，不再重复整句。
       who = p.partnerKnown ? (p.partnerName === '' ? '伴侣' : p.partnerName) : '我的空闲';
     }
-    return who + ' · ' + horizonLabel(p == null ? AppConst.HORIZON_DAYS : p.horizonDays);
+    return who + ' · ' + horizonLabel(p == null ? HORIZON_DEFAULT_DAYS : p.horizonDays);
   }
 
   private subtitleColor(): Resource {

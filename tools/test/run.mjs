@@ -728,8 +728,8 @@ function main() {
   }
   const horizon = auditHorizonCeiling(REPO);
   say('horizon: ' + (horizon.violations.length === 0
-    ? 'PASS（视界天数上限只在 domain 定义一次：clampHorizonDays 相关行 ' + horizon.callSites
-      + ' 处，界面上的天数都念常量）'
+    ? 'PASS（视界的上限与默认值各自只在 domain 定义一次：clampHorizonDays 相关行 ' + horizon.callSites
+      + ' 处，commons 那份旧默认值的读者 ' + horizon.defaultReads + ' 处，界面上的天数都念常量）'
     : 'FAILED（' + horizon.violations.length + ' 处视界上下界抄写）'));
   for (const v of horizon.violations) {
     say('  - ' + v);

@@ -1,4 +1,4 @@
-import { clampHorizonDays, hhmmToMin, HORIZON_MAX_DAYS } from 'domain';
+import { clampHorizonDays, hhmmToMin, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
 
 /**
  * 视界天数允许区间：下限是本页的用法约定（"只看本周"是 7 天，引擎本身只要求 ≥1 天）；
@@ -49,6 +49,24 @@ export function horizonError(horizonText: string): string {
     return '往后算的天数要在 ' + HORIZON_MIN + '–' + HORIZON_MAX + ' 之间';
   }
   return '';
+}
+
+/**
+ * 从存储读回的视界天数收界（D-59）。
+ *
+ * 设置页的校验只管"从这里写出去"的那条路：`SettingsStore.getParams()` 只挡 NaN，
+ * 而 Preferences 里那份 JSON 可能是系统备份/换机从别的版本带回来的，那两个数都不受本页校验管。
+ * 收界要发生在**刚离开存储的那一刻**——AG 把上下界并成 `clampHorizonDays` 之后，
+ * 全仓七个调用点都是"用的时候记得夹"，没有一处是"读的时候夹"，于是每个新读者都得自己想起来。
+ *
+ * 0 与负数回到默认，不交给 `clampHorizonDays`：那一道闸的下界是 1 天（引擎只要能展开一天就算合法），
+ * 把"没填/坏值"收成 1 天，等于替用户把视界改成"只看明天"——那是一次静默改配置。
+ */
+export function horizonFromStore(days: number): number {
+  if (days <= 0) {
+    return HORIZON_DEFAULT_DAYS;
+  }
+  return clampHorizonDays(days);
 }
 
 /**

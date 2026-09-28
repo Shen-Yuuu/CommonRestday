@@ -3,8 +3,8 @@ import {
   EngineParams, Interval, MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule,
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
   Window, buildAvailability, clampHorizonDays, decodeConflictHint, defaultParams, detectConflicts,
-  encodeConflictHint, hintFromOutcome, mergeIntervals, mkIv, todayEpochDay, unionIntervals,
-  withKeepCarried
+  encodeConflictHint, hintFromOutcome, HORIZON_MAX_DAYS, mergeIntervals, mkIv, todayEpochDay,
+  unionIntervals, withKeepCarried
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import {
@@ -18,7 +18,8 @@ import {
 } from '../model/CloudSyncRules';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { SerialQueue } from '../model/SerialQueue';
-import { AppConst, Logger } from 'commons';
+import { horizonFromStore } from '../model/RhythmRules';
+import { Logger } from 'commons';
 
 /** 学期配置。 */
 export interface TermConfig {
@@ -438,7 +439,7 @@ export class ScheduleUseCase {
     });
   }
 
-  /** owner='PARTNER' 是否存在任何班表数据。 */
+  /** owner='PARTNER' 是否存在任何班表数据（单日覆盖按"引擎最多能算到的那段"扫）。 */
   static async hasPartnerScheduleData(startEpochDay: number): Promise<boolean> {
     const types = await ScheduleRepo.listShiftTypes(OWNER_PARTNER);
     if (types.length > 0) {
@@ -452,7 +453,10 @@ export class ScheduleUseCase {
     if (courses.length > 0) {
       return true;
     }
-    const overrides = await ScheduleRepo.listOverrides(startEpochDay, startEpochDay + 400, OWNER_PARTNER);
+    // 单日覆盖是唯一按日期存的表，扫到"引擎能展开的最大视界"为止：视界外的班表今天根本算不出来，
+    // "TA 有没有数据"不能承诺得比计算更远。这里原来是裸 400——一个没人解释的数，跟上限分了家（D-59）
+    const overrides = await ScheduleRepo.listOverrides(startEpochDay,
+      startEpochDay + HORIZON_MAX_DAYS - 1, OWNER_PARTNER);
     return overrides.length > 0;
   }
 
@@ -763,8 +767,8 @@ export class ScheduleUseCase {
 /** 引擎参数读取：真实读写 SettingsStore（用户在"我的"页保存后重算即生效）。 */
 export function SettingsStoreParams(): EngineParams {
   const p = SettingsStore.getParams();
-  if (p.horizonDays <= 0) {
-    p.horizonDays = AppConst.HORIZON_DAYS;
-  }
+  // 收界发生在刚离开存储的那一刻：备份/换机带回的 JSON 不受设置页校验管，而下游九个读者里
+  // 周历那段"这一周算不算在视界内"的谓词从来没夹过界——它信的就是这里（D-59）
+  p.horizonDays = horizonFromStore(p.horizonDays);
   return p;
 }

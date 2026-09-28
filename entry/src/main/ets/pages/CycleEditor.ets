@@ -1,7 +1,7 @@
 import { LengthMetrics, router } from '@kit.ArkUI';
-import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
+import { HORIZON_DEFAULT_DAYS, OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
 import { ScheduleRepo } from 'data';
-import { AppConst, DateLabel } from 'commons';
+import { DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -248,7 +248,7 @@ struct CycleEditor {
             .enabled(!this.submitting)
             .onClick(() => this.save())
 
-          Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班点周历里的某一天。')
+          Text('保存后自动展开未来 ' + HORIZON_DEFAULT_DAYS + ' 天；临时换班点周历里的某一天。')
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .padding(12).width('100%')

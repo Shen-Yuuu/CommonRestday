@@ -1089,6 +1089,13 @@ violations 计入 `auditViolations` 与退出码。
 形 4（系统 `Button`）进 skipped ✓、形 5（写明理由的豁免）计 exempt ✓、形 6（方角可点行）不报——**它就是看不见**，
 这一条写进文件头的判不了清单，不冒充覆盖。
 
+〔这份探针留下没删，与 R3/R4 那两次"用完即删"不同〕它专治本轮踩到的那一类**链尾被切掉**的判据 bug，
+而这种毛病在真 UI 上照不出来：仓内 28 处 `clickEffect` 逐条数过，**28/28 的下一行就是 `.onClick(`**，
+没有一个写在 `onClick` 之后——链尾一切掉，丢的是"看不见的属性"，本仓恰好没往那儿写东西。
+会撞上它的是将来把属性重排到 `onClick` 之后的那一次改动，所以留下。
+复跑：`node E:/desktop/Code/harmony/.crdtest/press-fixture-probe.mjs`，期望末行 `wired=3 exempt=1 skipped=1 violations=3`。
+仓库外、不进门禁、不入库（`.crdtest/` 从来是不提交的），七形都在 `Fixture.ets` 里，改判据后顺手跑一次。
+
 〔门禁实测·AC 收口（2026-09-28，`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0）〕
 
 - `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`229 passed / 0 failed`**（AB 收口那次也是 229，本批不新增用例——
@@ -1110,8 +1117,11 @@ violations 计入 `auditViolations` 与退出码。
 ③ `this.rowChip(...)` 这类 `@Builder` 调用点不收属性链，规则只看直接写在页面里的节点；认不出开口的写法一律算判不了。
 
 〔证据缺口（不勾选）〕按压回弹**好不好用**只有设备上能判：幅度 0.94 会不会显得太小、`LIGHT` 档的回弹时长
-在本机是否跟手、左滑那一族（三处 `tapButton` 与滑动同链）会不会因为回弹而偶发吞掉手势——
-三条都要 `uitest uiInput click` + 截图或人手按压才能判，静态只查"接没接"。
+在本机是否跟手、左滑那一族会不会因为回弹而偶发吞掉滑动——`tapButton` 共 11 处，其中 **5 处**画在带
+`swipeAction` 的那一行内部（`CourseImport:492` 删除块、`ScheduleEditor:244` 行内容与 `:415` 删除块、
+`PlansView:469` 取消块与 `:504` 计划卡，`ListItem.swipeAction` 分别在 `CourseImport:423`／`ScheduleEditor:247`／`PlansView:358`）。
+它们不是同链手势——手势在父 `ListItem` 上，所以 P2 不报；而"子节点回弹会不会打断父节点左滑"静态判不出来。
+三条都要 `uitest uiInput click`／`swipe` + 截图或人手按压才能判，静态只查"接没接"。
 合到 §11 第 3／6／8 条、Z 那五处、AA 那四类、AB 那三处连点的**同一个设备会话**里做；
 该会话在 AC 收口时再验过一次，仍然阻塞在同一件事上：`hdc list targets -v` 里
 `127.0.0.1:5555` 与 `127.0.0.1:5557` 都是 `TCP Offline`。

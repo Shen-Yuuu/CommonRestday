@@ -1,4 +1,4 @@
-import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel } from 'domain';
+import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel, dayOfStart } from 'domain';
 import { DateLabel } from 'commons';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
@@ -382,7 +382,7 @@ export struct DayDetailSheet {
   tripRow(w: WindowSummary) {
     Row({ space: 8 }) {
       Column({ space: 2 }) {
-        Text('旅行窗口 · ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
+        Text('旅行窗口 · ' + DateLabel.mdw(dayOfStart(w.start)) + ' '
           + DateLabel.endLabel(w.start, w.end))
           .fontSize(12).fontColor($r('app.color.text_secondary'))
         Text('连续 ' + DateLabel.duration(w.durationMin) + '，夜间睡眠不计入忙碌')
@@ -395,7 +395,7 @@ export struct DayDetailSheet {
     .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
     .focusable(true)
     .accessibilityGroup(true)
-    .accessibilityText('旅行窗口 ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
+    .accessibilityText('旅行窗口 ' + DateLabel.mdw(dayOfStart(w.start)) + ' '
       + DateLabel.endLabel(w.start, w.end) + '，连续 ' + DateLabel.duration(w.durationMin) + '，点击去计划')
     .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.onPickWindow(w.start, w.end, w.tags))

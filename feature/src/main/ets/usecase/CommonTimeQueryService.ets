@@ -2,8 +2,8 @@ import {
   CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE, CONFLICT_REASON_MY_RHYTHM,
   CONFLICT_REASON_MY_SHIFT, CONFLICT_REASON_PARTNER_CHANGED, CONFLICT_REASON_PARTNER_TIME,
   CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER,
-  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, decodeConflictHint, hasTagOf, overlapMin,
-  todayEpochDay
+  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, dayOfEnd, dayOfStart, daySpan,
+  decodeConflictHint, hasTagOf, overlapMin, todayEpochDay
 } from 'domain';
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
@@ -77,14 +77,6 @@ function tagLabel(tag: string): string {
     return '适合自习';
   }
   return '';
-}
-
-/** 窗口触及的自然日数（半开区间：end 恰为午夜不算新的一天）。 */
-function spanDays(start: number, end: number): number {
-  if (end <= start) {
-    return 0;
-  }
-  return Math.floor((end - 1) / MIN_PER_DAY) - Math.floor(start / MIN_PER_DAY) + 1;
 }
 
 /** 与 [from, to) 有交叠的非睡眠忙碌段，按起点升序。 */
@@ -218,7 +210,7 @@ function conflictViewOf(row: PlanRow): PlanConflictView | null {
 
 /** 某天的 M月d日 + 起止时刻（跨零点区间只按起点日标注，与计划列表口径一致）。 */
 function timeSpanText(start: number, end: number): string {
-  return DateLabel.mdw(Math.floor(start / MIN_PER_DAY)) + ' ' + DateLabel.endLabel(start, end);
+  return DateLabel.mdw(dayOfStart(start)) + ' ' + DateLabel.endLabel(start, end);
 }
 
 /** 原因码 → 文案；'' 覆盖 Task 2.3 之前写入的旧 hint。 */
@@ -349,7 +341,7 @@ export class CommonTimeQueryService {
 
   /** 首页读模型：三类答案 + 下个窗口 + 今天概览 + 冲突数。 */
   static async getHomeSummary(nowEpochMin: number): Promise<HomeSummary> {
-    const today = Math.floor(nowEpochMin / MIN_PER_DAY);
+    const today = dayOfStart(nowEpochMin);
     const windows = await ScheduleRepo.listWindows();
     const plans = await ScheduleRepo.listActivePlans();
     const computedAt = await ScheduleRepo.windowCacheComputedAt();
@@ -369,7 +361,7 @@ export class CommonTimeQueryService {
 
   /** 共同时间页读模型：按筛选档给出窗口与未来计划，并带上"这些窗口算不算共同"的口径。 */
   static async getCommonTimePage(filter: WindowFilter, nowEpochMin: number): Promise<CommonTimePageData> {
-    const today = Math.floor(nowEpochMin / MIN_PER_DAY);
+    const today = dayOfStart(nowEpochMin);
     const windows = await ScheduleRepo.listWindows();
     const plans = await ScheduleRepo.listActivePlans();
     const computedAt = await ScheduleRepo.windowCacheComputedAt();
@@ -417,7 +409,7 @@ export class CommonTimeQueryService {
       };
       found = gone;
     }
-    const day = await CommonTimeQueryService.loadDay(Math.floor(found.start / MIN_PER_DAY));
+    const day = await CommonTimeQueryService.loadDay(dayOfStart(found.start));
     const input: DetailInput = { window: found, day: day };
     return CommonTimeQueryService.assembleDetail(input);
   }
@@ -545,8 +537,8 @@ export class CommonTimeQueryService {
     const rows: WindowSummary[] = [];
     for (let i = 0; i < byDuration.length; i++) {
       const w = byDuration[i];
-      const firstDay = Math.floor(w.start / MIN_PER_DAY);
-      const lastDay = Math.floor((w.end - 1) / MIN_PER_DAY);
+      const firstDay = dayOfStart(w.start);
+      const lastDay = dayOfEnd(w.end);
       let overlapped = false;
       for (let d = firstDay; d <= lastDay; d++) {
         if (covered.has(d)) {
@@ -598,7 +590,7 @@ export class CommonTimeQueryService {
     if (computedAt <= 0) {
       return true;
     }
-    return todayEpochDay(computedAt) < Math.floor(nowEpochMin / MIN_PER_DAY);
+    return todayEpochDay(computedAt) < dayOfStart(nowEpochMin);
   }
 
   /**
@@ -607,7 +599,7 @@ export class CommonTimeQueryService {
    * 排序键为"现在起可用的时刻"，因此正在进行的窗口优先于稍后开始的窗口。
    */
   static pickTonight(windows: Window[], nowEpochMin: number): Window | null {
-    const dayEnd = (Math.floor(nowEpochMin / MIN_PER_DAY) + 1) * MIN_PER_DAY;
+    const dayEnd = (dayOfStart(nowEpochMin) + 1) * MIN_PER_DAY;
     let best: Window | null = null;
     let bestFrom = 0;
     for (let i = 0; i < windows.length; i++) {
@@ -687,7 +679,7 @@ export class CommonTimeQueryService {
       tags: w.tags,
       displayTags: toDisplayTags(w.tags),
       channel: w.channel,
-      title: DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' ' + DateLabel.hm(w.start)
+      title: DateLabel.mdw(dayOfStart(w.start)) + ' ' + DateLabel.hm(w.start)
         + ' 起 ' + DateLabel.duration(w.durationMin),
       subtitle: subtitleOf(w)
     };
@@ -738,7 +730,7 @@ export class CommonTimeQueryService {
 
   /** 窗口跨了几个自然日（答案文案里必须明确天数）。 */
   static daysSpan(start: number, end: number): number {
-    return spanDays(start, end);
+    return daySpan(start, end);
   }
 
   static myLabel(day: DayBusy, from: number, to: number): string {
@@ -822,11 +814,11 @@ export class CommonTimeQueryService {
       return CommonTimeQueryService.absentAnswer(AnswerKind.FULL_REST_DAY, noun, stale,
         '近期没有' + noun, '放宽作息，或往后多看几天');
     }
-    const days = spanDays(w.start, w.end);
+    const days = daySpan(w.start, w.end);
     const answer: QuickAnswer = {
       kind: AnswerKind.FULL_REST_DAY,
       state: AnswerState.AVAILABLE,
-      headline: DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' 是' + noun,
+      headline: DateLabel.mdw(dayOfStart(w.start)) + ' 是' + noun,
       supportingText: (days > 1 ? '连续 ' + days + ' 天 · ' : '') + DateLabel.duration(w.durationMin)
         + ' 可安排',
       windowStart: w.start,
@@ -842,13 +834,13 @@ export class CommonTimeQueryService {
       return CommonTimeQueryService.absentAnswer(AnswerKind.TRIP, noun, stale,
         '近期凑不出' + noun, '要连续两天以上都有空');
     }
-    const days = spanDays(w.start, w.end);
+    const days = daySpan(w.start, w.end);
     const overnightOnly = !hasTagOf(w.tags, WindowTag.TRIP);
     const answer: QuickAnswer = {
       kind: AnswerKind.TRIP,
       state: AnswerState.AVAILABLE,
       headline: (overnightOnly ? '能跨夜出行 ' : '能安排出行 ') + days + ' 天',
-      supportingText: DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
+      supportingText: DateLabel.mdw(dayOfStart(w.start)) + ' '
         + DateLabel.endLabel(w.start, w.end) + ' · 共 ' + DateLabel.duration(w.durationMin),
       windowStart: w.start,
       windowEnd: w.end,
@@ -891,9 +883,9 @@ export class CommonTimeQueryService {
 
   /** 忙碌文案的日期前缀：当天说"今天"，其余说月日。 */
   static dayPrefix(fromEpochMin: number, epochDay: number): string {
-    if (Math.floor(fromEpochMin / MIN_PER_DAY) === epochDay) {
+    if (dayOfStart(fromEpochMin) === epochDay) {
       return '今天 ';
     }
-    return DateLabel.md(Math.floor(fromEpochMin / MIN_PER_DAY)) + ' ';
+    return DateLabel.md(dayOfStart(fromEpochMin)) + ' ';
   }
 }

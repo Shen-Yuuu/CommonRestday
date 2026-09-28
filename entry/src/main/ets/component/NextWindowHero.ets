@@ -1,4 +1,4 @@
-import { MIN_PER_DAY } from 'domain';
+import { dayOfStart } from 'domain';
 import { DateLabel } from 'commons';
 import { ExperienceMode } from 'feature';
 import { AnimatorResult } from '@kit.ArkUI';
@@ -83,7 +83,7 @@ export struct NextWindowHero {
 
   /** 距今天数口语化：0=就在今天，1=明天，其余报天数（D-17 定稿：不写「就在明天」）。 */
   private daysWord(): string {
-    const days = Math.floor(this.winStart / MIN_PER_DAY) - this.todayEpoch;
+    const days = dayOfStart(this.winStart) - this.todayEpoch;
     if (days <= 0) {
       return '就在今天';
     }
@@ -128,7 +128,7 @@ export struct NextWindowHero {
       }) {
         if (this.variant === HeroVariant.WINDOW) {
           Row() {
-            Text(this.daysWord() + ' · ' + DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
+            Text(this.daysWord() + ' · ' + DateLabel.mdw(dayOfStart(this.winStart)))
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.heroText)
               .opacity(0.9)

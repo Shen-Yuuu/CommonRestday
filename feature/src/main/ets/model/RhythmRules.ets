@@ -1,4 +1,4 @@
-import { clampHorizonDays, hhmmToMin, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
+import { bedCrossesMidnight, clampHorizonDays, hhmmToMin, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
 
 /**
  * 视界天数允许区间：下限是本页的用法约定（"只看本周"是 7 天，引擎本身只要求 ≥1 天）；
@@ -35,11 +35,17 @@ export function rhythmError(wakeText: string, bedText: string, windText: string)
   return '';
 }
 
-/** 就寝是否已过零点（页面据此补一句说明，否则"就寝 01:00"看着像漏填）。 */
+/**
+ * 就寝是否已过零点（页面据此补一句说明，否则"就寝 01:00"看着像漏填）。
+ * 「几点算跨零点」这条判定不在这里写第二份：D-60 起它只有 domain 的 `bedCrossesMidnight` 一处，
+ * 引擎据此决定就寝块落到哪一天，页面据此决定要不要念那句补充说明。两边各判一次的话，
+ * 「算的是跨零点、说的是没跨」这种分歧只能靠人肉对齐。这里只多做一件事：把文本解析成分钟数，
+ * 解析失败（负数）按"不跨"回答——那时页面上根本没有一条合法的作息可读。
+ */
 export function isCrossMidnight(wakeText: string, bedText: string): boolean {
   const wake = hhmmToMin(wakeText);
   const bed = hhmmToMin(bedText);
-  return wake >= 0 && bed >= 0 && bed < wake;
+  return wake >= 0 && bed >= 0 && bedCrossesMidnight(wake, bed);
 }
 
 /** 视界天数校验，返回空串表示合法。 */

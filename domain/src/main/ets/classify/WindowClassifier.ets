@@ -1,5 +1,5 @@
 import { EngineParams, Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag } from '../model/Types';
-import { isWeekend } from '../utils/TimeUtil';
+import { bedEndMin, dayOfEnd, dayOfStart, isWeekend } from '../utils/TimeUtil';
 import { mkIv, overlapMin, totalOverlap } from '../merge/IntervalOps';
 
 /** 分类结果。 */
@@ -53,7 +53,7 @@ export function classifyWindows(free: Interval[], trueBusyMine: Interval[], peer
     fullSet.add(fullDays[i]);
   }
 
-  const bed = bedMin < wakeMin ? bedMin + MIN_PER_DAY : bedMin;
+  const bed = bedEndMin(wakeMin, bedMin);
   const windows: Window[] = [];
   for (let i = 0; i < free.length; i++) {
     const w = free[i];
@@ -62,8 +62,8 @@ export function classifyWindows(free: Interval[], trueBusyMine: Interval[], peer
       continue;
     }
     const tags: string[] = [];
-    const firstDay = Math.floor(w.start / MIN_PER_DAY);
-    const lastDay = Math.floor((w.end - 1) / MIN_PER_DAY);
+    const firstDay = dayOfStart(w.start);
+    const lastDay = dayOfEnd(w.end);
 
     if (dur >= params.halfDayMin) {
       tags.push(WindowTag.HALF_DAY);

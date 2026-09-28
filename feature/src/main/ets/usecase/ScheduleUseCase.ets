@@ -4,7 +4,7 @@ import {
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
   Window, buildAvailability, clampHorizonDays, decodeConflictHint, defaultParams, detectConflicts,
   encodeConflictHint, hintFromOutcome, HORIZON_MAX_DAYS, mergeIntervals, mkIv, todayEpochDay,
-  unionIntervals, withKeepCarried
+  unionIntervals, withKeepCarried, dayOfStart, daySpan
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import {
@@ -705,11 +705,10 @@ export class ScheduleUseCase {
    */
   static async unavailableForDraftOver(startEpochMin: number, endEpochMin: number): Promise<Interval[]> {
     const params = SettingsStoreParams();
-    const firstDay = Math.floor(startEpochMin / MIN_PER_DAY);
-    const lastDay = Math.max(firstDay, Math.ceil(endEpochMin / MIN_PER_DAY) - 1);
+    const firstDay = dayOfStart(startEpochMin);
     // 窗口跨度按用户视界截，再过引擎那一道硬上限：不过的话，一份从别处带回来的超大视界
     // 会让这里按窗口长度展开，而同一次计算里引擎只算到 HORIZON_MAX_DAYS（D-57 第五处）。
-    const days = clampHorizonDays(Math.min(lastDay - firstDay + 1, params.horizonDays));
+    const days = clampHorizonDays(Math.min(daySpan(startEpochMin, endEpochMin), params.horizonDays));
     const my = await ScheduleUseCase.loadMySchedule(firstDay, params, OWNER_ME);
     const out = buildAvailability(my, params, firstDay, days).notAvailable;
     const ta = await ScheduleUseCase.partnerBusyWithoutNetwork(firstDay,

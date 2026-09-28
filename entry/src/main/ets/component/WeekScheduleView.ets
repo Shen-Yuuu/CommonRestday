@@ -1,5 +1,5 @@
 import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, nowEpochMin, todayEpochDay,
-  weekdayOf } from 'domain';
+  weekdayOf, dayOfStart } from 'domain';
 import { DateLabel } from 'commons';
 import {
   CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
@@ -482,7 +482,7 @@ export struct WeekScheduleView {
    * 分两次读数时，跨午夜那一瞬会把游标摆到隔壁日子（纵向偏移正好一整天）。
    */
   private nowDay(): number {
-    return Math.floor(this.nowMin / MIN_PER_DAY);
+    return dayOfStart(this.nowMin);
   }
 
   /**

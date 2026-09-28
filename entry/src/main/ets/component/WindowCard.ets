@@ -1,4 +1,4 @@
-import { MIN_PER_DAY } from 'domain';
+import { dayOfStart } from 'domain';
 import { DateLabel } from 'commons';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from './EditorialCard';
@@ -24,7 +24,7 @@ export struct WindowCard {
   onTapCard: () => void = () => {};
 
   private startDay(): number {
-    return Math.floor(this.winStart / MIN_PER_DAY);
+    return dayOfStart(this.winStart);
   }
 
   /** 距今天数口语化：已经开始的说进行中，其余说今天/明天/N 天后。 */

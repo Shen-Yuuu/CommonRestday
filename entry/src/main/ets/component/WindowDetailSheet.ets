@@ -1,5 +1,5 @@
 import { Chip } from '@kit.ArkUI';
-import { Interval, MIN_PER_DAY, nowEpochMin, todayEpochDay } from 'domain';
+import { Interval, nowEpochMin, todayEpochDay, dayOfStart } from 'domain';
 import { DateLabel, Logger } from 'commons';
 import {
   CreatePlanOptions, isOnSystemCalendar, LOCAL_ONLY_NOTE, MIN_PLAN_MIN, OTHER_PLAN_KIND_KEY,
@@ -378,7 +378,7 @@ export struct WindowDetailSheet {
   @Builder
   windowSummary() {
     Column({ space: 6 }) {
-      Text(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)))
+      Text(DateLabel.mdw(dayOfStart(this.winStart)))
         .fontSize(17).fontWeight(FontWeight.Bold).fontColor(DesignTokens.heroText)
       Text(DateLabel.endLabel(this.winStart, this.winEnd)
         + ' · 共 ' + DateLabel.duration(this.winEnd - this.winStart))
@@ -398,7 +398,7 @@ export struct WindowDetailSheet {
     .alignItems(HorizontalAlign.Center)
     // 日期 / 起止 / 标签三行说的是同一个窗口，合成一句读，避免读屏逐行断句
     .accessibilityGroup(true)
-    .accessibilityText(DateLabel.mdw(Math.floor(this.winStart / MIN_PER_DAY)) + ' '
+    .accessibilityText(DateLabel.mdw(dayOfStart(this.winStart)) + ' '
       + DateLabel.endLabel(this.winStart, this.winEnd) + '，共 '
       + DateLabel.duration(this.winEnd - this.winStart)
       + (this.winTags === '' ? '' : '，' + this.winTags.split('|').join('、')))

@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { DateLabel } from 'commons';
-import { MIN_PER_DAY } from 'domain';
+import { MIN_PER_DAY, dayOfEnd, dayOfStart } from 'domain';
 
 const DAY_MIN = 1440;
 /** 2026-09-25 的 epochDay：写死一个已知日子，免得断言跟着机器钟点漂。 */
@@ -62,6 +62,34 @@ export default function dateLabelTest() {
       expect(DateLabel.hm((T + 1) * MIN_PER_DAY + 420)).assertEqual('07:00');
       expect(DateLabel.edgeDay(T * MIN_PER_DAY + 420, false)).assertEqual(T);
       expect(DateLabel.edgeDay(T * MIN_PER_DAY, true)).assertEqual(T - 1);
+    });
+
+    it('edge_day_and_time_agree_with_the_domain_edge_rule', 0, () => {
+      // 「端点算哪天／怎么念」在 commons 与 domain 各有一份（前者不能 import 后者，加依赖边待用户裁定）。
+      // 静态门禁 `span:` 只拦"再抄第三份"，等不等价得在这里逐点核对：整零点、整零点前后一分钟、
+      // 跨多日都要走到。两份分家的现场是 D-58——同一个 w.end 在窗口行念 24:00、在忙碌行念 00:00。
+      const dayOffsets: number[] = [-3, -1, 0, 1, 7, 200];
+      // 不含 0：整零点就是上面单独核对的那一格，混进这张表里会被"非整零点"那两条断言冤枉
+      const minutes: number[] = [1, 59, 720, 1379, 1439];
+      for (let i = 0; i < dayOffsets.length; i++) {
+        const edge = (T + dayOffsets[i]) * MIN_PER_DAY;
+        // 午夜端点：归日退回前一天，时刻念成 24:00——同一条口径的两半，必须同真同假
+        expect(DateLabel.edgeDay(edge, false)).assertEqual(dayOfStart(edge));
+        expect(DateLabel.edgeDay(edge, true)).assertEqual(dayOfEnd(edge));
+        expect(dayOfEnd(edge) !== dayOfStart(edge)).assertTrue();
+        expect(DateLabel.edgeTime(edge, true) === '24:00').assertTrue();
+        // 起点端读的是次日 00:00，不许把"尾巴"的读法漏给"头"
+        expect(DateLabel.edgeDay(edge, false)).assertEqual(edge / MIN_PER_DAY);
+        expect(DateLabel.edgeTime(edge, false) === '24:00').assertFalse();
+        for (let j = 0; j < minutes.length; j++) {
+          const m = edge + minutes[j];
+          expect(DateLabel.edgeDay(m, false)).assertEqual(dayOfStart(m));
+          expect(DateLabel.edgeDay(m, true)).assertEqual(dayOfEnd(m));
+          // 非整零点：终点归当天，念法也回到普通 HH:MM
+          expect(dayOfEnd(m) === dayOfStart(m)).assertTrue();
+          expect(DateLabel.edgeTime(m, true) === '24:00').assertFalse();
+        }
+      }
     });
   });
 }

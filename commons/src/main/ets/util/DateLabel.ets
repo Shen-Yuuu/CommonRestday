@@ -80,16 +80,22 @@ export class DateLabel {
   }
 
   /**
-   * 端点落在哪个日历日（D-58 起是全应用唯一一份这个判定）。
+   * 端点落在哪个日历日。
    * 整零点既是"下一天的 00:00"也是"这一天的 24:00"，两个说法指同一个瞬间：
    * 作为**起点**读前者（次日开始），作为**终点**读后者（当天结束）。
    * 判错半边，区间在屏幕上就会短或长一整天，所以起点终点必须显式传 isEnd。
+   *
+   * 这不是仓内唯一的归日判定：算法侧的同一件事在 `domain` 的 `dayOfStart`／`dayOfEnd`
+   * （批次 AJ·D-60）。两份并存是依赖图的后果，不是决定——`commons` 不 import `domain`，
+   * 加那条边要用户裁定（差异文档 §7 待裁定第 2 条）。等不等价由
+   * `entry/src/test/DateLabelTest.ets` 的 `edge_day_and_time_agree_with_the_domain_edge_rule`
+   * 逐点核对（含整零点与负数），静态门禁 `span:` 只拦"再抄第三份"。
    */
   static edgeDay(min: number, isEnd: boolean): number {
     if (isEnd && min % DAY_MIN === 0) {
       return min / DAY_MIN - 1;
     }
-    return Math.floor(min / DAY_MIN);
+    return Math.floor(min / DAY_MIN); // day-span-exempt commons 不能 import domain，见上面 KDoc 与 §7 第 2 条
   }
 
   /**

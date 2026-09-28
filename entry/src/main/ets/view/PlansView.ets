@@ -2,6 +2,7 @@ import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult
   PlanUseCase, calendarBadgeOf, canExportToCalendar, canRetryCalendarSync, canRetryCleanup,
   isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
 import { DateLabel } from 'commons';
+import { dayOfStart } from 'domain';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
@@ -139,7 +140,7 @@ export struct PlansView {
   }
 
   subLabel(p: PlanSummary): string {
-    return DateLabel.mdw(Math.floor(p.start / 1440)) + ' ' + DateLabel.endLabel(p.start, p.end) + ' · '
+    return DateLabel.mdw(dayOfStart(p.start)) + ' ' + DateLabel.endLabel(p.start, p.end) + ' · '
       + DateLabel.duration(p.end - p.start);
   }
 
@@ -221,7 +222,7 @@ export struct PlansView {
     // 框念的是计划落地的起止，不是整段替代空档（后者是卡片上「可改到 …」那句的口径）：
     // 空档比计划长时两个数不一样，把空档当"新时间"就是承诺一个不会发生的时间（D-32）。
     const when = c != null && c.landedStart > 0
-      ? DateLabel.mdw(Math.floor(c.landedStart / 1440)) + ' ' + DateLabel.endLabel(c.landedStart, c.landedEnd)
+      ? DateLabel.mdw(dayOfStart(c.landedStart)) + ' ' + DateLabel.endLabel(c.landedStart, c.landedEnd)
       : '';
     askConfirm(this.getUIContext(), {
       title: '改到替代时间',

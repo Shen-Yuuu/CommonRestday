@@ -1,4 +1,5 @@
 import { BlockTag, EngineParams, Interval, MIN_PER_DAY, ShiftInstance, ShiftType } from '../model/Types';
+import { bedEndMin, dayOfEnd, dayOfStart } from '../utils/TimeUtil';
 import { mkIv, mergeIntervals } from '../merge/IntervalOps';
 
 /**
@@ -50,8 +51,9 @@ export function isNightShift(inst: ShiftInstance, cfg: ShiftType, params: Engine
     return false; // 未配置夜窗
   }
   // 检查班次覆盖到的每个自然日的夜班窗口（跨零点夜窗需额外回看前一天开始的窗口）
-  const firstDay = Math.floor(workStart / MIN_PER_DAY) - 1;
-  const lastDay = Math.floor((workEnd - 1) / MIN_PER_DAY);
+  // 那个 `- 1` 是夜窗的回看，不是端点归日——端点归日只有 dayOfStart／dayOfEnd 这一份口径
+  const firstDay = dayOfStart(workStart) - 1;
+  const lastDay = dayOfEnd(workEnd);
   for (let d = firstDay; d <= lastDay; d++) {
     const ns = d * MIN_PER_DAY + params.nightStartMin;
     const ne = ns + nightLen;
@@ -74,8 +76,8 @@ export function buildNotAvailable(busyTrue: Interval[], wakeMin: number, bedMin:
     const iv = busyTrue[i];
     notAvail.push(mkIv(iv.start, iv.end + windDownMin, iv.tag));
   }
-  // 每日作息窗口外
-  const b = bedMin < wakeMin ? bedMin + MIN_PER_DAY : bedMin;
+  // 每日作息窗口外（跨零点的就寝由 bedEndMin 一处解释，与 WindowClassifier 同一份判定）
+  const b = bedEndMin(wakeMin, bedMin);
   for (let i = 0; i < days; i++) {
     const base = (startEpochDay + i) * MIN_PER_DAY;
     if (wakeMin > 0) {

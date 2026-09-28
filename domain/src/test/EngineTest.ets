@@ -1,7 +1,8 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
-  Course, CycleTemplate, defaultParams, EngineInput, EngineParams, Interval, MIN_PER_DAY,
-  MySchedule, PartnerSchedule, ScheduleOverride, SectionTime, ShiftType, WindowTag
+  clampHorizonDays, Course, CycleTemplate, defaultParams, EngineInput, EngineParams, HORIZON_MAX_DAYS,
+  Interval, MIN_PER_DAY, MySchedule, PartnerSchedule, ScheduleOverride, SectionTime, ShiftType,
+  WindowTag
 } from '../main/ets/model/Types';
 import { epochDayOf } from '../main/ets/utils/TimeUtil';
 import { CommonFreeEngine, buildAvailability } from '../main/ets/engine/CommonFreeEngine';
@@ -398,6 +399,33 @@ export default function engineTest() {
         }
       }
       expect(freeAllDay).assertTrue();
+    });
+
+    it('horizon_days_clamp_at_both_ends', 0, () => {
+      // 视界那一道闸只管上下两头：中间的值照原样过，越界的收进来（D-57）
+      expect(clampHorizonDays(120)).assertEqual(120);
+      expect(clampHorizonDays(HORIZON_MAX_DAYS)).assertEqual(HORIZON_MAX_DAYS);
+      expect(clampHorizonDays(5000)).assertEqual(HORIZON_MAX_DAYS);
+      expect(clampHorizonDays(0)).assertEqual(1);
+      expect(clampHorizonDays(-400)).assertEqual(1);
+    });
+
+    it('compute_stops_at_the_horizon_ceiling_when_params_dont', 0, () => {
+      // 一份从别处带回来的超大视界（设置页的校验管不到 Preferences 里那份 JSON）：
+      // 引擎按上限展开，两头都要判得住——上限那天还在算，之后一天都不许有窗口。
+      const mon = epochDayOf(2026, 9, 14);
+      const tpl: CycleTemplate = { id: 't', name: '无班', seq: [], anchorEpochDay: mon };
+      const r = CommonFreeEngine.compute(mkInput(mkMy(tpl), [], mon, 5000));
+      expect(r.fullDays.length).assertEqual(HORIZON_MAX_DAYS);
+      const ceilingEnd = (mon + HORIZON_MAX_DAYS) * MIN_PER_DAY;
+      let lastDayFree = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        expect(r.windows[i].end <= ceilingEnd).assertTrue();
+        if (r.windows[i].start >= (mon + HORIZON_MAX_DAYS - 1) * MIN_PER_DAY) {
+          lastDayFree = true;
+        }
+      }
+      expect(lastDayFree).assertTrue();
     });
   });
 }

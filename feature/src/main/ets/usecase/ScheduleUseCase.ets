@@ -2,7 +2,7 @@ import {
   CommonFreeResult, ConflictOutcome, ConflictSources, EngineInput,
   EngineParams, Interval, MIN_PER_DAY, MySchedule, OWNER_ME, OWNER_PARTNER, PartnerSchedule,
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
-  Window, buildAvailability, decodeConflictHint, defaultParams, detectConflicts,
+  Window, buildAvailability, clampHorizonDays, decodeConflictHint, defaultParams, detectConflicts,
   encodeConflictHint, hintFromOutcome, mergeIntervals, mkIv, todayEpochDay, unionIntervals,
   withKeepCarried
 } from 'domain';
@@ -254,7 +254,7 @@ export class ScheduleUseCase {
     }
     const partnerParams = ScheduleUseCase.partnerParamsOf(myParams, profile);
     const partnerSched = await ScheduleUseCase.loadMySchedule(startEpochDay, partnerParams, OWNER_PARTNER);
-    const days = Math.max(1, Math.min(partnerParams.horizonDays, 366));
+    const days = clampHorizonDays(partnerParams.horizonDays);
     const avail = buildAvailability(partnerSched, partnerParams, startEpochDay, days);
     // 本机代录可拿到全量细节：从真忙+收整重建"不含睡眠"不可用（避免合并吞标签的边缘情形）
     const tripBusy = mergeIntervals(avail.trueBusy.map((iv: Interval): Interval => {
@@ -516,7 +516,7 @@ export class ScheduleUseCase {
     if (planRows.length === 0) {
       return;
     }
-    const days = Math.max(1, Math.min(params.horizonDays, 366));
+    const days = clampHorizonDays(params.horizonDays);
     const myAvail = buildAvailability(ScheduleUseCase.withPlans(my, []), params, startEpochDay, days);
     let busyUnion: Interval[] = myAvail.notAvailable;
     if (partnerBusy != null) {
@@ -690,7 +690,7 @@ export class ScheduleUseCase {
    *
    * 起草器用它把默认起点挪出睡觉时间（D-25）：旅行通道只扣真忙、睡眠算在窗口里，
    * 一段连续休息的窗口起点可以是 00:00，不查这一份就会把"选窗口 → 直接保存"的第一条计划排进被窝里。
-   * 天数按视界封住（与引擎同一上限口径），不随窗口长度无限放大。
+   * 天数按视界封住（走引擎那一道 clampHorizonDays），不随窗口长度无限放大。
    *
    * TA 那半边（D-28）走的是与引擎同一个来源，只是不发云请求（partnerBusyWithoutNetwork）。
    * 批次 L 当初按"有没有伴侣档案"设闸，理由是云快照只有粗粒度忙闲、拿它替 TA 挪起点是假话——
@@ -703,7 +703,9 @@ export class ScheduleUseCase {
     const params = SettingsStoreParams();
     const firstDay = Math.floor(startEpochMin / MIN_PER_DAY);
     const lastDay = Math.max(firstDay, Math.ceil(endEpochMin / MIN_PER_DAY) - 1);
-    const days = Math.max(1, Math.min(lastDay - firstDay + 1, params.horizonDays));
+    // 窗口跨度按用户视界截，再过引擎那一道硬上限：不过的话，一份从别处带回来的超大视界
+    // 会让这里按窗口长度展开，而同一次计算里引擎只算到 HORIZON_MAX_DAYS（D-57 第五处）。
+    const days = clampHorizonDays(Math.min(lastDay - firstDay + 1, params.horizonDays));
     const my = await ScheduleUseCase.loadMySchedule(firstDay, params, OWNER_ME);
     const out = buildAvailability(my, params, firstDay, days).notAvailable;
     const ta = await ScheduleUseCase.partnerBusyWithoutNetwork(firstDay,

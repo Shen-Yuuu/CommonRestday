@@ -1,6 +1,6 @@
 import {
   CommonFreeResult, CycleTemplate, EngineInput, EngineParams, Interval, MIN_PER_DAY,
-  MySchedule, ShiftInstance, ShiftType, Window, WindowChannel, WindowTag
+  MySchedule, ShiftInstance, ShiftType, Window, WindowChannel, WindowTag, clampHorizonDays
 } from '../model/Types';
 import { expandCycle } from '../expand/CycleExpander';
 import { expandCourses } from '../expand/CourseExpander';
@@ -23,7 +23,7 @@ export class CommonFreeEngine {
     const t0 = Date.now();
     const p = input.params;
     const start = input.horizonStartEpochDay;
-    const days = Math.max(1, Math.min(p.horizonDays, 366));
+    const days = clampHorizonDays(p.horizonDays);
     const from = start * MIN_PER_DAY;
     const to = (start + days) * MIN_PER_DAY;
 

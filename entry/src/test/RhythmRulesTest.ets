@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
+import { HORIZON_MAX_DAYS } from 'domain';
 import {
   greetingOf, horizonError, horizonLabel, HORIZON_MAX, isCrossMidnight, NIGHT_MODE_LABELS,
   nightModeHint, nightModeIndex, nightModeOf, rhythmError
@@ -51,6 +52,23 @@ export default function rhythmRulesTest() {
       expect(horizonError('abc') === '').assertFalse();
       // 提示语里的区间数字要跟着常量走，避免文案与校验各说一套
       expect(horizonError('367').indexOf('7–366') >= 0).assertTrue();
+    });
+
+    it('the_gate_ceiling_is_the_number_the_engine_expands_to', 0, () => {
+      // 上限不写第二份：设置页放行的那个数，就是引擎按日展开真正会算到头的那个数（D-57）。
+      // 分家之后的形状是"保存得进去、算不出来"，画面上一句"未来 17 个月"底下只算了 12 个月。
+      expect(HORIZON_MAX).assertEqual(HORIZON_MAX_DAYS);
+      expect(horizonError('' + HORIZON_MAX_DAYS)).assertEqual('');
+      expect(horizonError('' + (HORIZON_MAX_DAYS + 1)) === '').assertFalse();
+    });
+
+    it('horizon_label_reads_the_ceiling_not_the_stored_number', 0, () => {
+      // 设置页有校验，但 Preferences 里那份 JSON 可能是备份/换机从别的版本带回来的：
+      // 念的时候先收进引擎真正会算的天数，否则那句"未来 N 天"是一句兑现不了的承诺。
+      expect(horizonLabel(HORIZON_MAX_DAYS + 134)).assertEqual('未来 12 个月');
+      expect(horizonLabel(0)).assertEqual('未来 1 天');
+      // 合法值照原样念，这一格只加"收拢"那一半
+      expect(horizonLabel(120)).assertEqual('未来 4 个月');
     });
 
     it('horizon_label_rounds_to_months_and_keeps_short_views_in_days', 0, () => {

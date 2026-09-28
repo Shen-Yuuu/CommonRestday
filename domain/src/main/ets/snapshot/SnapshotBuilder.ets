@@ -1,4 +1,6 @@
-import { EngineParams, Interval, MIN_PER_DAY, MySchedule } from '../model/Types';
+import {
+  clampHorizonDays, EngineParams, Interval, MIN_PER_DAY, MySchedule
+} from '../model/Types';
 import { buildMyAvailability } from '../engine/CommonFreeEngine';
 import { mergeIntervals, mkIv } from '../merge/IntervalOps';
 import { SnapshotData } from './SnapshotCodec';
@@ -12,7 +14,7 @@ const SLOT = 30;
 export class SnapshotBuilder {
   static build(my: MySchedule, params: EngineParams, startEpochDay: number,
     shareLevel: number, version: number): SnapshotData {
-    const days = Math.max(1, Math.min(params.horizonDays, 366));
+    const days = clampHorizonDays(params.horizonDays);
     const avail = buildMyAvailability(my, params, startEpochDay, days);
     const merged = mergeIntervals(avail.notAvailable);
 

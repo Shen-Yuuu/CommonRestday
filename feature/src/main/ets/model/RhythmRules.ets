@@ -1,8 +1,13 @@
-import { hhmmToMin } from 'domain';
+import { clampHorizonDays, hhmmToMin, HORIZON_MAX_DAYS } from 'domain';
 
-/** 视界天数允许区间：与引擎按日展开的成本匹配，也覆盖"只看本周"的用法。 */
+/**
+ * 视界天数允许区间：下限是本页的用法约定（"只看本周"是 7 天，引擎本身只要求 ≥1 天）；
+ * 上限**不在这儿写死**——它由 domain 的 HORIZON_MAX_DAYS 派生，因为引擎按日展开时用的就是
+ * 那个数（`clampHorizonDays`）。D-57 之前两边各抄了一份 366，谁改谁记得、另一个人不知道，
+ * 于是"校验放行 / 引擎截断"能悄悄分家。
+ */
 export const HORIZON_MIN: number = 7;
-export const HORIZON_MAX: number = 366;
+export const HORIZON_MAX: number = HORIZON_MAX_DAYS;
 
 /** 把 "60" / "20" 这类分钟数文本解析成数字；非数字返回 -1。 */
 export function toMinutes(text: string): number {
@@ -49,10 +54,14 @@ export function horizonError(horizonText: string): string {
 /**
  * 视界口语读法：参数存的是天数（7–366），读者关心的是"往后能看多远"，所以满一个月
  * 折成月；不足一个月照实念天——允许输入 7 天，折成月就成了"0 个月"。
+ * 先过 clampHorizonDays 再念：设置页有校验，但 Preferences 里那份 JSON 可能是备份/换机
+ * 从别的版本带回来的，那上面的数字不受本页校验管。念成 500 天而引擎只算到 366 天，
+ * 就是一句承诺不起的读数（D-57）。
  */
 export function horizonLabel(horizonDays: number): string {
-  const months = Math.round(horizonDays / 30);
-  return months < 1 ? '未来 ' + horizonDays + ' 天' : '未来 ' + months + ' 个月';
+  const days = clampHorizonDays(horizonDays);
+  const months = Math.round(days / 30);
+  return months < 1 ? '未来 ' + days + ' 天' : '未来 ' + months + ' 个月';
 }
 
 /**

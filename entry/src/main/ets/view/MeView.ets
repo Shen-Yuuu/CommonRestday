@@ -1,9 +1,10 @@
 import { OWNER_ME, PairLink, PairOffer } from 'domain';
 import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'data';
 import {
-  FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
-  PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult,
-  SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, syncStateNoteOf, syncStateTitleOf, syncTroubleOf
+  FeatureFlags, HORIZON_MAX, HORIZON_MIN, InviteResult, isCrossMidnight, MyRhythm,
+  PairChannels, PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService,
+  ScanOutcome, ScanResult, SettingsResult, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState,
+  syncStateNoteOf, syncStateTitleOf, syncTroubleOf
 } from 'feature';
 import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -1400,9 +1401,9 @@ export struct MeView {
           .borderRadius(DesignTokens.radiusInput)
           .border({ width: 1.5, color: DesignTokens.primaryBorder })
           .backgroundColor(DesignTokens.card)
-          .accessibilityText('往后算多少天，可以填 7 到 366')
+          .accessibilityText('往后算多少天，可以填 ' + HORIZON_MIN + ' 到 ' + HORIZON_MAX)
           .onChange((v: string) => this.myHorizon = v)
-        Text('7–366 天')
+        Text(HORIZON_MIN + '–' + HORIZON_MAX + ' 天')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       }.width('100%')

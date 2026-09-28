@@ -133,6 +133,29 @@ export enum WindowTag {
   STUDY = 'STUDY'                // 工作日白天 ≥studyMinMin 的共同自习窗口
 }
 
+/**
+ * 计算视界的硬上限（天）：取一整年（闰年 366 天）为止。
+ *
+ * 为什么停在这儿：引擎成本对视界近似线性（`docs/validation/performance-budget.md` §2 的视界扫描，
+ * 开发机下界 120d=13.6ms、240d=40.0ms、366d=72.0ms），上云那份包络是 `days × 48` 个 30 分钟槽，
+ * 列表投影的行数上限也直接等于它（同文档 §3）——三样都随天数线性涨。
+ *
+ * 这个数同时是设置页允许填的上限（feature 的 `RhythmRules.HORIZON_MAX` 由它派生）：
+ * "校验放行 500、引擎只算 366"这种读数与计算各说一套的漂移，就是这么分家的（D-57）。
+ */
+export const HORIZON_MAX_DAYS: number = 366;
+
+/**
+ * 把任意来源的视界天数收进 [1, HORIZON_MAX_DAYS]：引擎只按这个值逐日展开。
+ *
+ * 来源不可全信：设置页有校验，但 Preferences 里那份 JSON 可能是备份/换机迁移从**更新的**
+ * 版本带回来的（SettingsStore.assignParam 只挡 NaN，不挡取值范围），未落库的默认值也可能
+ * 被调用方改写。所以每个算天数的地方都过这一道，而不是各自手写上下界。
+ */
+export function clampHorizonDays(days: number): number {
+  return Math.max(1, Math.min(days, HORIZON_MAX_DAYS));
+}
+
 /** 引擎可调参数（PRD F4：全部可配置，无隐藏假设）。 */
 export interface EngineParams {
   horizonDays: number;

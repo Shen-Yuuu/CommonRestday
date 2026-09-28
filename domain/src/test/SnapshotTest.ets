@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
-  CycleTemplate, EngineParams, MIN_PER_DAY, MySchedule, ShiftType
+  CycleTemplate, EngineParams, HORIZON_MAX_DAYS, MIN_PER_DAY, MySchedule, ShiftType
 } from '../main/ets/model/Types';
 import { SnapshotBuilder } from '../main/ets/snapshot/SnapshotBuilder';
 import { SnapshotCodec, SnapshotData } from '../main/ets/snapshot/SnapshotCodec';
@@ -217,6 +217,14 @@ export default function snapshotTest() {
         }
         expect(covered2).assertTrue();
       }
+    });
+
+    it('oversized_horizon_builds_a_ceiling_sized_snapshot', 0, () => {
+      // 这份是要推到对端的：days 与位图长度都得是引擎真正算的天数。
+      // 抄一份超出上限的视界进来，包络会按 5000 天撑开（D-57）。30 是 SnapshotBuilder 的槽宽。
+      const data = SnapshotBuilder.build(myWithDayShift(), params(5000), 1000, 1, 3);
+      expect(data.days).assertEqual(HORIZON_MAX_DAYS);
+      expect(data.busy30.length).assertEqual(HORIZON_MAX_DAYS * (MIN_PER_DAY / 30));
     });
   });
 }

@@ -134,6 +134,7 @@ export struct TodayOverview {
       .onBlur(() => {
         this.focusedPill = -1;
       })
+      .clickEffect(DesignTokens.tapChip())
       .onClick(onTap)
   }
 }

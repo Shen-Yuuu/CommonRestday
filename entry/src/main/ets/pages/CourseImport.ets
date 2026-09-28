@@ -260,6 +260,7 @@ struct CourseImport {
               Text('选择 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
             }
             .width('100%').padding(10).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
+            .clickEffect(DesignTokens.tapButton())
             .onClick(() => this.pickTermStart())
 
             // 节次模板（可编辑；默认上午 8:00 起、下午 14:00 起、晚上 19:00 起，每节 45+10 分钟）
@@ -356,6 +357,7 @@ struct CourseImport {
                   .backgroundColor(this.manualWd === i + 1 ? $r('app.color.brand_pink') : $r('app.color.fill_weak'))
                   .shadow(this.manualWd === i + 1
                     ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip) : undefined)
+                  .clickEffect(DesignTokens.tapChip())
                   .onClick(() => this.manualWd = i + 1)
               }, (w: string) => w)
             }
@@ -487,6 +489,7 @@ struct CourseImport {
     .justifyContent(FlexAlign.Center)
     .backgroundColor($r('app.color.danger_red'))
     .borderRadius(10)
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.removeCourse(c.id))
   }
 

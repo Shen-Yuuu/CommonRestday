@@ -241,6 +241,7 @@ struct ScheduleEditor {
             .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
             .backgroundColor($r('app.color.card_bg'))
             .shadow(DesignTokens.cardShadow())
+            .clickEffect(DesignTokens.tapButton())
             .onClick(() => this.edit(st))
           }
           .swipeAction({
@@ -411,6 +412,7 @@ struct ScheduleEditor {
     .justifyContent(FlexAlign.Center)
     .backgroundColor($r('app.color.danger_red'))
     .borderRadius(12)
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.askDeleteRow(st))
   }
 }

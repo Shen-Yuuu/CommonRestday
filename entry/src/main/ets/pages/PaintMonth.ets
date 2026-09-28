@@ -341,6 +341,7 @@ struct PaintMonth {
               .padding({ left: 10, right: 10, top: 5, bottom: 5 })
               .borderRadius(12)
               .backgroundColor(this.brushId === st.id ? st.color : $r('app.color.divider'))
+              .clickEffect(DesignTokens.tapChip())
               .onClick(() => this.brushId = st.id)
           }, (st: ShiftType) => st.id)
           Text('休息')
@@ -348,6 +349,7 @@ struct PaintMonth {
             .padding({ left: 10, right: 10, top: 5, bottom: 5 })
             .borderRadius(12)
             .backgroundColor(this.brushId === REST_KEY ? '#B8C4CE' : $r('app.color.divider'))
+            .clickEffect(DesignTokens.tapChip())
             .onClick(() => this.brushId = REST_KEY)
         }
       }.width('100%').scrollable(ScrollDirection.Horizontal).padding({ left: 12, right: 12 })
@@ -459,6 +461,8 @@ struct DayCellView {
     .borderRadius(10)
     .backgroundColor(this.isRestColor() ? $r('app.color.fill_weak') : this.cell.color)
     .border(this.isToday ? { width: 2, color: $r('app.color.brand_pink') } : { width: 0 })
+    // press-exempt 这颗格子下面还挂着 PanGesture（涂抹靠它）：clickEffect 的回弹缩放会让触摸点
+    // 落到控件之外，手势事件收不到（SDK 对 clickEffect 的原文警告）。涂抹格的反馈由 paint 本身给。
     .onClick(() => this.onTap(this.cell.epochDay))
     .gesture(PanGesture({ direction: PanDirection.All, distance: 8 })
       .onActionStart(() => {

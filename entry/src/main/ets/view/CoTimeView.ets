@@ -631,6 +631,7 @@ export struct CoTimeView {
       // 纯文字当按钮：焦点、朗读名都得补上，选中档前缀给读屏，页面上仍只靠底色区分
       .focusable(true)
       .accessibilityText((this.viewMode === mode ? '当前为' : '切换到') + label + '视图')
+      .clickEffect(DesignTokens.tapChip())
       .onClick(() => {
         this.viewMode = mode;
       })

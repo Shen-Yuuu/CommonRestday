@@ -193,6 +193,7 @@ struct CycleEditor {
                   .fontWeight(FontWeight.Bold)
                   .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                   .borderRadius(DesignTokens.radiusPill).backgroundColor(st.color)
+                  .clickEffect(DesignTokens.tapChip())
                   .onClick(() => this.seq.push(st.id))
               }, (st: ShiftType) => st.id)
               // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
@@ -201,6 +202,7 @@ struct CycleEditor {
                 .fontWeight(FontWeight.Bold)
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                 .borderRadius(DesignTokens.radiusPill).backgroundColor(REST_COLOR)
+                .clickEffect(DesignTokens.tapChip())
                 .onClick(() => this.seq.push(REST_IN_SEQ))
             }.width('100%')
 
@@ -215,6 +217,7 @@ struct CycleEditor {
                     .fontWeight(FontWeight.Bold)
                     .padding({ left: 8, right: 8, top: 5, bottom: 5 })
                     .borderRadius(DesignTokens.radiusPill).backgroundColor(this.typeColor(id))
+                    .clickEffect(DesignTokens.tapChip())
                     .onClick(() => this.seq.splice(idx, 1))
                 }, (id: string, idx: number) => idx + '-' + id)
               }.width('100%')
@@ -232,6 +235,7 @@ struct CycleEditor {
               Text('选择日期 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
             }
             .width('100%').padding(12).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
+            .clickEffect(DesignTokens.tapButton())
             .onClick(() => this.pickAnchor())
           }
           .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(true))

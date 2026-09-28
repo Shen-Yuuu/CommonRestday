@@ -443,6 +443,7 @@ export struct PlansView {
         .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
         .focusable(true)
         .accessibilityText('在下一个窗口创建计划')
+        .clickEffect(DesignTokens.tapChip())
         .onClick(() => {
           this.onNextWindow();
         })
@@ -465,6 +466,7 @@ export struct PlansView {
     .borderRadius(14)
     .focusable(true)
     .accessibilityText('取消计划：' + arg.p.title)
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.confirmCancel(arg.p))
   }
 
@@ -499,6 +501,7 @@ export struct PlansView {
     .width('100%').padding(16).borderRadius(DesignTokens.cardRadius(false)).backgroundColor($r('app.color.card_bg'))
     // 原型给计划卡留了一档更轻的落影（0 4px 16px），比正文卡薄，一列排下来才不糊。
     .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.onPlanTap(arg.p))
   }
 

@@ -185,6 +185,29 @@ export class DesignTokens {
   static readonly pressScale: number = 0.98;
   /** 底栏单项按压力度比卡片大一档：小东西要按得出来。 */
   static readonly dockPressScale: number = 0.92;
+  /**
+   * 自制芯片／胶囊／格子的按压回弹，交给系统的 `clickEffect`（按下抬起时缩一下再弹回）。
+   *
+   * 为什么不用 `stateStyles`：它只覆盖通用属性里的少数几个，而且**在 `@Builder` 里不生效**
+   * （官方文档原话："因Builder不具备独立的自定义父节点"），本仓多数芯片恰恰画在 builder 里。
+   * 系统 `Button` 也不归这里管——它自带按压态（`stateEffect` 默认 true）。
+   *
+   * 两档幅度都取现成的规格，不新发明数字：
+   * - 芯片 0.94 ← 原型 02 第 454 行 `.chip:active{transform:scale(.94)}`
+   * - 自制按钮／整行／整卡 0.98 ← 原型 02 第 279 行 `.btn:active{transform:scale(.98)}`，
+   *   与本仓 `pressScale`（`EditorialCard`／`ConfirmDialog` 自绘按压态用的幅度）同一档
+   *
+   * 这一族**接不进「减少动效」开关**，不是漏接：`ClickEffect` 只有 `level` 与 `scale` 两个旋钮，
+   * 没有时长/曲线可调，要"关掉"只能整体传 `null`——那等于把反馈删了，不是把动效放轻。
+   * 自绘的那几档（`motionPress`、心跳）仍然跟开关走。
+   */
+  static tapChip(): ClickEffect {
+    return { level: ClickEffectLevel.LIGHT, scale: 0.94 };
+  }
+
+  static tapButton(): ClickEffect {
+    return { level: ClickEffectLevel.LIGHT, scale: DesignTokens.pressScale };
+  }
   /** 果冻厚底：常态 3vp 硬边，按下塌到 1vp 并整体下沉 2vp（对应原型 .btn:active）。 */
   static readonly jellyDepth: number = 3;
   /** 芯片比主按钮小一档：CSS `0 2px 0 深色`。 */

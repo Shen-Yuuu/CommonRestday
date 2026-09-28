@@ -242,6 +242,7 @@ export struct DayShiftSheet {
                   : undefined)
                 .focusable(true)
                 .accessibilityText(this.chipRead(st.id))
+                .clickEffect(DesignTokens.tapChip())
                 .onClick(() => this.write(st.id))
             }, (st: ShiftType) => st.id)
             Text(this.chipLabel(REST_ID))
@@ -259,6 +260,7 @@ export struct DayShiftSheet {
                 : undefined)
               .focusable(true)
               .accessibilityText(this.chipRead(REST_ID))
+              .clickEffect(DesignTokens.tapChip())
               .onClick(() => this.write(REST_ID))
           }
           .width('100%')

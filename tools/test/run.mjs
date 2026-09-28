@@ -8,7 +8,8 @@
  * 退出码：0 类型编译、用例、文案口径审计**都**干净 / 1 有用例失败或文案口径冲突 /
  * 2 环境不满足（缺 tsc）/ 3 类型编译失败。完整输出同时写在 tools/test/out/last-run.log。
  *
- * 只有 `typecheck: 0 errors` + `copy: PASS` + `tests: passed` + 退出码 0 才可以写成"全绿"：
+ * 只有 `typecheck: 0 errors` + 四条静态口径（`copy`／`a11y`／`landing`／`press`）全 PASS
+ * + `tests: passed` + 退出码 0 才可以写成"全绿"：
  * 转译有类型错误时不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），
  * 所以不存在"用例通过但工程编不过"的假绿。`copy` 见 tools/test/copy-audit.mjs。
  *
@@ -22,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { auditPrivacyCopy } from './copy-audit.mjs';
 import { auditAccessibility } from './a11y-audit.mjs';
 import { auditLanding } from './landing-audit.mjs';
+import { auditPress } from './press-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -705,6 +707,13 @@ function main() {
   for (const v of landingViolations) {
     say('  - ' + v);
   }
+  const press = auditPress(REPO);
+  say('press: ' + (press.violations.length === 0
+    ? 'PASS（自制圆角可点节点都有按压回弹：接 ' + press.wired + ' 处，写明理由豁免 ' + press.exempt + ' 处）'
+    : 'FAILED（' + press.violations.length + ' 处按压回弹不达标）'));
+  for (const v of press.violations) {
+    say('  - ' + v);
+  }
   prepare();
   if (!overrideTier(say)) {
     say('tests: FAILED（档位覆盖没落地，这一跑的结论不属于任何档位）');
@@ -740,8 +749,9 @@ function main() {
   }
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
-  // 三条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
-  const auditViolations = copyViolations.length + a11yViolations.length + landingViolations.length;
+  // 四条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
+  const auditViolations = copyViolations.length + a11yViolations.length + landingViolations.length
+    + press.violations.length;
   if (testsPassed && auditViolations > 0) {
     say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }

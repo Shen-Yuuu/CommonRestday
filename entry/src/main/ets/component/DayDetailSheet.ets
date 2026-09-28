@@ -228,6 +228,7 @@ export struct DayDetailSheet {
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
             .accessibilityText('返回当日概览')
+            .clickEffect(DesignTokens.tapChip())
             .onClick(() => this.backToOverview())
         } else {
           Text('改这天').fontSize(14).fontColor($r('app.color.brand_pink'))
@@ -237,6 +238,7 @@ export struct DayDetailSheet {
             .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
             .accessibilityText('改这天的班，只影响这一天')
+            .clickEffect(DesignTokens.tapChip())
             .onClick(() => {
               this.editing = true;
             })
@@ -369,6 +371,7 @@ export struct DayDetailSheet {
     .focusable(true)
     .accessibilityGroup(true)
     .accessibilityText(this.windowRead(w))
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
   }
 
@@ -392,6 +395,7 @@ export struct DayDetailSheet {
     .accessibilityGroup(true)
     .accessibilityText('旅行窗口 ' + DateLabel.mdw(Math.floor(w.start / MIN_PER_DAY)) + ' '
       + DateLabel.endLabel(w.start, w.end) + '，连续 ' + DateLabel.duration(w.durationMin) + '，点击去计划')
+    .clickEffect(DesignTokens.tapButton())
     .onClick(() => this.onPickWindow(w.start, w.end, w.tags))
   }
 

@@ -756,6 +756,7 @@ export struct MeView {
           .backgroundColor(DesignTokens.heroGlow)
           .focusable(true)
           .accessibilityText('去共同时间页')
+          .clickEffect(DesignTokens.tapChip())
           .onClick(() => this.onOpenRoute(NavRoutes.COMMON_TIME))
       }
       .width('100%')
@@ -1215,6 +1216,7 @@ export struct MeView {
         .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
         .borderRadius(DesignTokens.radiusCard)
         .backgroundColor(this.shareLevel === lv ? DesignTokens.primaryBg : Color.Transparent)
+        .clickEffect(DesignTokens.tapButton())
         .onClick(() => this.pickLevel(lv))
       }, (lv: number) => 'lv' + lv)
     }
@@ -1421,6 +1423,7 @@ export struct MeView {
               ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip) : undefined)
             .focusable(true)
             .accessibilityText(this.minSlotLabel(v) + (this.myMinSlot === v ? '，当前档位' : '，点按设为最短共同时段'))
+            .clickEffect(DesignTokens.tapChip())
             .onClick(() => this.pickMinSlot(v))
         }, (v: number) => 'ms' + v)
       }

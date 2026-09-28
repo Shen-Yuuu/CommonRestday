@@ -641,6 +641,7 @@ export struct WeekScheduleView {
       .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
       .focusable(true)
       .accessibilityText('回到本周')
+      .clickEffect(DesignTokens.tapChip())
       .onClick(() => this.goCurrentWeek())
   }
 
@@ -892,6 +893,7 @@ export struct WeekScheduleView {
               .focusable(true)
               .accessibilityGroup(true)
               .accessibilityText(this.freeBlockRead(b, ed))
+              .clickEffect(DesignTokens.tapButton())
               .onClick(() => this.onPickWindow(b.winStart, b.winEnd))
             }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start + '-' + b.end)
 

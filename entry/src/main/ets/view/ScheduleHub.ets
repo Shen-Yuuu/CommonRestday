@@ -192,6 +192,7 @@ export struct ScheduleHub {
       .focusable(true)
       // 选中的那一侧只剩底色区别，读屏要念出"当前"
       .accessibilityText(this.isPartnerSide() === partner ? '当前查看' + label : '切换到' + label)
+      .clickEffect(DesignTokens.tapChip())
       .onClick(() => this.pickSide(partner))
   }
 

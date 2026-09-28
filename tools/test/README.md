@@ -71,6 +71,26 @@ SQL，两次点击排成 delete→delete→insert→insert，后一次 insert �
 （已经落库的保存被念成"保存失败"）。这一格靠人工盘点补（批次 AB），要判它得能看见 repo 的 SQL 形状，
 而 R4 的扫描面只有 UI 侧。
 
+## 按压回弹审计（`press-audit.mjs`）
+
+原型 02 把按下那一格写死了：`:279 .chip:active,.btn:active{scale(.98)}`、`:454 .chip:active{scale(.94)}`、
+`:521 .tabbar .t:active{scale(.92)}`。系统 `Button` 自带 `stateEffect`（默认 true）已经兑现，
+漏的是 `Text`／`Row`／`Column`／`Stack` 自绘的芯片、胶囊、格子——它们接了 `.onClick` 却按下去一动不动（D-53）。
+修法用系统的 `.clickEffect()`，不用 `stateStyles`：后者只覆盖通用属性里少数几项，且**在 `@Builder` 内不生效**
+（官方原话"因Builder不具备独立的自定义父节点"），而本仓多数芯片正画在 builder 里。
+幅度两档都取现成规格：芯片 0.94 ← 原型 `:454`，按钮／整行／整卡 0.98 ← 原型 `:279` 与本仓 `pressScale` 同档。
+
+规则两条：**P1** 非 `Button` 的可点节点，属性链里有 `borderRadius(` 就必须同链有 `clickEffect(`／`onTouch(`，
+否则要在节点上写一行 `// press-exempt 理由`（`PaintMonth` 的涂抹格就是这么豁免的——它下面挂着 `PanGesture`）。
+**P2** 同一条链不许既 `clickEffect` 又挂手势：SDK 原文警告回弹缩放后触摸点可能落到控件之外，手势事件收不到。
+
+三条看不见，别把水位当成全仓覆盖数：
+① 按压好不好用只有设备能判，静态只查"接没接"；
+② **方角**可点行不在 P1 的触发条件里（判据是圆角，方角按下去不动本来就不是这一族的设计意图）；
+③ `this.rowChip(...)` 这类 builder 调用不收属性链，所以规则只看直接写在页面里的节点。
+退出码口径行 `press:` 与 `copy:`／`a11y:`／`landing:` 同排，`skipped`（系统 `Button` 数）只在
+`node tools/test/press-audit.mjs` 自查清单里打。
+
 ## 环境要求
 
 - Node 18+（用到 ESM 与 `spawnSync`）；

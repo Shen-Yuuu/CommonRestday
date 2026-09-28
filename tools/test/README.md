@@ -10,15 +10,16 @@ node tools/test/run.mjs
 
 | 码 | 含义 |
 |---|---|
-| 0 | 类型编译 0 error **且**全部用例通过 **且**三条离线口径审计（文案 / 读屏挂点 / 读数落地与提交闩）都通过 |
+| 0 | 类型编译 0 error **且**全部用例通过 **且**五条离线口径审计（文案 / 读屏挂点 / 读数落地与提交闩 / 按压回弹 / 色块对比度）都通过 |
 | 1 | 有失败用例，或离线口径审计报出冲突（明细见输出与日志） |
 | 2 | 环境不满足（找不到 TypeScript 编译器） |
 | 3 | 类型编译未通过：不产出 JS、**不启动用例** |
 
-输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy:` + `a11y:` + `landing:` + `typecheck: N errors` +
-每个用例 PASS/FAIL + 汇总计数 + `tests: passed/FAILED`）。
+输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy:` + `a11y:` + `landing:` + `press:` +
+`contrast:` + `typecheck: N errors` + 每个用例 PASS/FAIL + 汇总计数 + `tests: passed/FAILED`）。
 
-**"全绿"的唯一口径是 `copy: PASS` + `a11y: PASS` + `landing: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
+**"全绿"的唯一口径是 `copy: PASS` + `a11y: PASS` + `landing: PASS` + `press: PASS` + `contrast: PASS`
++ `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
 `tsconfig.json` 用 `noEmitOnError: true`，转译有类型错误时既没有产物也没有绿灯——曾经
 `noEmitOnError: false` 让 5 个类型错误照样跑出 "177 passed, exit 0"，那种数字不能写进任何验收文档。
 
@@ -90,6 +91,34 @@ SQL，两次点击排成 delete→delete→insert→insert，后一次 insert �
 ③ `this.rowChip(...)` 这类 builder 调用不收属性链，所以规则只看直接写在页面里的节点。
 退出码口径行 `press:` 与 `copy:`／`a11y:`／`landing:` 同排，`skipped`（系统 `Button` 数）只在
 `node tools/test/press-audit.mjs` 自查清单里打。
+
+## 色块对比度审计（`contrast-audit.mjs`）
+
+班次的底色是用户拿取色器挑的（`HdsColorPicker` 三档，回调直接给十六进制串），存进库就是一个串。
+画它的那几处原先把前景写死成暖白——浅色档下白字压在近白底色上实测 1.2–1.8:1，等于看不见（D-54）。
+批次 AD1 把九处站点换成 `DesignTokens.foregroundOn(底色)`（判据是 WCAG 相对亮度，写在 `commons`
+的 `SwatchInk`，数学式与两条边界由 `SwatchInkTest` 逐色钉住），这一条负责让"再写死一处"过不了门禁。
+
+规则两条：**C1** 底色长得像"用户自选色"的节点（对象上的 `.color`，或 `typeColor(`／`colorOf(` 这类
+配色助手），它自己这条链**和直接子节点**里出现的 `fontColor(` 必须写成 `foregroundOn(...)`；写死暖白
+（`'#FFFFFF'`／`Color.White`／`DesignTokens.heroText`）、用会随深浅色翻面的 `app.color.text_*` 令牌、
+或前景由方法给出（`this.ink()`）都算没跟着底色走，要么改，要么在该节点写一行 `// contrast-exempt 理由`
+（`PaintMonth` 的格子就是这么豁免的——底色两式、前景在 `ink()` 里分派）。
+**C2** `app.color.swatch_fg` 在 base 与 dark 两套 color.json 里必须都等于 `SwatchInk.inkHex()`、
+`hero_fg` 必须等于 `warmWhiteHex()`，且 `swatch_fg` **两档同值**——用户挑的底色不随模式翻面，
+压它的前景也不许翻（深色档里 `text_secondary` 是浅紫，压在同一块浅灰休息色上实测 1.11:1，比不翻面还糟）。
+
+四条看不见，别把水位当成全仓覆盖数：
+① 真浅真深只有设备上能判，静态只查"前景有没有跟着底色走"；
+② 底色认的是**名字形状**（`.color` / 配色助手），换个别的名把用户色传进 `backgroundColor` 就看不见，
+现存一处是 `DayShiftSheet.chipBg`（前景同族在 `chipFg`，也看不见）；
+③ 只看到直接子节点那一层——AD2 首跑把孙辈的字算到曾祖的底色上，一次红了 35 处，全是别人的孩子；
+④ 桌面卡片 `widget/RestCard2x2.ets` 那五处 `'#FFFFFF'` 归卡片自己的固定渐变底管，这条不判。
+`node tools/test/contrast-audit.mjs` 打的清单里带 `wired/exempt/textless/helper/skipped` 五个水位。
+
+两条 UI 静态审计共用一台机器：`chain-scan.mjs`（深度表 + `chainOf` + `childLines`）。
+它回答的是"这一行挂在哪个节点上、这条链和它的直接子节点里有什么"，与查的标记无关；
+分两处抄写就会各修各的 bug（AC 那轮修的"链尾被切掉"正是这种），所以合并。
 
 ## 环境要求
 

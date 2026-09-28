@@ -492,6 +492,8 @@ struct DayCellView {
     .height(ROW_H)
     .margin(2)
     .borderRadius(10)
+    // contrast-exempt 这一格的底色有两种（中性底 token / 用户班色），前景由 ink() 分派：铺 token 底走
+    // text_secondary，铺班色走 foregroundOn(那个色)。静态审计看不见方法体，理由写在这里，取值在同文件上方。
     .backgroundColor(this.cell.neutral ? $r('app.color.fill_weak') : this.cell.color)
     .border(this.isToday ? { width: 2, color: $r('app.color.brand_pink') } : { width: 0 })
     // press-exempt 这颗格子下面还挂着 PanGesture（涂抹靠它）：clickEffect 的回弹缩放会让触摸点

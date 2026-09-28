@@ -203,6 +203,31 @@ export class ScheduleUseCase {
       }
       Logger.warn('ScheduleUseCase', 'snapshot unavailable, fallback to local partner data');
     }
+    return await ScheduleUseCase.partnerBusyFromLocal(startEpochDay, myParams);
+  }
+
+  /**
+   * 同一套优先级，但**一次云调用都不发**：已配对时先解本机缓存的最后一次有效快照，
+   * 再退本机代录，最后 null。
+   *
+   * 给"点开就要有答案"的界面用（起草器默认起点）：那条路等不起一次可能被云函数超时
+   * 拖到 20 秒的往返，而它要的 TA 作息在缓存里本来就有——上一次重算刚刚写过。
+   */
+  private static async partnerBusyWithoutNetwork(startEpochDay: number,
+    myParams: EngineParams): Promise<PartnerBusyResult | null> {
+    // 与 pullPartnerSnapshot 同一道闸：关闭态连本机缓存的快照都不碰，只剩代录那一条。
+    if (FeatureFlags.cloudPairing && SettingsStore.getPairState() === PAIRED) {
+      const fromCache = await ScheduleUseCase.cachedPartnerBusy(SettingsStore.getPairId());
+      if (fromCache != null) {
+        return fromCache;
+      }
+    }
+    return await ScheduleUseCase.partnerBusyFromLocal(startEpochDay, myParams);
+  }
+
+  /** 本机代录那一条：伴侣自己的班表 + 伴侣参数，走与"我"完全相同的 expand → buffer 管线。 */
+  private static async partnerBusyFromLocal(startEpochDay: number,
+    myParams: EngineParams): Promise<PartnerBusyResult | null> {
     const profile = SettingsStore.getPartnerProfile();
     const hasRows = await ScheduleUseCase.hasPartnerScheduleData(startEpochDay);
     if (profile == null && !hasRows) {
@@ -648,9 +673,12 @@ export class ScheduleUseCase {
    * 一段连续休息的窗口起点可以是 00:00，不查这一份就会把"选窗口 → 直接保存"的第一条计划排进被窝里。
    * 天数按视界封住（与引擎同一上限口径），不随窗口长度无限放大。
    *
-   * D-28：本机代录态把 TA 的同一份并进来——TA 的精确作息本来就在手上（partner_profile 三值
-   * ＋ owner='PARTNER' 的班表），代录侧不存在隐私障碍，默认起点却会整段落进 TA 的被窝。
-   * 云端快照那半边只有粗粒度忙闲（§0.3），仍不替 TA 挪起点，所以判据是"有没有档案"而不是"配没配对"。
+   * TA 那半边（D-28）走的是与引擎同一个来源，只是不发云请求（partnerBusyWithoutNetwork）。
+   * 批次 L 当初按"有没有伴侣档案"设闸，理由是云快照只有粗粒度忙闲、拿它替 TA 挪起点是假话——
+   * 这条理由站不住：① 粗粒度只会让起点**更晚**，不会更假；② 用户正在起草的这个窗口本身就是
+   * 用同一份快照算出来的，拒绝用它反而让"窗口按快照、起点按代录"两套真相同屏；③ 先代录后配对
+   * 是升级常态，那份过期档案的作息会被当成 TA 现在还在睡。协议 §5.2 的等级表也只约束
+   * "说不出班次/课程"，没有禁止用忙碌区间躲开 TA 的被窝。
    */
   static async unavailableForDraftOver(startEpochMin: number, endEpochMin: number): Promise<Interval[]> {
     const params = SettingsStoreParams();
@@ -659,14 +687,13 @@ export class ScheduleUseCase {
     const days = Math.max(1, Math.min(lastDay - firstDay + 1, params.horizonDays));
     const my = await ScheduleUseCase.loadMySchedule(firstDay, params, OWNER_ME);
     const out = buildAvailability(my, params, firstDay, days).notAvailable;
-    const profile = SettingsStore.getPartnerProfile();
-    if (profile == null) {
+    const ta = await ScheduleUseCase.partnerBusyWithoutNetwork(firstDay,
+      ScheduleUseCase.dayParamsOf(params, days));
+    if (ta == null) {
       return out;
     }
-    const partnerParams = ScheduleUseCase.partnerParamsOf(params, profile);
-    const ta = await ScheduleUseCase.loadMySchedule(firstDay, partnerParams, OWNER_PARTNER);
     // 只拼接不合并：firstArrangableStart 取的是相交区间的最大 end，两段各自成段不影响结论
-    return out.concat(buildAvailability(ta, partnerParams, firstDay, days).notAvailable);
+    return out.concat(ta.busy);
   }
 
   // ---------- 学期与节次 ----------

@@ -1,6 +1,6 @@
 import {
-  CommonFreeResult, EngineInput, EngineParams, Interval, MIN_PER_DAY,
-  MySchedule, ScheduleOverride, ShiftInstance, ShiftType, Window, WindowChannel, WindowTag
+  CommonFreeResult, CycleTemplate, EngineInput, EngineParams, Interval, MIN_PER_DAY,
+  MySchedule, ShiftInstance, ShiftType, Window, WindowChannel, WindowTag
 } from '../model/Types';
 import { expandCycle } from '../expand/CycleExpander';
 import { expandCourses } from '../expand/CourseExpander';
@@ -87,7 +87,7 @@ export interface MyAvailability {
 
 /**
  * 构建任意一方（"我"或本机代录的伴侣）的可用性：
- * 1. 展开循环模板（+单日覆盖）或仅覆盖；
+ * 1. 展开班次实例（单日覆盖 > 循环模板；没有模板时只剩覆盖）；
  * 2. 班次 → 忙碌块（含通勤、夜班恢复）；
  * 3. 课程展开；
  * 4. 已确认计划；
@@ -101,21 +101,12 @@ export function buildAvailability(schedule: MySchedule, p: EngineParams,
   for (let i = 0; i < schedule.shiftTypes.length; i++) {
     typeMap.set(schedule.shiftTypes[i].id, schedule.shiftTypes[i]);
   }
-  const insts: ShiftInstance[] = [];
-  if (schedule.template != null) {
-    const expanded = expandCycle(schedule.template, schedule.overrides, startEpochDay, days);
-    for (let i = 0; i < expanded.length; i++) {
-      insts.push(expanded[i]);
-    }
-  } else {
-    const ovs: ScheduleOverride[] = schedule.overrides;
-    for (let i = 0; i < ovs.length; i++) {
-      if (ovs[i].shiftTypeId != null && ovs[i].epochDay >= startEpochDay && ovs[i].epochDay < startEpochDay + days) {
-        const inst: ShiftInstance = { epochDay: ovs[i].epochDay, typeId: ovs[i].shiftTypeId as string };
-        insts.push(inst);
-      }
-    }
-  }
+  // 一条合流：有没有循环模板都交给 expandCycle（没有模板就合成一张空 seq 的，覆盖层照旧逐日落地）。
+  // 引擎里不再自己抄一份 override 循环：那一份按"覆盖值非空"收下涂的班，引擎按"键在不在"判，
+  // 今天两支等价，但口径一改（比如"涂成休息"）共同时间和画面上就不是同一份忙——D-56 接 D-55。
+  const tpl: CycleTemplate = schedule.template != null ? schedule.template
+    : { id: '', name: '', seq: [], anchorEpochDay: startEpochDay };
+  const insts: ShiftInstance[] = expandCycle(tpl, schedule.overrides, startEpochDay, days);
 
   const trueBusy: Interval[] = [];
   for (let i = 0; i < insts.length; i++) {

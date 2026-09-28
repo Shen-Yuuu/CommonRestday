@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
   Course, CycleTemplate, defaultParams, EngineInput, EngineParams, Interval, MIN_PER_DAY,
-  MySchedule, PartnerSchedule, SectionTime, ShiftType, WindowTag
+  MySchedule, PartnerSchedule, ScheduleOverride, SectionTime, ShiftType, WindowTag
 } from '../main/ets/model/Types';
 import { epochDayOf } from '../main/ets/utils/TimeUtil';
 import { CommonFreeEngine, buildAvailability } from '../main/ets/engine/CommonFreeEngine';
@@ -38,6 +38,31 @@ function mkMy(template: CycleTemplate | null): MySchedule {
     windDownMin: 20
   };
   return m;
+}
+
+function mkMyOvs(template: CycleTemplate | null, ovs: ScheduleOverride[]): MySchedule {
+  const m = mkMy(template);
+  m.overrides = ovs;
+  return m;
+}
+
+function ov(day: number, id: string | null): ScheduleOverride {
+  const o: ScheduleOverride = { epochDay: day, shiftTypeId: id };
+  return o;
+}
+
+/** 忙碌块清单（排序后拼串）：比的是"同一批块"，不比生成顺序。 */
+function busySig(list: Interval[]): string {
+  const parts: string[] = [];
+  for (let i = 0; i < list.length; i++) {
+    parts.push(list[i].start + '~' + list[i].end + '#' + list[i].tag);
+  }
+  parts.sort();
+  let s = '';
+  for (let i = 0; i < parts.length; i++) {
+    s += parts[i] + ';';
+  }
+  return s;
 }
 
 function mkInput(my: MySchedule, partnerBusy: Interval[], startDay: number, days: number,
@@ -318,6 +343,61 @@ export default function engineTest() {
         }
       }
       expect(tripFound).assertTrue();
+    });
+
+    /**
+     * D-56：buildAvailability 不再自己抄一份 override 循环，有没有循环模板都走 expandCycle 那一条合流。
+     * 下面四格钉的是"并轨前后同一批忙碌块"，而不是某个顺序：一次读数的顺序随 overrides 数组，
+     * 引擎那份随视界里的天——合流之后只剩后者这一种。
+     */
+    it('no_template_painted_shift_equals_template_layer', 0, () => {
+      // 从没建过循环模板、只把周五涂成夜班 ≡ 循环本身就是"夜班/休/休"且周五排在夜班那一格
+      const fri = epochDayOf(2026, 9, 18);
+      const p = defaultParamsWith(1);
+      const painted = buildAvailability(mkMyOvs(null, [ov(fri, 'night')]), p, fri, 1);
+      const tpl: CycleTemplate = { id: 't', name: '夜休休', seq: ['night', 'rest', 'rest'], anchorEpochDay: fri };
+      const cyclic = buildAvailability(mkMyOvs(tpl, []), p, fri, 1);
+      expect(painted.trueBusy.length > 0).assertTrue();
+      expect(busySig(painted.trueBusy)).assertEqual(busySig(cyclic.trueBusy));
+    });
+
+    it('painted_rest_is_a_real_override_not_absence', 0, () => {
+      // 同一条数据：涂休息（shiftTypeId=null）不产实例，涂班产实例——两条并成一路后仍要分开
+      const fri = epochDayOf(2026, 9, 18);
+      const p = defaultParamsWith(3);
+      const rest = buildAvailability(mkMyOvs(null, [ov(fri, null)]), p, fri, 3);
+      expect(rest.trueBusy.length).assertEqual(0);
+      const mixed = buildAvailability(mkMyOvs(null, [ov(fri, null), ov(fri + 1, 'night')]), p, fri, 3);
+      expect(mixed.trueBusy.length > 0).assertTrue();
+      expect(mixed.trueBusy.length > rest.trueBusy.length).assertTrue();
+    });
+
+    it('override_outside_horizon_dropped', 0, () => {
+      // 合流按视界逐日走，越界的覆盖不会漏进来（旧那份额外循环靠显式区间判，并轨后这条口径要有凭据）
+      const fri = epochDayOf(2026, 9, 18);
+      const avail = buildAvailability(mkMyOvs(null, [ov(fri + 5, 'night')]), defaultParamsWith(1), fri, 1);
+      expect(avail.trueBusy.length).assertEqual(0);
+    });
+
+    it('painted_rest_clears_template_shift_for_common_time', 0, () => {
+      // D-55 的另一半：涂成休息的那天，共同时间也不该再算它忙（相减的形状——单看展开结果，
+      // 涂休息与循环本来就休长得一模一样）
+      const fri = epochDayOf(2026, 9, 18);
+      const p = defaultParamsWith(1);
+      const tpl: CycleTemplate = { id: 't', name: '夜休休', seq: ['night', 'rest', 'rest'], anchorEpochDay: fri };
+      const before = buildAvailability(mkMyOvs(tpl, []), p, fri, 1);
+      const after = buildAvailability(mkMyOvs(tpl, [ov(fri, null)]), p, fri, 1);
+      expect(before.trueBusy.length > 0).assertTrue();
+      expect(after.trueBusy.length).assertEqual(0);
+      // 换了读者：清空之后那天整天（07:00–22:30）都是共同空闲
+      const r = CommonFreeEngine.compute(mkInput(mkMyOvs(tpl, [ov(fri, null)]), [], fri, 1));
+      let freeAllDay = false;
+      for (let i = 0; i < r.windows.length; i++) {
+        if (r.windows[i].start === fri * MIN_PER_DAY + 420 && r.windows[i].end === fri * MIN_PER_DAY + 1350) {
+          freeAllDay = true;
+        }
+      }
+      expect(freeAllDay).assertTrue();
     });
   });
 }

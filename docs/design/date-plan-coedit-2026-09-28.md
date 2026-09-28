@@ -503,6 +503,10 @@ perf 这次把**噪声带自己量了出来**：同一份字节连跑四次，12
 探针二十五次全部打在最终字节上并逐字节还原。〔待裁定〕**无新增**，承 AJ 三条；§0–§5 一字未改，不碰协议／云／`CRD1`。
 〔对上句的偏离说明〕AK 与 AI／AJ 同一侧，但比它们多一条：它修了一处用户可见的错读数，不是纯防回潮。
 AG→AK 已五批同族，若那句约束要严格执行，逐笔退回的口子仍留在记录里。
+〔设备窗口·2026-09-29 凌晨再探，结论变了〕两台 HVD **没丢**，是模拟器进程起不来：最后一次真崩溃由它自己记成
+`graphic hung`（`802003`，09-28 19:23）。我按 DevEco 的原样命令（含自己架起那条 `-t` 控制管道）起了五次，
+全部在 20–30 秒内消失、guest 停在开机 19–24 秒、5555 从未 LISTENING。证据与故意没做的两条记在 §8.23 的探测段，
+**这一族的复验现在需要一个用户动作**（从 IDE 的 Device Manager 起，或重启宿主）。
 
 ---
 
@@ -2149,6 +2153,41 @@ S3 存活：`p5` `clipInto` 改名、`p6` `Clip` 改名、`p7` 读者水位归�
 改前那两天各念 10 小时。同一格里顺带核对周历列的块不再从午夜多出一段、窗口详情半模态的起止与它一致。
 AK 收口时 `hdc list targets -v` 再探：`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，
 这一格与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH／AI／AJ 攒下的复验排在同一个阻塞上。
+
+〔设备窗口探测·2026-09-29 03:44–03:54，把"离线"这件事查到了根上〕**先撤回一句容易被读错的话**：
+两台 HVD 并没有丢。`Emulator.exe -list -details` 仍登记着 `Mate 80` 与 `Pura 90 Pro Max`
+（`instancePath D:/local/Huawei/<name>`、`imageRoot D:/local/Huawei`、API `26.0.0`、`isRunning:false`），
+`Emulator` 本体 `26.0.0.400`，`Windows Hypervisor Platform accelerator is operational`。
+`TCP Offline` 的来源是**模拟器进程起不来**，不是设备记录没了。
+- **最后一次真崩溃是它自己记的**：`Mate 80/Log/Emulator.log` 里 `2026-09-28 19:23:08 CrashClient.cpp(FreezeCrash) crash:system freeze`
+  → `EMULATOR_CRASH` 的字段是 `"ERROR":"graphic thread is hung"`、`ERROR_CODE 802003`、`ERROR_TYPE "graphic hung"`，
+  同目录留着 `crash_report-2026-09-28T192308.zip`。19:23 之前那次是 17:00:48 由 IDE 发起、17:02:01 `StopBootAnimation` 起来过的，
+  **所以这台机器中过招，是 19:23 那次挂死后就再没把 guest 带过开机**。
+- **我按 DevEco 的原样命令试了五种写法，五次都是同一种死法**（都在启动后 20–30 秒内进程消失，工作集爬到 1.1GB）：
+  ① `-start "Mate 80" -instancePath <实例目录>` → 直接 `Unable to start the emulator`（**这条是我用错了参数**：
+  DevEco 的写法是 `-hvd <name> -path <根>`，`-instancePath` 要传**根**而不是实例目录）；
+  ② `-start ... -instancePath D:/local/Huawei`（带窗口）；③ 同上 `--noWindow -bootMode coldboot`；
+  ④ ⑤ `-hvd "Mate 80" -path D:/local/Huawei -t trace_crd_commandPipe -imageRoot D:/local/Huawei -bootmode coldboot`（带／不带 `-noWindow`）。
+  ④⑤ 里那条 `-t` 控制管道我用 PowerShell 的 `NamedPipeServerStream` 自己架了并**确实被接上**（holder 打出 `connected 03:48:04`），
+  仍然起不来——所以"缺控制管道"这条解释**被证伪**。
+- **能证的边界**：五次里 `hdc list targets` 全程 `[Empty]` 或那两行陈旧的 `TCP Offline`，`netstat -p tcp` 里 5555／5557 **从来没有 LISTENING**
+  （`qemu.log` 最后一次打出 `express_bridge.c(bridge_socket_listen:117) listen bridge socket port 5555` 之后 6 秒进程就没了）；
+  guest `kernel.log` 每次都停在开机第 **19–24 秒**；`Emulator.log` 里没有任何退出／关闭行，也**没有新的 crash dump**。
+  GL 侧每次都打两条：`egl_context.c(d_eglCreateContext:50) real share context is NULL`、
+  `express_display.c(opengl_paint_composer_layers:708) not support transform_type 8`。
+  〔判断〕这几条拼起来像**宿主图形栈在 19:23 那次挂死之后没回到可用状态**，不是本仓的代码问题，也不是内存不足（探测时还有 7.7GB 空闲）。
+- **故意没做的两条，理由写在这**：① 不用 `-bootmode reset`——它会洗掉这个 HVD 的 userdata，而配对态与 HUKS 密钥正落在那上面，
+  §11 第 5／9 条等的就是那份现场；② 不改实例的 `config.ini`／`hardware-qemu.ini` 去强制软渲染——那是用户由 DevEco 管的设备配置，
+  我不替谁决定。要真推这条，得用户点名。
+- **要用户做的一步**：从 DevEco Studio 的 Device Manager 里起这两台（09-28 17:00 成功那次就是 IDE 发的命令），
+  或先重启宿主清掉那两个挂了 6 小时的 `emulator-crash-service.exe` 再起。设备一连上我就按顺序吃这批欠账：
+  AK 的过夜窗口两页对数 → AJ 的 entry 十处读数 → AH 的 24:00 → AG 的两格 → AI 的越界视界 → AF／AE／AD／AC／AB／AA／Z 的屏与读屏 →
+  §11 第 3／6／8 条与第 5／9 条（后两条另需用户点头，见 §6）。
+- **一条工具缺陷（不在本仓，记下来免得下次重踩）**：harmony-next skill 的 `hvd_manager.py launch` 在 Windows 上当场
+  `AttributeError: module 'socket' has no attribute 'AF_UNIX'`（它把 trace 管道硬编成 `/tmp/<trace-name>`），
+  所以 playbook 里"用 helper 起模拟器"这条路本机根本不通；`-list`／`doctor` 可用，但默认 HVD 根 `~\.Huawei\Emulator\deployed`
+  与 `C:\Program Files\Huawei\DevEco Studio` 都不对，本机要显式传 `--root D:/local/Huawei --emulator D:/local/DevEcoStudio/tools/emulator/Emulator.exe`。
+  本批不因此新增任何判据，也不改 §0–§5。
 
 〔待裁定没有新增〕承 AJ 三条：`ScheduleOverviewQueryService:150-158` 的第四份合流、`commons → domain` 要不要加依赖边、
 `AppConst.HORIZON_DAYS` 零读者删还是留。AK 不碰协议、不碰云、不碰 `CRD1`，§0–§5 一字未改。

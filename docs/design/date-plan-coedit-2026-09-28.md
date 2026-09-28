@@ -310,8 +310,17 @@ AA 把读数落地顺序修完之后，同一个用户可见症状（"改了不�
 队列是 @kit-free 的 32 行原语，接进 `recompute` 之前先证了关键段不会再排同一个队列。
 〔对上句的偏离说明〕AB 不碰读模型、不碰协议、不碰 `CRD1`：改的是写侧的落地顺序与提交主键形状，
 仍在第 4 条那句"每批一个提交、每批结束跑完整门禁"之内的自主空间。
-W／Z／AA／AB 四批攒下的设备复验（Z 那五处失败态、AA 的四类连点、AB 的三处连点与一次重叠复现、
-X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`（AB 收口时再验过一次）。
+
+**AC 批次已于 2026-09-28 收线**：代码＋门禁一笔收在 `482225b`，见 §8.15。它补的是**按下去的那一格**——
+原型 `docs/prototype/index.html` 四处 `:active` 写死了按下反馈，系统 `Button` 靠内置 `stateEffect` 兑现了，
+`Text`／`Row`／`Column` 自绘的芯片、胶囊、格子那一族没兑现，于是同一屏里按钮会变暗、芯片一动不动。
+修法不新造机制：`.clickEffect()` 一行接 28 处，两档幅度（0.94／0.98）都从原型与仓内 `pressScale` 取现成的数，
+涂抹那一格因为与 `PanGesture` 同链而写成豁免（SDK 原话支持），第五个静态口径 `press:` 进退出码。
+〔对上句的偏离说明〕AC 不碰读模型、不碰协议、不碰 `CRD1`：改的是视图层的按压反馈与一个只读静态检查，
+是第 4 条那句"布局／组件／功能／动效等方面的优化和升级"里最直白的那半句。
+W／Z／AA／AB／AC 五批攒下的设备复验（Z 那五处失败态、AA 的四类连点、AB 的三处连点与一次重叠复现、
+AC 的"回弹好不好用"三条、X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`
+（AC 收口时再验过一次）。
 
 ---
 
@@ -323,6 +332,7 @@ X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 
 - 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`；Z6（D-50 · 心跳跟手）见 §8.12，提交 `2dd2a6e`；收口（全量门禁＋D-49 撤案）见 §8.11。
 - 2026-09-28 批次 AA（读数落地顺序）：D-51 见 §8.13，AA1（闸门本体 + 八个读数点接线）提交 `ff37490`；AA2（静态门禁 `landing:` 并入退出码 + 本文档收口）＝本笔。
 - 2026-09-28 批次 AB（写侧重入与重算串行）：D-52 见 §8.14，代码＋门禁一笔提交 `beab821`（AB1 三处闩 + 判据 R4；AB2 `SerialQueue` + `recompute` 排队 + 五格离线用例）；§8.14 与 §7 的收口段随本文档这一笔入库。
+- 2026-09-28 批次 AC（自制圆角可点节点的按压回弹）：D-53 见 §8.15，代码＋门禁一笔提交 `482225b`（`DesignTokens.tapChip/tapButton` + 28 处接线 + 1 处写明理由的豁免 + 第五个静态口径 `press:`）；§8.15 与 §7 的收口段随本文档这一笔入库。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1022,4 +1032,88 @@ AB2 的现场复现更难撞：引擎段在开发机是毫秒级（见 perf 数�
 再在重算飞行途中触发第二次（下拉刷新与保存同排、或卡片刷新与页面保存同排）。
 两条都和 §11 第 3／6／8 条、批次 Z 那五处、AA 那四类连点合到**同一个设备会话**里做；
 该会话仍然阻塞在同一件事上：两台 HVD 都是 `TCP Offline`。
+
+### 8.15 批次 AC·D-53：自制圆角芯片按下去不动（提交 `482225b`）
+
+〔原型写了，代码只兑现了一半〕`docs/prototype/index.html` 里按下那一格是写死的四条：
+
+| 原型行 | 规则 | 谁兑现了 |
+| --- | --- | --- |
+| `:279` | `.chip:active,.btn:active{transform:scale(.98)}` | 系统 `Button` 靠内置 `stateEffect`（默认 true）；自制的没 |
+| `:454` | `.chip:active{transform:scale(.94)}`（后写，盖过 279 那颗） | 同上 |
+| `:464` | `.btn:active{translateY(2px) + 下沿阴影变浅}` | 四件自绘组件（`EditorialCard`／`QuickAnswerRow`／`ConflictNotice`／底栏单项）+ `ConfirmDialog`／`StatePanel` 的果冻按钮 |
+| `:521` | `.tabbar .t:active{transform:scale(.92)}` | `AppNavigator:335` 的 `dockPressScale` |
+
+所以这不是"顺手加个美化"，是**同一屏里按钮会动、芯片不动**——用户分不清哪个还能点。
+漏的全是 `Text`／`Row`／`Column` 自绘的芯片、胶囊、格子那一族：接了 `.onClick`，没有 `borderRadius` 之外的任何按下表达。
+
+〔机制三条，选了最短的那条〕
+
+| 候选 | 判语 |
+| --- | --- |
+| `stateStyles({ normal, pressed })` | **否**。官方文档原话："当前多态样式实现依赖于组件自定义节点的刷新机制。因Builder不具备独立的自定义父节点，无法直接触发刷新，致使多态样式无法直接在Builder中生效。"（`harmony-next` 离线参考 `references/JsEtsAPIReference/topics/components/多态样式.md:21`），而本仓多数芯片恰恰画在 `@Builder` 里（`viewPill`／`sidePill`／`chipRead`／画笔板）。且它只覆盖通用属性里有限几项。同页给的解法是"把多态样式封装进自定义组件再置于 `@Builder`"——那是为每颗芯片新造一个组件壳，比要修的毛病更重。 |
+| 自绘 `onTouch` + `scale` | **否**。这是仓内四件组件的老路，规矩没错，但每颗芯片都要多一对 `@State` 布尔与一段 `onTouch`，28 处就是 28 段样板；而这里要的只是"抬起时缩一下"，系统已经实现了。 |
+| `.clickEffect({ level, scale })` | **是**。`@since 10`（`component/common.d.ts:20575`），一行，`Text`／`Row`／`Column` 全都有（挂在 `CommonMethod` 上），本仓 `compatibleSdkVersion` 远高于 10。 |
+
+〔两档幅度都不新发明数字〕芯片 `0.94` ← 原型 `:454`；自制按钮／整行／整卡 `0.98` ← 原型 `:279`，
+与仓内 `DesignTokens.pressScale`（`EditorialCard:161`、`ConfirmDialog:139/160` 自绘按压态用的就是它）同一档。
+`level` 取 `LIGHT`——只有它带 `scale` 旋钮，`MIDDLE`／`HEAVY` 的默认 0.95 反而会把幅度定回系统手里。
+两档合写成 `DesignTokens.tapChip()`／`tapButton()`，站点上不许再出现裸数字。
+
+〔接线 28 处，按文件〕`DayDetailSheet` 4（返回概览、改这天、窗口行、旅行窗口行）、`CycleEditor` 4（调色板 2 + 序号芯片 + 锚点行）、
+`CourseImport` 3（学期起点行、`周N` 芯片、左滑删除）、`MeView` 3（hero 共同时间出口、分享档整行、最短共同时段芯片）、
+`PlansView` 3（下一个窗口芯片、左滑取消、计划卡整卡）、`DayShiftSheet` 2、`WeekScheduleView` 2、`PaintMonth` 2（画笔板 2 颗）、
+`ScheduleEditor` 2（班次行整行、左滑删除）、`TodayOverview` 1、`CoTimeView` 1（视图分段）、`ScheduleHub` 1（侧别胶囊）。
+规则识别到的按压态总数是 **32**＝这 28 处 + 先前就自绘 `onTouch` 的 4 处非 `Button` 站点；
+另外 **48** 处是系统 `Button`，自带态，不进这条规则。
+
+〔一格写成豁免，不是漏接〕`PaintMonth` 的涂抹格（`DayCellView:464`）下面挂着 `PanGesture`——
+`clickEffect` 的 SDK 说明原文（本机 `component/common.d.ts:20566`）：
+"After the click feedback effect triggers scaling, the touch point may fall outside the control, making the component unresponsive to gesture events."
+回弹缩放会把触摸点甩到控件之外，涂抹就断了。这一格改画不动，反馈由 paint 本身给（底色当场变）。
+
+〔门禁两条 + 一条自我修正〕`tools/test/press-audit.mjs`：
+**P1** 非 `Button` 的可点节点，属性链里有 `borderRadius(` 就必须同链有 `clickEffect(`／`onTouch(`，
+否则要写一行 `// press-exempt 理由`；**P2** 同一条链不许 `clickEffect` 与手势并存（就是上面那句 SDK 警告）。
+接入点在 `run.mjs` 的 `landing` 之后，口径行 `press:` 与 `copy`／`a11y`／`landing` 同排，
+violations 计入 `auditViolations` 与退出码。
+
+反向探针（`harmony/.crdtest/press-fixture/`，仓库外，七形合成一份假 .ets）**逼出工具自己的一处 bug**：
+`tailOf` 原来"向前找到第一个回到目标深度的行"就停，而 `.onClick(() => { … })` 的闭合行 `})` 本身就已经回到目标深度，
+于是写在 `onClick` **之后**的链尾（`.clickEffect(...)`、`.gesture(...)`）永远被切掉——
+文件头原本写着"尾巴要算进链"，实际只有单行 `onClick` 那种形状碰巧对。
+探针的形 7（`borderRadius` → `onClick` → `clickEffect` → `gesture`）当时报的是 P1"没有按压回弹"，
+而它明明接了；改成"同深度且以 `.` 起头就继续吃下一行"后，形 7 换报 P2，其余六形不动。
+七形终态实测：`wired=3 exempt=1 skipped=1 violations=3`——
+形 1（圆角无按压）报 P1 ✓、形 3 与形 7（clickEffect + 手势）各报 P2 ✓、形 2 计 wired ✓、
+形 4（系统 `Button`）进 skipped ✓、形 5（写明理由的豁免）计 exempt ✓、形 6（方角可点行）不报——**它就是看不见**，
+这一条写进文件头的判不了清单，不冒充覆盖。
+
+〔门禁实测·AC 收口（2026-09-28，`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0）〕
+
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`229 passed / 0 failed`**（AB 收口那次也是 229，本批不新增用例——
+  按压态是渲染层，离线面没有可测对象），exit 0。`tools/test/out/last-run.log` 第 4 行
+  `press: PASS（自制圆角可点节点都有按压回弹：接 32 处，写明理由豁免 1 处）`——第五个口径行进了退出码。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`BUILD SUCCESSFUL`，`ArkTS:WARN 269`（基线 269）。
+  本批 16 个文件没带进新告警；**`ClickEffect`／`ClickEffectLevel` 在 ArkTS 里是全局声明不需要 import**
+  （`sdk/default/openharmony/ets/component/common.d.ts:15934` 与 `component/enums.d.ts:3756` 都是顶层 `declare`），
+  这一点由三档编译实测背书，不是推断。
+- `perf`：exit 0——`page_projection_44w` 80 行 `0.055/0.108/0.269`、`page_projection_1000w` 60 行 `0.811/1.280/1.534`；
+  视界扫描（paired，P50）60d=3.9ms … 366d=86.0ms。与 AB 收口那次同量级：这一批改的是"按下去动不动"，不是时间。
+- 这一批跑了**两遍**全量门禁：第一遍跑期间又改了 `DesignTokens`／`press-audit` 的注释，
+  引用要落在最终态上，所以记的是第二遍的数字。
+
+〔已知限制（三条，都写在工具文件头，不藏在注释里）〕
+① **reduce-motion 接不进这一族**：`ClickEffect` 只有 `level` 与 `scale` 两个旋钮，没有时长/曲线，
+要"关掉"只能整体传 `null`——那是把反馈删了，不是把动效放轻。自绘的 `motionPress` 与心跳（Z6／D-50）仍跟开关走。
+② 方角的可点行不在 P1 的触发条件里（判据是圆角），要不要给它们加反馈是外观裁定，归原型不归门禁。
+③ `this.rowChip(...)` 这类 `@Builder` 调用点不收属性链，规则只看直接写在页面里的节点；认不出开口的写法一律算判不了。
+
+〔证据缺口（不勾选）〕按压回弹**好不好用**只有设备上能判：幅度 0.94 会不会显得太小、`LIGHT` 档的回弹时长
+在本机是否跟手、左滑那一族（三处 `tapButton` 与滑动同链）会不会因为回弹而偶发吞掉手势——
+三条都要 `uitest uiInput click` + 截图或人手按压才能判，静态只查"接没接"。
+合到 §11 第 3／6／8 条、Z 那五处、AA 那四类、AB 那三处连点的**同一个设备会话**里做；
+该会话在 AC 收口时再验过一次，仍然阻塞在同一件事上：`hdc list targets -v` 里
+`127.0.0.1:5555` 与 `127.0.0.1:5557` 都是 `TCP Offline`。
+
 

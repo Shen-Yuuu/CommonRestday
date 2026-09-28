@@ -166,7 +166,12 @@ export struct DayShiftSheet {
   }
 
   private chipFg(id: string): ResourceColor {
-    return this.isSelected(id) ? DesignTokens.heroText : DesignTokens.textSecondary;
+    if (!this.isSelected(id)) {
+      return DesignTokens.textSecondary;
+    }
+    // 选中「休息」铺的是 token 底 textTertiary（它没有自带色），前景照旧暖白；
+    // 选中真班次铺的是用户挑的色，前景跟着底色走。
+    return id === REST_ID ? DesignTokens.heroText : DesignTokens.foregroundOn(this.colorOf(id));
   }
 
   /**

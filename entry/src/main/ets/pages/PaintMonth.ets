@@ -21,15 +21,21 @@ class DayCell {
   overId: string | null;
   color: string;
   label: string;
+  /**
+   * 这一格铺的是中性底（`fill_weak`）而不是 `color`：休与认不出的班次 id 走这一支，
+   * 文字色要跟 token 走而不是跟 `color` 走。判据随 `color` 一起原地更新。
+   */
+  neutral: boolean;
 
   constructor(day: number, epochDay: number, baseId: string, overId: string | null,
-    color: string, label: string) {
+    color: string, label: string, neutral: boolean) {
     this.day = day;
     this.epochDay = epochDay;
     this.baseId = baseId;
     this.overId = overId;
     this.color = color;
     this.label = label;
+    this.neutral = neutral;
   }
 }
 
@@ -127,21 +133,38 @@ struct PaintMonth {
       const baseRaw = baseMap.get(ed);
       const base = baseRaw === undefined ? '' : baseRaw;
       const eff = over !== null ? over : base;
-      cells.push(new DayCell(d, ed, base, over, this.colorOf(eff), this.labelOf(eff)));
+      cells.push(new DayCell(d, ed, base, over, this.colorOf(eff), this.labelOf(eff), this.neutralBg(eff)));
     }
     this.cells = cells;
   }
 
   colorOf(typeId: string | null): string {
     if (typeId === null || typeId === '') {
-      return '#B8C4CE';
+      return DesignTokens.swatchRest;
     }
     for (let i = 0; i < this.types.length; i++) {
       if (this.types[i].id === typeId) {
         return this.types[i].color;
       }
     }
-    return '#CCCCCC';
+    return DesignTokens.swatchUnknown;
+  }
+
+  /**
+   * 这一格该不该铺中性底（休 + 认不出的班次 id）。
+   * 判据落在 id 上而不是比对 `colorOf` 吐出的十六进制串：串相等会把"用户给真班次挑了一模一样的灰"
+   * 也认成休，那一天会被画成休并换成 token 文字。
+   */
+  neutralBg(typeId: string | null): boolean {
+    if (typeId === null || typeId === '') {
+      return true;
+    }
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i].id === typeId) {
+        return false;
+      }
+    }
+    return true;
   }
 
   labelOf(typeId: string | null): string {
@@ -221,6 +244,7 @@ struct PaintMonth {
     cell.overId = over;
     cell.color = this.colorOf(eff);
     cell.label = this.labelOf(eff);
+    cell.neutral = this.neutralBg(eff);
   }
 
   /** 移除覆盖层，回到循环层效果。 */
@@ -234,6 +258,7 @@ struct PaintMonth {
     cell.overId = null;
     cell.color = this.colorOf(cell.baseId);
     cell.label = this.labelOf(cell.baseId);
+    cell.neutral = this.neutralBg(cell.baseId);
   }
 
   /** 批量落库 + 重算的防抖调度（拖动连刷 N 格只落一次库、重算一次）。 */
@@ -336,8 +361,11 @@ struct PaintMonth {
         Row({ space: 8 }) {
           Text('画笔:').fontSize(13).fontColor($r('app.color.text_secondary'))
           ForEach(this.types, (st: ShiftType) => {
+            // 选中那颗铺的是用户挑的班次色，前景跟着底色走；没选中的是 divider 浅底，走原型 .chip 的 text_secondary
             Text(st.name)
-              .fontSize(12).fontColor('#FFFFFF')
+              .fontSize(12)
+              .fontColor(this.brushId === st.id ? DesignTokens.foregroundOn(st.color)
+                : $r('app.color.text_secondary'))
               .padding({ left: 10, right: 10, top: 5, bottom: 5 })
               .borderRadius(12)
               .backgroundColor(this.brushId === st.id ? st.color : $r('app.color.divider'))
@@ -345,10 +373,12 @@ struct PaintMonth {
               .onClick(() => this.brushId = st.id)
           }, (st: ShiftType) => st.id)
           Text('休息')
-            .fontSize(12).fontColor('#FFFFFF')
+            .fontSize(12)
+            .fontColor(this.brushId === REST_KEY ? DesignTokens.foregroundOn(DesignTokens.swatchRest)
+              : $r('app.color.text_secondary'))
             .padding({ left: 10, right: 10, top: 5, bottom: 5 })
             .borderRadius(12)
-            .backgroundColor(this.brushId === REST_KEY ? '#B8C4CE' : $r('app.color.divider'))
+            .backgroundColor(this.brushId === REST_KEY ? DesignTokens.swatchRest : $r('app.color.divider'))
             .clickEffect(DesignTokens.tapChip())
             .onClick(() => this.brushId = REST_KEY)
         }
@@ -436,19 +466,22 @@ struct DayCellView {
   onPanMove: (epochDay: number, dx: number, dy: number) => void = () => {
   };
 
-  isRestColor(): boolean {
-    return this.cell.color === '#B8C4CE' || this.cell.color === '#CCCCCC';
+  /**
+   * 格子文字的颜色：中性格（休 / 认不出的 id）铺的是 token 底 `fill_weak`，文字跟着 token 走；
+   * 铺用户挑的班色时前景由底色算出来（`#F0568C` 上仍是暖白，接近白的色上换成深墨）。
+   */
+  ink(): Resource {
+    return this.cell.neutral ? $r('app.color.text_secondary') : DesignTokens.foregroundOn(this.cell.color);
   }
 
   build() {
     Column({ space: 2 }) {
       Text('' + this.cell.day)
         .fontSize(13)
-        .fontColor(this.isRestColor() ? $r('app.color.text_secondary') : '#FFFFFF')
+        .fontColor(this.ink())
       if (this.cell.label !== '') {
-        // 休息格铺的是 fill_weak 浅色底，标签跟日期数字同色，否则白字压在浅灰上读不出来
         Text(this.cell.label).fontSize(9)
-          .fontColor(this.isRestColor() ? $r('app.color.text_secondary') : '#FFFFFF')
+          .fontColor(this.ink())
       }
       if (this.cell.overId !== null) {
         Circle().width(4).height(4).fill($r('app.color.danger_red'))
@@ -459,7 +492,7 @@ struct DayCellView {
     .height(ROW_H)
     .margin(2)
     .borderRadius(10)
-    .backgroundColor(this.isRestColor() ? $r('app.color.fill_weak') : this.cell.color)
+    .backgroundColor(this.cell.neutral ? $r('app.color.fill_weak') : this.cell.color)
     .border(this.isToday ? { width: 2, color: $r('app.color.brand_pink') } : { width: 0 })
     // press-exempt 这颗格子下面还挂着 PanGesture（涂抹靠它）：clickEffect 的回弹缩放会让触摸点
     // 落到控件之外，手势事件收不到（SDK 对 clickEffect 的原文警告）。涂抹格的反馈由 paint 本身给。

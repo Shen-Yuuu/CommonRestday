@@ -1,4 +1,5 @@
 import { ColorMetrics, LengthMetrics } from '@kit.ArkUI';
+import { SwatchInk } from 'commons';
 
 /** 减少动效开关的 AppStorage 键：系统「减少动态效果」由 AccessibilityPolicy 写入，组件用 @StorageProp 订阅。 */
 export const MOTION_REDUCE_KEY: string = 'crd_reduce_motion';
@@ -127,6 +128,34 @@ export class DesignTokens {
   /** 分级色块上的文字：深色块用暖白，浅色块用配套前景，不写死 #FFFFFF。 */
   static readonly freeOnStrong: Resource = $r('app.color.hero_fg');
   static readonly freeOnLow: Resource = $r('app.color.month_free_low_fg');
+
+  /**
+   * 用户自选色块（班次的底色）那一族。
+   *
+   * `swatchFg` 是压在**亮**色块上的深墨，base 与 dark 两套 color.json 里同值（`#5C4750`，取自浅色档
+   * `text_primary`，不是新发明的色）——刻意不做深浅色覆盖，因为底色是用户挑的、不会随模式翻面；
+   * 用会翻面的 `text_secondary` 反而在深色档把浅紫压到浅灰上，实测只有 1.11:1。
+   * `swatchRest`／`swatchUnknown` 是"休"与"这个班次 id 认不出来"两块的底色，只在这里写一次：
+   * 先前 `CycleEditor` 与 `PaintMonth` 各抄了一份同样的十六进制串，改一处忘另一处就靠字符串相等来判"是不是休"。
+   */
+  static readonly swatchFg: Resource = $r('app.color.swatch_fg');
+  static readonly swatchRest: string = '#B8C4CE';
+  static readonly swatchUnknown: string = '#CCCCCC';
+
+  /**
+   * 色块上该用哪个前景：暖白还是深墨。判据是这块色本身的 WCAG 对比度（`commons` 的 `SwatchInk`），
+   * 不是深浅色模式——数学式与两条边界（相等留暖白、认不出的串留暖白）都在 SwatchInk 里，
+   * 离线用例逐色钉住，改八色或改阈值时会先在那里红。
+   *
+   * 只给**用户选的颜色**用。品牌粉那一族不许走这里：原型 `.chip.on` 写的是 `background:brand_pink;color:#fff`，
+   * 由对比度自动判会把品牌粉上的白字翻成深墨，那是改外观不是修可读性。
+   * 形参收 `ResourceColor` 是因为班次色在页面上常以 `ResourceColor` 流动（如 `DayShiftSheet.chipBg`）：
+   * 传进来的是 `$r(...)` 而非十六进制串时判不出，按边界落回暖白——token 底本就不归这里管。
+   */
+  static foregroundOn(color: ResourceColor): Resource {
+    return (typeof color === 'string' && SwatchInk.prefersInk(color))
+      ? DesignTokens.swatchFg : DesignTokens.heroText;
+  }
 
   // ---- 间距：4/8/12/16/24/32 ----
   static readonly space1: Resource = $r('app.float.space_1');

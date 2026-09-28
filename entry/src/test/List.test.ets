@@ -11,6 +11,7 @@ import cloudSyncRulesTest from './CloudSyncRulesTest';
 import profileSettingsGuardTest from './ProfileSettingsGuardTest';
 import dateLabelTest from './DateLabelTest';
 import serialQueueTest from './SerialQueueTest';
+import swatchInkTest from './SwatchInkTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -26,4 +27,5 @@ export default function testsuite() {
   profileSettingsGuardTest();
   dateLabelTest();
   serialQueueTest();
+  swatchInkTest();
 }

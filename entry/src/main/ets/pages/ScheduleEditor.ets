@@ -15,8 +15,12 @@ import { LatestLanding } from '../util/LatestLanding';
 
 /**
  * 班次调色板：02「Q糖」的糖果八色。存库的是这里的字面值，不是资源键，所以取值要一次定对——
- * 月历格子（PaintMonth.DayCellView）与循环预览都在色块上直接写白字，八色的白字对比度
- * 全部按 WCAG 相对亮度核过 ≥2.99:1（旧那一组最低只有 2.42），换色时按同一口径挑。
+ * 月历格子与循环预览都直接把这块色当底色用。
+ *
+ * 旧注释写的是"八色的白字对比度全部核过 ≥2.99:1，换色时按同一口径挑"，那条**前提**已经不成立：
+ * 同一页有 `HdsColorPicker`（GRID/SPECTRUM/SLIDERS，`onColorSelected` 交出任意串），
+ * 用户挑得到的颜色远不止这八色。现在色块上的前景不写死，由 `DesignTokens.foregroundOn` 按底色算，
+ * 所以换色不再需要手工核对比度。八色在新判据下仍全部落在暖白（2.99–4.76:1，`SwatchInkTest` 逐色钉住）。
  */
 const COLORS: string[] = ['#EF6F42', '#4E97DB', '#9A6BDC', '#F0568C', '#5B6ACF', '#3A9E6E', '#C08A2A', '#8E8397'];
 

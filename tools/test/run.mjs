@@ -643,6 +643,7 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'globals.d.ts'), STUB_GLOBALS);
   fs.writeFileSync(path.join(OUT, 'commonsIndex.ts'),
     "export * from './commons/main/ets/util/DateLabel';\n"
+    + "export * from './commons/main/ets/util/SwatchInk';\n"
     + "export * from './commons/main/ets/constant/AppConst';\n"
     + "export * from './commonsLogStub';\n");
   fs.writeFileSync(path.join(OUT, 'dataIndex.ts'),

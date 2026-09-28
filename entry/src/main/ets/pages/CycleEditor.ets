@@ -18,7 +18,6 @@ const ANCHOR_RANGE_END: Date = new Date(2030, 11, 31);
 const MS_PER_DAY: number = 86400000;
 /** 序列里的"休"用空串表示：CycleExpander 对空串不生成班次实例，与单日覆盖清空同一口径。 */
 const REST_IN_SEQ: string = '';
-const REST_COLOR: string = '#B8C4CE';
 
 /** 循环模板编辑：班次序列 + 锚点日期（owner 双侧复用）。 */
 @Entry
@@ -70,14 +69,14 @@ struct CycleEditor {
 
   typeColor(id: string): string {
     if (id === REST_IN_SEQ) {
-      return REST_COLOR;
+      return DesignTokens.swatchRest;
     }
     for (let i = 0; i < this.types.length; i++) {
       if (this.types[i].id === id) {
         return this.types[i].color;
       }
     }
-    return '#CCCCCC';
+    return DesignTokens.swatchUnknown;
   }
 
   async save(): Promise<void> {
@@ -189,7 +188,7 @@ struct CycleEditor {
             Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
               ForEach(this.types, (st: ShiftType) => {
                 Text(st.name)
-                  .fontSize(13).fontColor(DesignTokens.heroText)
+                  .fontSize(13).fontColor(DesignTokens.foregroundOn(st.color))
                   .fontWeight(FontWeight.Bold)
                   .padding({ left: 12, right: 12, top: 6, bottom: 6 })
                   .borderRadius(DesignTokens.radiusPill).backgroundColor(st.color)
@@ -198,10 +197,10 @@ struct CycleEditor {
               }, (st: ShiftType) => st.id)
               // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
               Text('休息')
-                .fontSize(13).fontColor(DesignTokens.heroText)
+                .fontSize(13).fontColor(DesignTokens.foregroundOn(DesignTokens.swatchRest))
                 .fontWeight(FontWeight.Bold)
                 .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                .borderRadius(DesignTokens.radiusPill).backgroundColor(REST_COLOR)
+                .borderRadius(DesignTokens.radiusPill).backgroundColor(DesignTokens.swatchRest)
                 .clickEffect(DesignTokens.tapChip())
                 .onClick(() => this.seq.push(REST_IN_SEQ))
             }.width('100%')
@@ -213,7 +212,7 @@ struct CycleEditor {
               Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
                 ForEach(this.seq, (id: string, idx: number) => {
                   Text((idx + 1) + '.' + this.typeName(id))
-                    .fontSize(12).fontColor(DesignTokens.heroText)
+                    .fontSize(12).fontColor(DesignTokens.foregroundOn(this.typeColor(id)))
                     .fontWeight(FontWeight.Bold)
                     .padding({ left: 8, right: 8, top: 5, bottom: 5 })
                     .borderRadius(DesignTokens.radiusPill).backgroundColor(this.typeColor(id))

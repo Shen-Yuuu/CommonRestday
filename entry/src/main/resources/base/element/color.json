@@ -237,6 +237,10 @@
       "value": "#FFFFFF"
     },
     {
+      "name": "swatch_fg",
+      "value": "#5C4750"
+    },
+    {
       "name": "hero_glow",
       "value": "#29FFFFFF"
     },

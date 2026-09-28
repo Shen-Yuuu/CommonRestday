@@ -715,7 +715,7 @@ export struct WeekScheduleView {
             ForEach(this.dayItems(ed), (item: WeekBlock) => {
               Column() {
                 Text(item.name)
-                  .fontSize(9).fontColor(DesignTokens.heroText)
+                  .fontSize(9).fontColor(DesignTokens.foregroundOn(item.color))
                   .fontWeight(FontWeight.Bold)
                   .maxLines(2)
                   .width('100%').textAlign(TextAlign.Center)

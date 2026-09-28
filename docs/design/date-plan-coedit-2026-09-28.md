@@ -279,11 +279,16 @@ W-c 这一轮又出现两类新形状，比"替我改需求"更危险，因为�
 4. 期间每批一个提交、每批结束跑完整门禁（含两档离线），
    设备复验只在不动配对态的前提下做；要重装 HAP 就先停下问。
 
+**W 批次已于 2026-09-28 收线**：W-a／W-b（`eceafa3`）→ W-c（`6dfc64d`）→ W-d（`35d6167`），
+见 §8.1／§8.2／§8.3。留下的三格都是同一类欠账——**骨架屏、三态上屏、五处失败态都只有编译与门禁级证据**，
+要在设备上"看见"分别得改字体/降级态写入/制造一次读失败，一并留给有设备窗口的那轮。下一批是 X。
+
 ---
 
 ## 8. 追加区（后续批次的改动继续写在这里）
 
 - 2026-09-28 批次 U·U5：见 §1，提交 `9a82055`。
+- 2026-09-28 批次 W（体验封口）：见 §8.1–§8.3，提交 `eceafa3`／`6dfc64d`／`35d6167`（W-a 与 W-b 同笔）。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -356,3 +361,26 @@ D-22 那次立过规矩：「静默归零等于对着有数据的用户说"没�
 本轮没有做设备取证，只有编译与门禁级证据。〔判断〕要补的话，最省的做法是在调试构建里给
 `ScheduleOverviewQueryService`／`CommonTimeQueryService` 加一个只读失败开关，出一次图核掉五条；
 这需要动 feature 层且不能进正式包，留给有设备窗口的一轮。
+
+### 8.3 批次 W·W-d：退役上不了屏的状态，并说清哪个令牌故意不接（提交 `35d6167`）
+
+一笔纯封口，不动任何用户能看到的东西。
+
+- `StatePanelKind.DEGRADED` 连它的 `↻` 一起删。四个调用点（CoTimeView 两格、HomeView、ScheduleHub）
+  只用到 `ERROR`／`EMPTY`／`LOADING`，`DEGRADED` 从项目里长出来那天起就没有一次上屏机会；
+  协议 §8 第 8 条当初记的是"用 `NoticeBar` 而不是 `DEGRADED`"，那句话现在补了下半句：**留在枚举里等于给
+  后来人一个"这一态在工作"的假象**，而 §3.4 要的三态 UI 早已全走 NoticeBar。
+- `DesignTokens.staggerStep`／`stagger()`／`offset()` 三个**零调用点**的动效令牌不删，改为就地写明为什么不接：
+  错峰是原型 `.screen-enter` 的 55/100/145ms 三档。〔判断〕两层理由——
+  ① 这属于主观视觉取舍，规矩是只动原型、列出 App 侧 delta 等点名，不该我自己合进页面；
+  ② 它只能在整页首次挂载时看出来，而 `dumpLayout` 与截图都拍不到时间轴，
+  接了就没有任何验收手段能说清它没有拖慢首屏。SDK 侧**不是**障碍，已核到本地
+  `openharmony/ets/component/common.d.ts`：`animation(value: AnimateParam)`（:5504）、
+  `AnimateParam.delay?: number`（:3531，since 7）都在。
+- 顺带核到两处**没有**要修的：`AccessibilityPolicy.minHit(senior)` 与 `EditorialSection` 的眉标收起
+  仍在生效——批次 O 撤回的是字号跳档，热区 44→48vp 那条是更早批次落的、验收点过设备（差异文档 §15.2 记录在案），
+  别把它当成撤回残留。
+
+门禁：`--steps=offline,debug,release,ohostest,perf` → **ALL PASS**；两档离线各 223 passed／0 failed、0 type error；
+告警 289／289／269 与基线一致；perf 在预算内（paired 视界 P50 120d=25.6ms、366d=135.8ms）。
+本轮无 UI 变化，不需要设备取证。

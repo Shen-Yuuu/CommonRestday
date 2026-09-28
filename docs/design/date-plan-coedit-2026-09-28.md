@@ -442,6 +442,31 @@ AI 新增的一格设备欠账（视界被备份带回成越界值时，周历�
 这一半离线已经跑出行为，屏幕上要补的是它下游那次真写入与重算）与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH 攒下的复验
 排在同一个阻塞上：AI 收口时 `hdc list targets -v` 再探，`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`。
 
+**AJ 批次已于 2026-09-29 收线**：代码一笔 `9ed2190`（＋本文档一笔），见 §8.22。它收的是 AH（D-58）那条口径的另一半——
+"区间端点算哪一天"与"就寝算不算跨零点"。改前的盘数：主源码树里**取整 × 除以一天长度**共 28 行、11 个文件，其中真正
+自己实现了一遍归日的有**五处**（三种拼法，起草器那处是 `Math.max(firstDay, Math.ceil(…) - 1)`），跨零点判定**三处**
+（引擎、分类器各延一次日，设置页还纯判一次）。家搬到 `domain/src/main/ets/utils/TimeUtil.ets` 的五个函数
+（`dayOfStart`／`dayOfEnd`／`daySpan`／`bedCrossesMidnight`／`bedEndMin`），接线 35 处；私有的 `spanDays` 删掉。
+`commons` 的 `DateLabel.edgeDay` 是**明知故留的第二份**（不能 import domain，§7 第 2 条待裁定），靠行尾标记放行，
+等不等价改由 `DateLabelTest.edge_day_and_time_agree_with_the_domain_edge_rule` 逐点扫——归日与念法是一条口径的两半，
+断言里要求它们同真同假。〔本批**没有红→绿**〕五份抄写今天等价，改的是"下一次改动会不会分家"；唯一一次真红是我自己
+新用例里放了个 `0` 当分钟数（`0` 正是整零点终点，与同格另一句断言打架）。
+〔真缺陷在门禁自己身上，收口这一笔才修好〕S2 那条 `bed… < wake…` 的正则**在 `9ed2190` 里空转**：我要求 `<` 后先接
+一个小写字母再拼 `wake`，而仓内最朴素的写法是 `bedMin < wakeMin`（后面是空格）——拦这条口径的门禁拦不住这条口径。
+第一次放宽只加字面 `<=`，仍漏严格 `<`；是探针把两条同形写法一条响一条不响摆出来才看见的。现在两个形状都认
+（`bed… <=? wake…` 与反面 `wake… >[=]? bed…`），并加了一条对照探针证明 `bed === wake`／`bed < 0` 仍不拦，不是靠放宽撞对。
+这与 AH 那次"行尾豁免标记原先都不生效"同族：**静态口径入库时必须逐条证伪一次，看它在当前代码上 PASS 没有信息量。**
+〔第九口还是第八口？〕静态口径到这一批是**八条**（新增 `span`），`run.mjs` 的违例计数进退出码；九次探针
+（S1 注入、S2 正／反／对照、定义改名、摘一位读者、读者全摘、删豁免标记、还原基线）全部打在修复后的字节上并逐字节还原。
+〔门禁实测〕`verify: ALL PASS` exit 0；offline 两档 `typecheck=0 errors`、**`259 passed / 0 failed`**（`255 → 259`）；
+debug/release `ArkTS:WARN 289`（基线 289，**未上调**，本批从三个 entry 文件的 import 里摘掉了 `MIN_PER_DAY`，摘不干净就会顶高基线）、ohostest 269；
+perf 366d=83.7ms／120d=15.3ms，在 AH／AI 记过的 82–93ms 带内（同样是"我判断它在带内"，不是"我证明了它没动"）。
+〔证据的边界〕`isCrossMidnight` 的委托有离线行为证据（`RhythmRulesTest` 那四条断言现在跑的就是 domain 那份判定）；
+`ScheduleUseCase` 是 STUB、entry 十处不在离线面上，这两块只有三档出包的 ArkTS 编译证明。
+〔设备欠账〕本批不新增屏幕判据，但 entry 那十处只有编译证明，复验时要与改前逐字比一次日期读数；仍排在
+`127.0.0.1:5555`／`127.0.0.1:5557` 的 `TCP Offline` 上。§7 待裁定三条**无新增**，只是把第 2 条的后果说具体了：
+不加那条依赖边，`DateLabel.edgeDay` 就是永久存在的第二份。
+
 ---
 
 ## 8. 追加区（后续批次的改动继续写在这里）
@@ -459,6 +484,7 @@ AI 新增的一格设备欠账（视界被备份带回成越界值时，周历�
 - 2026-09-29 批次 AG（视界天数上限并成一处）：D-57 见 §8.19，代码＋门禁一笔提交 `2076961`（`domain` 的 `HORIZON_MAX_DAYS` + `clampHorizonDays` + 五个算天数的入口接上 + feature 的 `HORIZON_MAX` 改派生 + `MeView` 提示念常量 + 第六个静态口径 `horizon-audit.mjs` + 五格离线用例，`242 → 247`，其中只有一格改前是真红的）；§8.19 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**六条**，`docs/validation/performance-budget.md` §2 那处指针同笔更正（`HORIZON_MAX` 已不再自己写死数值）。
 - 2026-09-29 批次 AH（区间终点的念法并成一处）：D-58 见 §8.20，代码＋门禁一笔提交 `47be3eb`（`DateLabel.edgeDay`／`edgeTime` 做唯一的判定家 + 拆掉那三份抄写（`DateLabel.endLabel`、`DateLabel.stamp`、`WindowDetailSheet` 的私有 `edgeDay` 与 `'24:00'` 三元）+ 七个没接的终点调用点接上（含 `busyLabel`）+ 第七个静态口径 `endread-audit.mjs` + 五格离线用例，`247 → 252`，其中只有一格改前是真红的）；§8.20 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**七条**，这一笔还修掉一个真缺陷：`horizon-audit` 与新写的 `endread-audit` 的**行尾豁免标记原先都不生效**（判定用的 `code` 已把 `//…` 剥掉，再拿它找标记等于没这条口子），两处都改成先看整行原文，探针过程记在 §8.20。
 - 2026-09-29 批次 AI（视界天数收回三个家）：D-59 见 §8.21，代码＋门禁两笔提交——前半 `393d77e`（domain 的 `HORIZON_DEFAULT_DAYS` + feature 的 `horizonFromStore` 接到 `SettingsStoreParams()` + `hasPartnerScheduleData` 的裸 `400` 改 `HORIZON_MAX_DAYS - 1` + `horizon-audit` 加 H3 与"默认值有家"的存活判定 + 两格离线用例，`252 → 254`）；后半 `bc17e49`（**写文档时 grep 校对才发现读取口不止一个**：`ProfileSettingsService.loadMyRhythm` 直接调 `SettingsStore.getParams()` 把 5000 原样回填进设置页输入框，而同一页的校验不认它——先写用例跑到红 `expected 366 but got 5000`，再修，`254 → 255`；并把 H4「口子只许在白名单里」并进 `horizon`）；§8.21 与 §7 的收口段随本文档这一笔入库。口径条数**仍是七条**（H3／H4 都归在 `horizon` 里面），`run.mjs` 的 PASS 行多报两个水位：commons 那份旧默认值的读者数（现 0）、离开存储的口子数（现 2）。
+- 2026-09-29 批次 AJ（端点归日与跨零点作息并回一处）：D-60 见 §8.22，代码一笔提交 `9ed2190`（domain `TimeUtil` 的五个家 `dayOfStart`／`dayOfEnd`／`daySpan`／`bedCrossesMidnight`／`bedEndMin` + 接线 35 处（11 个文件，含删掉私有 `spanDays`、起草器第三种拼法、`RhythmRules` 的判定委托）+ commons `DateLabel.edgeDay` 以行尾标记明知故留、改由 `DateLabelTest` 逐点扫等式 + 第八个静态口径 `span-audit.mjs` 并入退出码 + 四格离线用例，`255 → 259`）；§8.22、§7 的收口段与**本批第二条真缺陷**（S2 那条 `bed<wake` 正则在 `9ed2190` 里空转，拦不住它自己管的那条口径——探针暴露后收口这一笔修好，并补对照探针证明退化输入仍不拦）随本文档这一笔入库。**本批没有红→绿**：五份终点抄写与三份 bed 抄写今天等价，改的是"下一次改动会不会分家"。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1863,5 +1889,104 @@ feature 文件塞一行 `SettingsStore.getParams()` → `违规 1 处`（位置�
 这一格离线证不了（`entry/src/main/ets` 不在离线面上、`ScheduleUseCase` 是 STUB），而且它需要**先造出一份越界的
 Preferences**（备份恢复或手工改值），不是常规路径下能顺手看到的；AI 收口时 `hdc list targets -v` 再探，
 `127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH 攒下的复验排在同一个阻塞上。
+
+### 8.22 批次 AJ·D-60：端点归日与跨零点作息并回一处——第八口静态门禁（代码一笔 `9ed2190` ＋ 门禁修复与收口＝本笔）
+
+〔这一格从哪来〕AG（D-57）／AH（D-58）／AI（D-59）之后同一条"同一规则写了几份"盘点的第五条，仍不是用户报的症状。
+AH 并的是区间终点**怎么念**（`24:00` 还是 `00:00`），这一批并的是区间端点**算哪一天**——同一条半开区间 `[start, end)`
+口径的两半：起点的整零点归当天（次日开始），终点的整零点归前一天（这一天的尾巴）。念法那半有家了，算法这半还散着。
+跨零点作息是这条口径的第二现场：`bed < wake` 决定就寝块要不要延到次日，延与不延差整整一天。
+
+〔改前有几份·数字落在哪〕在 `9ed2190^` 上按"同一行既有取整（`Math.floor`／`Math.ceil`／`Math.trunc`）又有**除以**一天长度"
+数主源码树：**28 行、11 个文件**（`data`／`cloud` 两棵树零命中）。里面真正"自己实现了一遍归日"的有**五处**：
+`domain/src/main/ets/buffer/AvailabilityBuilder.ets:53`（夜窗首末日；那一行的 `- 1` 是夜窗回看，不是归日）、
+`domain/src/main/ets/classify/WindowClassifier.ets:65`、`feature/src/main/ets/usecase/CommonTimeQueryService.ets:87`
+的私有 `spanDays`（**一行里同时写着两种拼法**）、`feature/src/main/ets/usecase/ScheduleUseCase.ets:708-709`（起草器，
+第三种拼法 `Math.max(firstDay, Math.ceil(end / MIN_PER_DAY) - 1)`）、`commons/src/main/ets/util/DateLabel.ets:92`。
+这五处占掉 6 行，剩下 22 行是内联读数点（feature 12 行、entry 10 行）。跨零点另算三处：`AvailabilityBuilder:78` 与 `WindowClassifier:56`
+各写了一遍"跨零点就把 bed 延到次日"的三元，`feature/src/main/ets/model/RhythmRules.ets:42` 还纯判了一次 `bed < wake`。
+
+〔家〕`domain/src/main/ets/utils/TimeUtil.ets` 五个函数：`dayOfStart` / `dayOfEnd` / `daySpan` / `bedCrossesMidnight` /
+`bedEndMin`。`daySpan` 也立成家的理由是：`lastDay - firstDay + 1` 这一类"自己数日子"的写法在文本上跟合法循环边界长得
+一样，静态条猜不出来（这条限制写在门禁文件头，本批靠的是把读数点换成 `daySpan`，不是靠一条想像出来的正则）。
+
+〔接线 35 处·11 个文件〕私有的 `spanDays` 删掉，`CommonTimeQueryService` 14 处改读函数，起草器改成 `dayOfStart` +
+`daySpan`，页面里 `RhythmRules.isCrossMidnight` 只留"把文本解析成分钟数"这一件事、判定交给 `bedCrossesMidnight`，
+entry 六个文件十处读数点接上（含 `PlansView` 那两处裸 `1440`）。这里要说清单位：门禁报的 **35** 是"家以外的调用点数"
+（一行里两个函数算两处），上面那个 **28** 是"自己除了一遍一天长度的行数"，两者不同单位，别拿来互相校验。
+
+〔明知故留的第二份，和钉住它的那格〕`commons` 不能 `import domain`（依赖图的底，加边要用户裁定——差异文档 §7 待裁定
+第 2 条），所以 `DateLabel.edgeDay` 那份 `Math.floor(min / DAY_MIN)` 仍在原地，靠**行尾**标记
+`// day-span-exempt` 放行，静态这一条只负责"别再抄第三份"。两份等不等价改由用例逐点核对：
+`entry/src/test/DateLabelTest.ets` 的 `edge_day_and_time_agree_with_the_domain_edge_rule` 把 6 个日偏移 × 5 个分钟数
+扫一遍，要求 commons 的 `edgeDay(…, false)`／`edgeDay(…, true)` 分别与 domain 的 `dayOfStart`／`dayOfEnd` 同值，
+并且"整零点当终点"时**归日退回一天与念成 `24:00` 必须同真同假**——归日与念法是一条口径的两半，断言里不许它们分开。
+
+〔本批没有红→绿，一句都不打〕五份终点抄写与三份 bed 抄写**今天语义等价**，改的是"下一次改动会不会分家"。
+唯一一次真红是我自己新用例造成的：`minutes` 数组里放了 `0`，而 `0` 正是整零点终点，与同一格里"非整零点不退回一天"
+的断言自相矛盾（`expected true but got false`），删掉 `0` 并写明为什么不能放。
+
+〔S2 那条正则在 `9ed2190` 里是空转的——收口这一笔修好，这是本批第二条真缺陷，缺陷在门禁自己身上〕
+入库那版是 `/\bbed[A-Za-z0-9_]*\s*<\s*[a-z][A-Za-z0-9_]*wake[A-Za-z0-9_]*/i`：我要求 `<` 之后先有一个小写字母再拼
+`wake`，而仓内最朴素的写法是 `bedMin < wakeMin`（`<` 后面是空格），**这条口径的门禁拦不住这条口径本身**。
+第一次放宽我只加了字面 `<=`，仍然漏掉严格 `<`。暴露它的还是探针：注入 `bedMin < wakeMin` 那一跑报"抄写 0 处"，
+注入 `bedMin <= wakeMin` 那一跑报了——两条同形的写法一条响一条不响，说明不响的那条才是正则的问题。
+现在定成 `bed… <=? wake…` 与反面 `wake… >[=]? bed…` 两个形状，不拦 `bed === wake`（校验层管的退化输入）与 `bed < 0`
+（解析失败）。**这条门禁入库时我没有逐条验它会不会响，是写完文档回头补探针才发现的**——与 AH 那次
+"行尾豁免标记原先都不生效"同族：静态口径的判据本身也要被证伪一次才算立住，光看它在当前代码上 PASS 毫无信息量。
+
+〔S1 的第一次误报，教训留在文件头〕上一版 S1 只要求"同一行既有取整又出现 1440 系符号"，于是
+`WeekScheduleView.ets:281` 的 `Math.floor((startMin - epochDay * MIN_PER_DAY) / 60)` 被当成归日——它除的是 60，
+算的是"当日第几分钟"。改成只认**除数位置**（`DIVIDED_BY_DAY`），并把"乘法方向／取模／比例读数（画条图宽度那种）
+都不在射程内"写进文件头：比例读数要的正是"一天占百分之几"，顺手并进来会把两种量搅成一锅。
+
+〔探针九次·全部打在修复后的字节上，逐字节还原并用 `.equals()` 确认〕
+`p1` S1 注入家以外一处 `Math.floor(p / MIN_PER_DAY)` → 抄写 0→1、`取整×一天长度` 2→3；
+`p2a` 反面 `wakeMin > bedMin` → 1 处；`p2d` 正向 `bedMin < wakeMin`（修复后）→ 1 处（修复前这里是 0 处，即上面那条缺陷）；
+`p2f` 对照 `bedMin === wakeMin || bedMin < 0` → 0 处（证明不拦退化输入，不是靠放宽撞对）；
+`p3` 把 `daySpan` 定义改名 → 报"读不到 daySpan 的定义——这条口径判不了，别把它当成绿"；
+`p4a` 只摘掉 `dayOfStart(` 一个名字 → 读者 35→10（顺带量出 `dayOfStart` 一个函数就接了 25 个读者，计数是按函数分别数的）；
+`p4b` 五个名字全摘 → 读者 0 处并判"口径写了没人用"（S3 不冒充绿）；
+`p5` 删掉 commons 那行的行尾标记 → 豁免 1→0、抄写 0→1，且 `取整×一天长度` 从 2 变 3（那行重新显形）。
+还原后基线：`取整×一天长度 2 处（都该在家里），家以外读者 35 处，写明理由豁免 1 处，归日／跨零点抄写 0 处`。
+证据文件 `.crdtest/probe-span3.txt`（不入库）。
+
+〔门禁实测·AJ 收口（2026-09-29）〕
+
+- `node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0。
+  这一跑打在 **S2 修复之后**的字节上（`9ed2190` 那笔之前跑的那一次不算收口）。
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`259 passed / 0 failed`**（`255 → 259`）。
+  新增四格都是"改前编译不过"的新函数／新等式，没有红→绿可证，牙齿全在探针上：domain 三格
+  （`dayOfEnd_puts_a_midnight_end_back_on_the_previous_day`、`daySpan_counts_the_calendar_days_touched`、
+  `bedCrossesMidnight_is_the_only_place_that_shifts_the_bed_edge`）+ commons 等式那一格。
+  静态口径条数**七条 → 八条**（`copy`／`a11y`／`landing`／`press`／`contrast`／`horizon`／`endread`／`span`），
+  违例计数进 `auditViolations` 参与退出码，所以上面那个 exit 0 就蕴含八条全 PASS——我没有另外留一份逐格 PASS 行的日志，
+  `span` 那一格的水位是单独跑 `node tools/test/span-audit.mjs` 取的（同上一条最后的基线行）。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`WARN 269`（基线 269）。
+  本批从三个 entry 文件（`NextWindowHero`／`WindowCard`／`WindowDetailSheet`）的 import 里摘掉了 `MIN_PER_DAY`，
+  `PlansView` 反过来新加了一条 `import { dayOfStart } from 'domain'`（改前那里是两处裸 `1440`）；`DayDetailSheet` 与
+  `CommonTimeQueryService` 那份保留（它们还有"乘回去"和条图比例的用法）。未使用符号会直接顶高 WARN 基线，两位都没动。
+- `perf`：exit 0。视界扫描（paired，P50）366d=**83.7ms**、120d=**15.3ms**（60d=4.0／90d=9.0／150d=22.7／180d=29.8／240d=46.4）。
+  对照 AH 的 89.7／84.3、AI 的 92.7 与 15.5／15.0——仍在前几批记过的 82–93ms 带内。本批在引擎里换的是同一次除法
+  （从就地 `Math.floor` 换成一次函数调用），量级上不该动，这一跑也确实没动；但同 AI 那句要说全：这是"我判断它在噪声带内"，
+  不是"我证明了它没动"。`page_projection_96w` 0.092/0.165/0.299、`1000w` 0.793/0.919/1.766 在预算内。§2 的表**仍不回填**。
+
+〔证据的边界〕`RhythmRules.isCrossMidnight` 的委托**有离线行为证据**：`entry/src/test/RhythmRulesTest.ets` 那四条
+`isCrossMidnight('07:00','01:00')` 一类断言现在跑的就是 domain 那一份判定，等价性不是我说出来的。
+`CommonTimeQueryService` 在离线面上，它 14 处接线由既有共同时间用例覆盖，`daySpan` 的三个读者里 `:733` 那条在面上。
+`ScheduleUseCase` 在离线面是 STUB——起草器天数那一处只有三档出包的 ArkTS 编译证明。
+`AvailabilityBuilder`／`WindowClassifier` 的 bed 与端点接线在引擎里，离线用例间接经过（窗口展开类用例），
+但不是专门钉这一条的断言。entry 十处全在 `entry/src/main/ets`，连类型都不过离线 tsc，只有出包编译证明。
+
+〔设备欠账（不勾选）〕本批**不新增**屏幕判据：没有红→绿，也就没有新现象要看。但"entry 十处只有编译证明"这件事
+记在复验清单上——周历列头、日详情旅行窗口、窗口卡与窗口详情半模态的日期读数、计划卡两处日期、
+以及「TA 的班表／作息」那句跨零点说明，都要在同一台机器上跟改前逐字比一次。它与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH／AI
+攒下的复验排在同一个阻塞上：AJ 收口时 `hdc list targets -v` 再探，`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`。
+
+〔待裁定没有新增，只是把第 2 条说得更具体了〕§7 第 2 条"要不要给 `commons → domain` 加依赖边"从本批起多了一个可核的
+后果：不加，`DateLabel.edgeDay` 就是永久存在的第二份，它靠行尾标记与那格扫点等式活着；加了，本批可以把豁免清零。
+第 1 条（`ScheduleOverviewQueryService:150-158` 的第四份合流）与第 3 条（`AppConst.HORIZON_DAYS` 零读者：删还是留）承 AH／AI，
+仍在原处等，不由清理批次替谁决定。
+
 
 

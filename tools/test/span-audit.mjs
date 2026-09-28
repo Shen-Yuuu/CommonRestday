@@ -17,7 +17,7 @@
  *   （`/ MIN_PER_DAY`、`/ DAY_MIN`、`/ 1440`，除数位置才算，乘回去与除 60 都不算）时，
  *   只许写在 `domain/src/main/ets/utils/TimeUtil.ets`
  *   （`dayOfStart`／`dayOfEnd`／`daySpan`／`epochDayOf` 的定义处）。端点归日请走那两个函数。
- * - S2：「就寝早于起床」这一比较（`bed… < wake…`，严格小于）只许出现在同一文件里，
+ * - S2：「就寝早于起床」这一比较（`bed… < wake…` 与反面 `wake… > bed…`）只许出现在同一文件里，
  *   也就是 `bedCrossesMidnight` 的定义处。`bed === wake`（校验层的退化输入）与 `bed < 0`
  *   （解析失败）不是这条口径，不拦。
  * - S3：这几位家得**有人用**——`dayOfStart`／`dayOfEnd`／`daySpan`／`bedEndMin` 在自家以外
@@ -60,8 +60,11 @@ const ROUNDING = ['Math.floor(', 'Math.ceil(', 'Math.trunc('];
 const DIVIDED_BY_DAY = /\/\s*\(?\s*(MIN_PER_DAY|DAY_MIN|1440)\b/;
 /** 家以外的读者计数：一处都没有就说明这条口径压根没接上。 */
 const HELPERS = ['dayOfStart(', 'dayOfEnd(', 'daySpan(', 'bedEndMin(', 'bedCrossesMidnight('];
-/** S2 的形状：`bed…` 严格小于 `wake…`（不含 `<=`、`===`，也不含与 0 的比较）。 */
-const BED_RULE = /\bbed[A-Za-z0-9_]*\s*<\s*[a-z][A-Za-z0-9_]*wake[A-Za-z0-9_]*/i;
+/**
+ * S2 的两个形状：`bed… < wake…` 与它的反面 `wake… > bed…`（含 `<=`／`>=`，那是同一条口径的另一种写法）。
+ * 不拦 `bed === wake`（校验层管的退化输入）与 `bed < 0`（解析失败）——比较的另一边不是 wake/bed 就不算这条口径。
+ */
+const BED_RULE = /\b(bed[A-Za-z0-9_]*\s*<=?[^\n]*?\bwake[A-Za-z0-9_]*|wake[A-Za-z0-9_]*\s*>[=]?\s*bed[A-Za-z0-9_]*)/;
 
 /** 注释（`//` 与块注释的 `*` 续行）不参与判定：D-60 的说明本身就得写清 1440 长什么样。 */
 function codeOf(line) {

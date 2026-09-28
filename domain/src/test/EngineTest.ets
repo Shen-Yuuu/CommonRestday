@@ -2,9 +2,10 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   clampHorizonDays, Course, CycleTemplate, defaultParams, EngineInput, EngineParams, HORIZON_MAX_DAYS,
   Interval, MIN_PER_DAY, MySchedule, PartnerSchedule, ScheduleOverride, SectionTime, ShiftType,
-  WindowTag
+  Window, WindowChannel, WindowTag
 } from '../main/ets/model/Types';
-import { epochDayOf } from '../main/ets/utils/TimeUtil';
+import { dayOfEnd, dayOfStart, daySpan, epochDayOf } from '../main/ets/utils/TimeUtil';
+import { clipInto } from '../main/ets/merge/IntervalOps';
 import { CommonFreeEngine, buildAvailability } from '../main/ets/engine/CommonFreeEngine';
 
 function hasTag(tags: string[], t: string): boolean {
@@ -426,6 +427,59 @@ export default function engineTest() {
         }
       }
       expect(lastDayFree).assertTrue();
+    });
+
+    /**
+     * AK 的设备判据要的是"跨零点的常规窗口"。先钉住引擎每天的两道睡眠栅栏：起床前的晨段与
+     * 前一晚跨零点的尾巴**都从当日 00:00 起算**，所以按日作息产不出跨过午夜的常规窗口——
+     * 日详情页头"整段相加"与"裁进当日"因此必然同值（设备上 10/2、10/3 改前改后都念 17小时）。
+     * 旅行通道天生跨整天，它才是两种算法的分岔口，所以下面逐条先按通道分流。
+     */
+    it('cross_midnight_bed_never_lets_a_regular_window_leave_its_day', 0, () => {
+      const mon = epochDayOf(2026, 9, 14);
+      // 起床 07:00／就寝 01:00：就寝早于起床＝次日凌晨就寝，页面上那句"算作第二天"说的就是它
+      const late = mkSched([], [], -1, 420, 60, 20);
+      const r = CommonFreeEngine.compute(mkInput(late, [], mon, 10));
+      let regular = 0;
+      for (let i = 0; i < r.windows.length; i++) {
+        const w: Window = r.windows[i];
+        if (w.channel !== WindowChannel.REGULAR) {
+          continue;
+        }
+        regular += 1;
+        expect(dayOfEnd(w.end)).assertEqual(dayOfStart(w.start));
+        expect(w.durationMin).assertEqual(1020);
+      }
+      expect(regular).assertEqual(10);
+    });
+
+    /**
+     * 唯一能造出跨零点常规窗口的合法作息：起床 00:00 ＋ 就寝 24:00（整天清醒）。
+     * `rhythmError` 只挡"两个时间填成一样"，这两头都不挡，于是当日 00:00 处一道栅栏也没有，
+     * 常规窗口一路跨过午夜、一整个视界连成一段。这时候页头若照 `durationMin` 整段相加，
+     * 念的是 10 天而不是当天——这才是 `clipInto` 那道闸真正管住的输入。
+     */
+    it('all_day_rhythm_is_the_only_regular_window_that_walks_past_midnight', 0, () => {
+      const mon = epochDayOf(2026, 9, 14);
+      const awake = mkSched([], [], -1, 0, 1440, 0);
+      const r = CommonFreeEngine.compute(mkInput(awake, [], mon, 10));
+      const day2 = (mon + 2) * MIN_PER_DAY;
+      let crossings = 0;
+      let whole = 0;
+      let clipped = 0;
+      for (let i = 0; i < r.windows.length; i++) {
+        const w: Window = r.windows[i];
+        if (w.channel !== WindowChannel.REGULAR || daySpan(w.start, w.end) <= 1) {
+          continue;
+        }
+        crossings += 1;
+        whole = w.durationMin;
+        const c = clipInto(w.start, w.end, day2, day2 + MIN_PER_DAY);
+        clipped = c == null ? 0 : c.end - c.start;
+      }
+      expect(crossings).assertEqual(1);
+      expect(whole).assertEqual(10 * MIN_PER_DAY);
+      expect(clipped).assertEqual(MIN_PER_DAY);
     });
   });
 }

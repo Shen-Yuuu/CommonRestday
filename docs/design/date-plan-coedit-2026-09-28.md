@@ -300,7 +300,7 @@ X2 的跨午夜界面表现（§8.5 末尾给了做法，要拨 HVD 时钟）。
 - 2026-09-28 批次 U·U5：见 §1，提交 `9a82055`。
 - 2026-09-28 批次 W（体验封口）：见 §8.1–§8.3，提交 `eceafa3`／`6dfc64d`／`35d6167`（W-a 与 W-b 同笔）。
 - 2026-09-28 批次 X（逻辑严谨）：X1 见 §8.4，提交 `6337a51`；X2／X3 见 §8.5，提交 `79fb174`。
-- 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`。
+- 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -646,3 +646,71 @@ this.cardHead('作息', this.myEditing ? '' : '编辑', () => this.startEditMyPa
 debug BUILD SUCCESSFUL，告警 289 与基线一致。
 证据缺口（不勾选）：**「编辑」那颗到底有没有跟着消失，仍没有设备证据**——同 §8.7 那条，
 要在配对好的 HVD 上进「我的 · 作息」点一次编辑并取两次 `dumpLayout`。本轮只补了静态与编译两级。
+
+### 8.9 批次 Z·Z4：改班回概览，忙碌条与明细行跟着换（D-47，提交 `f10d103`）
+
+§8.8 里升级出来的那一处，现场序列比 Z1／Z2／Z3 都更常走到：1. 周历点一天 → 日详情半模态（`DayDetailSheet`）→ 页头「改这天」进 `DayShiftSheet`；
+2. 改完班点「返回概览」，`backToOverview()` 的顺序是**先** `editing = false`、**再** `await load()`；
+3. 于是概览子树先带着**旧** `this.data` 重新挂载，等 `load()` 换掉 `this.data` 时子树已经不再拆；
+4. `busyBar(segs, color)`（两形参）与 `busyList(ivs)`（单形参但值传）都不参与动态渲染——
+   忙碌比例条与明细行停在改班前那一份上。
+
+那一段注释原本写着「改班立刻重算共同时间，不重新取数会把刚改的这天念成旧样子」：取数做到了，
+渲染没跟上，而这正是 W-c 之后最扎眼的一类"半新半旧"——同一屏里窗口列表（在 `ForEach` 里，键含起止，
+重算后键变了就重建）是新的，底下的忙碌条是旧的。
+
+改法照仓里已有的配方，一字不改逻辑：`interface BusyBarArg { segs, color }`、`BusyListArg { ivs }`，
+两颗 builder 收单个对象字面量按引用传，四处调用点（我／TA 各两颗）同批改。
+
+门禁：`--steps=offline,debug` → ALL PASS（两档 224／0、0 type error；debug 289 告警与基线一致）。
+〔说明〕Z3／Z4／Z5 三笔都只跑 offline+debug，完整三档出包＋perf 留到 Z 批次收口那一次跑（本批次末）。
+
+证据缺口（不勾选）：改班后忙碌条是否跟着换，**没有设备证据**。这一条是 Z 批次里最容易补的——
+`改这天 → 返回概览` 之后取一次 `dumpLayout` 比明细行文字即可，不碰网络、不制造坏消息、不动时钟。
+〔判断〕等 §11 那几条设备证据排到同一台机时顺手做，不单独为它开一次设备会话。
+
+### 8.10 批次 Z·Z5：列表键纳入上屏字段（D-48，提交 `df7ab53`）
+
+D-40 已经把这条立成规则（**键不变的项不重建，所以画上屏的字段都得进键**），这一批把全仓剩下的四处补齐。
+先用脚本把 `entry`／`feature` 里 47 处 `ForEach` 键生成器全列出来（`grep "^\s*}, (" … =>"`），
+逐处对着该处上屏的字段核，结果四处漏、其余对得上：
+
+- `WeekScheduleView` 日程块：键 `start-end-name` 漏 `color`——给班次换了色，时段与名称没变的那一块留旧底色。
+- `WeekScheduleView` 空闲块：键 `winStart-winEnd-start` 漏 `end`——底色与高度都按 `end-start` 分档，
+  窗口拉长一格就换档，键却没变（**档变了、样子没变**）。
+- `CoTimeView` 窗口卡：键 `start-end-channel` 漏 `displayTags`／`todayEpoch`／`idx` 三样。
+  `todayEpoch` 与 `idx` 是这一处特有的：`daysWord()` 的「今天／明天／N 天后」吃今天，
+  而镜像切角 `cutTopLeft: idx % 2 === 0` 吃序号——中间删掉一张卡，下面整列的左右切角全错位，
+  即便 `cutTopLeft` 本身已经是 `@Prop`（键不变时子组件根本不重建，`@Prop` 也就没得同步）。
+- `DayDetailSheet` 窗口行：键漏 `displayTags`，同一条。
+
+查过、判定**没有**这一族的挂点（列出来免得下次重查）：
+
+- `PaintMonth` 的日历格：`DayCellView` 用 `@ObjectLink cell: DayCell`（`@Observed` 类），
+  属性级变更自己会走，拖动连刷在批次 R7 的设备取证里是活的——这一处**不该**把字段塞进键。
+- `PlansView.cardKey` 与 `ScheduleEditor.rowKey`：这两处本来就是 D-30／D-40 修好的样板。
+- 泳道块（`LaneBlock`）键含 `tag`、明细行键含 `tag`、条形分段键含 `i+busy+pct`——上屏字段齐。
+- `EditorialCard` 的样式普通成员（hero／cutTopLeft／glass／tappable）：全仓 20 处调用点，
+  除上面那处 `idx` 之外**都是字面量**，运行期换不了——这一族的怀疑到此结案，不再单独排队。
+- 常量数据源的那几处（`PrivacyPolicySheet` 的章节、`MeView` 的分享档位与最短时段 chips、
+  `CoTimeView` 的筛选芯片、`ScheduleHub` 的四种排班入口、`DockFx` 的粒子配置、`WindowDetailSheet` 的计划类型）：
+  表本身运行期不变，键取 `idx`／`key` 足够。
+  筛选芯片这一处我差点判错：它的选中态是 `selectFilter()` 里逐项写回 `this.chips[i].activated`
+  （`CoTimeView.ets:228`），键不变的项不重建，按 D-48 的口径像是漏了——但它走的是**另一套机制**：
+  `ChipV2Options` 在 SDK 声明里是 `@ObservedV2` 类、`activated` 带 `@Trace`
+  （`@ohos.arkui.advanced.ChipV2.d.ets:1255,1333`），属性级变更由 V2 观测直接上屏，与 ForEach 键无关。
+- `CourseImport` 已存课程列表按 `c.id` 做键：页内没有逐字段编辑入口（改课＝整表重导，删课＝滑删），
+  所以这一处不构成 D-48；将来若加行内编辑，键要照 D-40 补齐。
+- **三处 `ShiftType` 键只按 `id`**（`CycleEditor:186` 调色板、`PaintMonth:335` 画笔、`DayShiftSheet:246` 单日改班芯片），
+  芯片上屏的是 `st.name` 与 `st.color`——看着像 D-40 重演，**但不是键的问题**：
+  这三处的 `types` 只在 `aboutToAppear` 取一次，从「班次类型」页改名／换色回来**根本不会重取**，
+  改键也换不出新值。要修的是"子页返回后重取调色板"（壳层只有 `SCHEDULE_HUB` 挂了 `onShown`，
+  见 `AppNavigator.ets:292`，其余 destination 没有重进信号）。
+  〔立案 D-49·排队〕这一条与 §8.5 那条"时钟只在入口看一次"是同一族，下一笔单独决定改法。
+
+门禁：`--steps=offline,debug` → ALL PASS（两档 224／0、0 type error；debug 289 告警与基线一致）。
+
+证据缺口（不勾选）：四处都只有静态依据；**换色后旧底色、删卡后切角错位这两条现象从未在设备上出现过**
+（此前也没人复现过它们）。要证：周历页改一次班次配色 + 共同时间列表删中间一张卡，各取一次 `dumpLayout`。
+〔判断〕`idx` 进键会让整列在重排时重建，这是**故意**的——镜像切角本来就是位置属性；
+共同时间页一次几十张卡的量，重建成本远低于念错样子。

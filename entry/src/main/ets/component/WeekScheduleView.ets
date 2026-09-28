@@ -365,7 +365,7 @@ export struct WeekScheduleView {
    */
   private laneRead(who: string, b: LaneBlock, epochDay: number): string {
     return DateLabel.weekday(epochDay) + ' ' + who + ' ' + DateLabel.hm(b.start) + ' 到 '
-      + DateLabel.hm(b.end) + '，' + busyTagLabel(b.tag);
+      + DateLabel.edgeTime(b.end, true) + '，' + busyTagLabel(b.tag);
   }
 
   /** 该日是否有旅行通道窗口覆盖（表头标点，不画块）。 */
@@ -437,14 +437,14 @@ export struct WeekScheduleView {
    * 时长分级只靠颜色区分（docs/06 §3.10 B：状态不得只靠颜色），这里把分钟数直接读出来。
    */
   private freeBlockRead(b: FreeBlock, epochDay: number): string {
-    return DateLabel.weekday(epochDay) + ' ' + DateLabel.hm(b.start) + ' 到 ' + DateLabel.hm(b.end)
+    return DateLabel.weekday(epochDay) + ' ' + DateLabel.hm(b.start) + ' 到 ' + DateLabel.edgeTime(b.end, true)
       + '，' + DateLabel.duration(b.end - b.start) + '共同空闲，点击去计划';
   }
 
   /** 日程块的朗读文本：名称 + 当日内的起止（跨天班次已裁剪到本列）。 */
   private scheduleBlockRead(item: WeekBlock, epochDay: number): string {
     return DateLabel.weekday(epochDay) + ' ' + item.name + ' ' + DateLabel.hm(item.start) + ' 到 '
-      + DateLabel.hm(item.end);
+      + DateLabel.edgeTime(item.end, true);
   }
 
   /** 表头一列的朗读文本：日期 + 今天标记 + 当天空闲总量 + 旅行标点（点只靠颜色，读屏要说法）。 */

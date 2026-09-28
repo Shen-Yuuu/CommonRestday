@@ -59,7 +59,8 @@ export struct DayDetailSheet {
 
   /** 窗口行的朗读文本：时刻 + 时长 + 展示标签 + 点击后果（标签此前只有颜色区分）。 */
   private windowRead(w: WindowSummary): string {
-    let s = DateLabel.hm(w.start) + ' 到 ' + DateLabel.hm(w.end) + '，' + DateLabel.duration(w.durationMin);
+    let s = DateLabel.hm(w.start) + ' 到 ' + DateLabel.edgeTime(w.end, true) + '，'
+      + DateLabel.duration(w.durationMin);
     if (w.displayTags.length > 0) {
       s += '，' + w.displayTags.map((t: string): string => displayTagLabel(t)).join('、');
     }
@@ -349,7 +350,8 @@ export struct DayDetailSheet {
   windowRow(w: WindowSummary) {
     Row({ space: 8 }) {
       Column({ space: 2 }) {
-        Text(DateLabel.hm(w.start) + ' – ' + DateLabel.hm(w.end) + ' · ' + DateLabel.duration(w.durationMin))
+        Text(DateLabel.hm(w.start) + ' – ' + DateLabel.edgeTime(w.end, true)
+          + ' · ' + DateLabel.duration(w.durationMin))
           .fontSize(13).fontColor($r('app.color.text_primary'))
         if (w.displayTags.length > 0) {
           Row({ space: 4 }) {
@@ -427,7 +429,7 @@ export struct DayDetailSheet {
       Column({ space: 4 }) {
         ForEach(row.ivs, (iv: Interval) => {
           Row({ space: 8 }) {
-            Text(DateLabel.hm(iv.start) + ' – ' + DateLabel.hm(iv.end))
+            Text(DateLabel.hm(iv.start) + ' – ' + DateLabel.edgeTime(iv.end, true))
               .fontSize(12).fontColor($r('app.color.text_secondary'))
             Text(busyTagLabel(iv.tag))
               .fontSize(10).fontColor($r('app.color.text_tertiary'))

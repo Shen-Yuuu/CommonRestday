@@ -8,6 +8,15 @@ export interface Ymd {
 /** UI 层日期/时间格式化（epochDay 基于"本地日历日"语义）。 */
 const WD = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
+/**
+ * 一天的分钟数。domain 里那份叫 `MIN_PER_DAY`，这里不能 import 它：
+ * commons 是依赖图的底（`commons/oh-package.json5` 的 dependencies 是空的），
+ * 给它加一条指向 domain 的边，等于让"日志＋工具"层去依赖业务领域层。
+ * 这个 1440 是单位定义不是业务口径，两份都写不出第三个值，所以留着；
+ * 由 `entry/src/test/DateLabelTest.ets` 断言它与 domain 那份同值。
+ */
+const DAY_MIN = 1440;
+
 export class DateLabel {
   /** "9月14日" */
   static md(epochDay: number): string {
@@ -28,7 +37,7 @@ export class DateLabel {
 
   /** "15:00"（epochMin 当日分钟） */
   static hm(min: number): string {
-    const m = ((min % 1440) + 1440) % 1440;
+    const m = ((min % DAY_MIN) + DAY_MIN) % DAY_MIN;
     const h = Math.floor(m / 60);
     const mm = m % 60;
     const hs = h < 10 ? '0' + h : '' + h;
@@ -42,13 +51,9 @@ export class DateLabel {
    * 跨日窗口（如旅行窗口、跨天计划）由此正确带出结束日期。
    */
   static endLabel(startMin: number, endMin: number): string {
-    const sd = Math.floor(startMin / 1440);
-    let ed = Math.floor(endMin / 1440);
-    let et = DateLabel.hm(endMin);
-    if (endMin % 1440 === 0) {
-      ed = endMin / 1440 - 1;
-      et = '24:00';
-    }
+    const sd = DateLabel.edgeDay(startMin, false);
+    const ed = DateLabel.edgeDay(endMin, true);
+    const et = DateLabel.edgeTime(endMin, true);
     if (ed <= sd) {
       return DateLabel.hm(startMin) + '–' + et;
     }
@@ -60,15 +65,10 @@ export class DateLabel {
    * 长得一模一样（起草器踩过两次），所以每个端点都要自证是哪一天。
    * 今天/明天用相对词，更远（含昨天及更早的异常值）一律写死月日——
    * 相对词按调用方给定的"查看时的今天"现算，页面停留跨天后跟着变，不会留一个会漂移的「明天」。
-   * isEnd 且落在整零点时记前一天 24:00，与 DateLabel.endLabel 同一口径。
    */
   static stamp(epochMin: number, isEnd: boolean, todayEpoch: number): string {
-    let day = Math.floor(epochMin / 1440);
-    let time = DateLabel.hm(epochMin);
-    if (isEnd && epochMin % 1440 === 0) {
-      day = epochMin / 1440 - 1;
-      time = '24:00';
-    }
+    const day = DateLabel.edgeDay(epochMin, isEnd);
+    const time = DateLabel.edgeTime(epochMin, isEnd);
     const offset = day - todayEpoch;
     if (offset === 0) {
       return '今天 ' + time;
@@ -77,6 +77,34 @@ export class DateLabel {
       return '明天 ' + time;
     }
     return DateLabel.md(day) + ' ' + time;
+  }
+
+  /**
+   * 端点落在哪个日历日（D-58 起是全应用唯一一份这个判定）。
+   * 整零点既是"下一天的 00:00"也是"这一天的 24:00"，两个说法指同一个瞬间：
+   * 作为**起点**读前者（次日开始），作为**终点**读后者（当天结束）。
+   * 判错半边，区间在屏幕上就会短或长一整天，所以起点终点必须显式传 isEnd。
+   */
+  static edgeDay(min: number, isEnd: boolean): number {
+    if (isEnd && min % DAY_MIN === 0) {
+      return min / DAY_MIN - 1;
+    }
+    return Math.floor(min / DAY_MIN);
+  }
+
+  /**
+   * 端点时刻怎么念（D-58）：整零点的**终点**念 "24:00"，其余走 {@link hm}。
+   * 「20:00–00:00」看着像零长度，「周五 20:00 到 00:00」读不出是哪一天的尾巴——D-13 当年
+   * 就是为这个把跨日窗口的端点加上日期的。这条口径此前抄在 endLabel、stamp 与窗口详情
+   * 三处，另有七个调用点压根没接它（批次 AH·D-58 并成这一处）。
+   * 班次定义／课程节次那种"距 00:00 多少分钟"不在这儿：那是时刻不是区间的尾巴，
+   * 夜班写「20:00–00:00」配合跨天标记本来就是那个意思。
+   */
+  static edgeTime(min: number, isEnd: boolean): string {
+    if (isEnd && min % DAY_MIN === 0) {
+      return '24:00';
+    }
+    return DateLabel.hm(min);
   }
 
   /** "7小时30分" */

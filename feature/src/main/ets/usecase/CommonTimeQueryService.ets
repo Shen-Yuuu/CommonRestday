@@ -109,7 +109,7 @@ function busyLabel(segs: Interval[], idle: string): string {
     return idle;
   }
   if (segs.length === 1) {
-    return DateLabel.hm(segs[0].start) + '–' + DateLabel.hm(segs[0].end) + ' 忙碌';
+    return DateLabel.hm(segs[0].start) + '–' + DateLabel.edgeTime(segs[0].end, true) + ' 忙碌';
   }
   return segs.length + ' 段忙碌 · ' + DateLabel.hm(segs[0].start) + ' 起';
 }

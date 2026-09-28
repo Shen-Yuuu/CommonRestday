@@ -278,6 +278,15 @@ export default function commonTimeQueryServiceTest() {
       expect(h.tonight.state).assertEqual(AnswerState.AVAILABLE);
     });
 
+    it('midnight_endpoint_is_read_as_24_00_not_00_00', 0, () => {
+      // D-58：区间终点落在整零点时念 24:00（记前一天），是 D-13／D-44 已经裁过的口径，
+      // 窗口卡与窗口详情都照它；忙碌文案当时走的是裸时刻格式化，同一段夜班念成 20:00–00:00，
+      // 两张纸说的不是同一件事，而 00:00 在"今天"后面根本读不出是头还是尾。
+      const d = day('LOCAL', 3, [iv(DAY, 1200, 1440, 'WORK')], [iv(DAY, 1200, 1440, 'BUSY')]);
+      expect(CommonTimeQueryService.myLabel(d, DAY_START, DAY_END)).assertEqual('今天 20:00–24:00 忙碌');
+      expect(CommonTimeQueryService.partnerLabel(d, DAY_START, DAY_END, '')).assertEqual('TA 20:00–24:00 忙碌');
+    });
+
     it('paired_old_snapshot_stays_paired_and_coarse', 0, () => {
       // 已配对 + 旧快照（L1 只有 30 分钟位图）：形态仍是 PAIRED，但文案不假装精确
       const d = day('SNAPSHOT', 1, [], [iv(DAY, 480, 780, 'BUSY'), iv(DAY, 900, 1020, 'BUSY')]);

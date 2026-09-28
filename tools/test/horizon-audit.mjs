@@ -15,8 +15,8 @@
  *   读数要念常量，抄字面量就会跟引擎分家——AG 之前 `MeView` 的提示与无障碍朗读各写了一次 366。
  *
  * 判不了的情形（不猜，也不冒充覆盖）：
- * - 别的数字（布局宽度、别的阈值）撞上车面 `Math.min(` 又恰好等于 366：今天没有，真遇到写一行
- *   `// horizon-ceil-exempt 理由` 放行，理由要能被人复核。
+ * - 别的数字（布局宽度、别的阈值）撞上车面 `Math.min(` 又恰好等于 366：今天没有，真遇到就在
+ *   **这一行行尾**写 `// horizon-ceil-exempt 理由` 放行（独占一行的标记压不住别处），理由要能被人复核。
  * - H2 只认"整份源码里出现过的上限字面值"，不认算出来的表达式（`'' + (365 + 1)` 它看不见）。
  *   这条要拦的是顺手抄一个数，不是拦一个故意绕开的写法。
  * - 计算侧真正"有没有按这个天数展开"由 `EngineTest` 的 `compute_stops_at_the_horizon_ceiling_…`
@@ -65,10 +65,11 @@ export function auditHorizonCeiling(repo) {
     for (const rel of listEts(repo, tree)) {
       const lines = fs.readFileSync(path.join(repo, rel), 'utf8').split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
-        const code = codeOf(lines[i]);
-        if (code.includes(EXEMPT_MARK)) {
+        // 豁免标记看**整行原文**：codeOf 已经把行尾注释剥掉了，拿剥完的 code 找标记等于没这条口子
+        if (lines[i].includes(EXEMPT_MARK)) {
           continue;
         }
+        const code = codeOf(lines[i]);
         if (rel === HOME) {
           const def = code.match(/export const HORIZON_MAX_DAYS:\s*number\s*=\s*(\d+)/);
           if (def != null) {

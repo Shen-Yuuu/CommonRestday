@@ -200,25 +200,18 @@ export struct WindowDetailSheet {
 
   // ---------- 时间轴端点文字 ----------
 
-  /** 端点落在哪个日历日：窗口结束若是整午夜，记在前一天的 24:00，与 DateLabel.endLabel 同一口径。 */
-  private edgeDay(min: number, isEnd: boolean): number {
-    if (isEnd && min % MIN_PER_DAY === 0) {
-      return min / MIN_PER_DAY - 1;
-    }
-    return Math.floor(min / MIN_PER_DAY);
-  }
-
   /**
    * 跨日窗口两端都写「00:00」，读者判不出比例尺（D-13），所以跨日时端点带日期。
    * 同一天不带的理由是上方 hero 已经念过「9月24日 周四 07:00–22:30」，重复一遍只会挤掉中间那行。
+   * 「端点算哪一天、怎么念」两条判定都在 {@link DateLabel}（edgeDay／edgeTime），视图里不再抄第三份（D-58）。
    */
   private crossesDays(): boolean {
-    return this.edgeDay(this.winEnd, true) > this.edgeDay(this.winStart, false);
+    return DateLabel.edgeDay(this.winEnd, true) > DateLabel.edgeDay(this.winStart, false);
   }
 
   private edgeLabel(min: number, isEnd: boolean): string {
-    const day = this.edgeDay(min, isEnd);
-    const time = isEnd && min % MIN_PER_DAY === 0 ? '24:00' : DateLabel.hm(min);
+    const day = DateLabel.edgeDay(min, isEnd);
+    const time = DateLabel.edgeTime(min, isEnd);
     return this.crossesDays() ? DateLabel.md(day) + ' ' + time : time;
   }
 

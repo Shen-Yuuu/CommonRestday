@@ -315,12 +315,27 @@ AA 把读数落地顺序修完之后，同一个用户可见症状（"改了不�
 原型 `docs/prototype/index.html` 四处 `:active` 写死了按下反馈，系统 `Button` 靠内置 `stateEffect` 兑现了，
 `Text`／`Row`／`Column` 自绘的芯片、胶囊、格子那一族没兑现，于是同一屏里按钮会变暗、芯片一动不动。
 修法不新造机制：`.clickEffect()` 一行接 28 处，两档幅度（0.94／0.98）都从原型与仓内 `pressScale` 取现成的数，
-涂抹那一格因为与 `PanGesture` 同链而写成豁免（SDK 原话支持），第五个静态口径 `press:` 进退出码。
+涂抹那一格因为与 `PanGesture` 同链而写成豁免（SDK 原话支持），第四个静态口径 `press:` 进退出码。
 〔对上句的偏离说明〕AC 不碰读模型、不碰协议、不碰 `CRD1`：改的是视图层的按压反馈与一个只读静态检查，
 是第 4 条那句"布局／组件／功能／动效等方面的优化和升级"里最直白的那半句。
-W／Z／AA／AB／AC 五批攒下的设备复验（Z 那五处失败态、AA 的四类连点、AB 的三处连点与一次重叠复现、
-AC 的"回弹好不好用"三条、X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`
-（AC 收口时再验过一次）。
+
+**AD 批次已于 2026-09-28 收线**：代码一笔 `15588cc`，门禁＋本文档一笔 `44356bc`，见 §8.16。它修的是
+**读不出来的字**：班次底色由用户拿取色器挑，而画它的那八处（十处上屏文字）把前景写死成暖白——浅色档下白字压在近白底色上
+实测 1.12–1.29:1。判据按 WCAG 2.1 原文落在 `commons` 的 `SwatchInk`（@kit-free 纯函数），
+界面只经 `DesignTokens.foregroundOn(底色)` 取用；**八色糖果板一个都没变样**（八色的暖白对比度 2.99–4.76，
+仍是更高的那侧），真正改到的只有近白底色与"休／认不出"那一族。顺带拆了 `PaintMonth` 里"用颜色串相等判是不是休"
+的写法（用户挑了同一个色就被当休息画）。第五个静态口径 `contrast:` 进退出码，两条判据连资源抄写一起核
+（`swatch_fg` 必须两档同值——底色不翻面，前景就不许翻）。
+〔对上句的偏离说明〕AD 不碰读模型、不碰协议、不碰 `CRD1`：改的是色值分派与一个只读静态检查。
+它顺手把 `press-audit` 的链机器抽成 `chain-scan.mjs` 共用（AC 那轮修过的"链尾被切掉"就是分头抄写的代价），
+`press:` 的水位与七形探针结果逐位未变。
+本轮另发现一格**没夹带**：`PaintMonth` 涂「休息」不落覆盖（`eff = over !== null ? over : base`
+把"存了 null 覆盖"与"没有覆盖"并成一件事），排在批次 AE，见 §8.16 末尾的判据与证据行号。
+还留一条**待点名**的 delta：`DayShiftSheet` 选中「休息」那颗芯片是令牌对令牌（暖白 2.71:1 vs 深墨 3.14:1），
+归原型裁定，不由门禁替谁决定。
+W／Z／AA／AB／AC／AD 六批攒下的设备复验（Z 那五处失败态、AA 的四类连点、AB 的三处连点与一次重叠复现、
+AC 的"回弹好不好用"三条、AD 的四件事（近白底色、深色档休息格、画笔板未选中那颗、芯片观感）、
+X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`（AD 收口时再验过一次）。
 
 ---
 
@@ -332,7 +347,8 @@ AC 的"回弹好不好用"三条、X 的两条、§11 第 3／6／8 条）仍排
 - 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`；Z6（D-50 · 心跳跟手）见 §8.12，提交 `2dd2a6e`；收口（全量门禁＋D-49 撤案）见 §8.11。
 - 2026-09-28 批次 AA（读数落地顺序）：D-51 见 §8.13，AA1（闸门本体 + 八个读数点接线）提交 `ff37490`；AA2（静态门禁 `landing:` 并入退出码 + 本文档收口）＝本笔。
 - 2026-09-28 批次 AB（写侧重入与重算串行）：D-52 见 §8.14，代码＋门禁一笔提交 `beab821`（AB1 三处闩 + 判据 R4；AB2 `SerialQueue` + `recompute` 排队 + 五格离线用例）；§8.14 与 §7 的收口段随本文档这一笔入库。
-- 2026-09-28 批次 AC（自制圆角可点节点的按压回弹）：D-53 见 §8.15，代码＋门禁一笔提交 `482225b`（`DesignTokens.tapChip/tapButton` + 28 处接线 + 1 处写明理由的豁免 + 第五个静态口径 `press:`）；§8.15 与 §7 的收口段随本文档这一笔入库。
+- 2026-09-28 批次 AC（自制圆角可点节点的按压回弹）：D-53 见 §8.15，代码＋门禁一笔提交 `482225b`（`DesignTokens.tapChip/tapButton` + 28 处接线 + 1 处写明理由的豁免 + 第四个静态口径 `press:`）；§8.15 与 §7 的收口段随本文档这一笔入库。
+- 2026-09-28 批次 AD（压在用户自选色上的前景跟着底色走）：D-54 见 §8.16，代码一笔提交 `15588cc`（`SwatchInk` + `DesignTokens.foregroundOn` + 八处接线 + `PaintMonth` 的 `neutral` 判据）；门禁（第五个静态口径 `contrast:` ＋ 链机器 `chain-scan.mjs`）与本文档收口一笔提交 `44356bc`；§8.16 与 §7 的收口段随本文档这一笔入库。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1100,7 +1116,7 @@ violations 计入 `auditViolations` 与退出码。
 
 - `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`229 passed / 0 failed`**（AB 收口那次也是 229，本批不新增用例——
   按压态是渲染层，离线面没有可测对象），exit 0。`tools/test/out/last-run.log` 第 4 行
-  `press: PASS（自制圆角可点节点都有按压回弹：接 32 处，写明理由豁免 1 处）`——第五个口径行进了退出码。
+  `press: PASS（自制圆角可点节点都有按压回弹：接 32 处，写明理由豁免 1 处）`——第四个口径行进了退出码。
 - `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`BUILD SUCCESSFUL`，`ArkTS:WARN 269`（基线 269）。
   本批 16 个文件没带进新告警；**`ClickEffect`／`ClickEffectLevel` 在 ArkTS 里是全局声明不需要 import**
   （`sdk/default/openharmony/ets/component/common.d.ts:15934` 与 `component/enums.d.ts:3756` 都是顶层 `declare`），
@@ -1125,5 +1141,134 @@ violations 计入 `auditViolations` 与退出码。
 合到 §11 第 3／6／8 条、Z 那五处、AA 那四类、AB 那三处连点的**同一个设备会话**里做；
 该会话在 AC 收口时再验过一次，仍然阻塞在同一件事上：`hdc list targets -v` 里
 `127.0.0.1:5555` 与 `127.0.0.1:5557` 都是 `TCP Offline`。
+
+### 8.16 批次 AD·D-54：白字压在用户自己挑的颜色上（代码 `15588cc` ＋ 门禁 `44356bc`）
+
+〔前提塌在哪儿〕`entry/src/main/ets/pages/ScheduleEditor.ets` 的调色板注释原本写着
+"八色的白字对比度全部按 WCAG 相对亮度核过 ≥2.99:1"。这句话**只在用户真从八色里挑时成立**——
+班次色还能拿取色器挑（`HdsColorPicker` 的 GRID／SPECTRUM／SLIDERS 三档，
+`onColorSelected: (selectedColor: string) => void`，存进库就是一个十六进制串），
+而画它的那几处把前景写死成暖白。原型 `.chip.on{background:brand_pink;color:#fff}` 的同一前提
+（底色由设计定）在班次这一族本来就不成立。
+
+〔本轮按 WCAG 2.1 原文重算的数字，不是引用旧结论〕
+`L = 0.2126R + 0.7152G + 0.0722B`（通道先线性化），`contrast = (L_亮+0.05)/(L_暗+0.05)`：
+
+| 底色 | 白字 | 深墨 `#5C4750` | 该用 |
+| --- | --- | --- | --- |
+| 八色糖果板 `#EF6F42`…`#8E8397` | 2.99／3.10／3.81／3.27／4.76／3.34／3.04／3.59 | 2.84／2.74／2.23／2.59／1.78／2.55／2.80／2.36 | 白（**八色零 delta**） |
+| `#B8C4CE` 休息灰 | 1.78 | 4.78 | 墨 |
+| `#CCCCCC` 认不出的班次 id | 1.61 | 5.29 | 墨 |
+| `#F5DCE6`（浅色档 `divider`，画笔板未选中那颗的旧底） | **1.29** | 6.58 | 墨 |
+| `#FBEFF3` 一档近白 | **1.12** | 7.58 | 墨 |
+| `#463860`（深色档 `divider`） | 10.53 | 1.24 | 白 |
+
+八色全都仍选暖白，所以这次改动对**现有数据的外观零变化**；变的只有两类真坏的情形。
+
+〔为什么不能改用会翻面的资源对〕深色档里 `text_secondary`（`#C9B2C2`）压在同一块休息灰 `#B8C4CE` 上
+实测 **1.11:1**——比不翻面还糟。根子在方向：**用户选的底色不随深浅色模式翻面**，
+压它的前景因此也不许翻。于是这一族要的是"由底色自己决定"的两个固定墨色：
+`#FFFFFF`（复用 `hero_fg`，两档都是纯白）与 `#5C4750`（新增资源 `app.color.swatch_fg`，
+base 与 dark **同值**，取自浅色档 `text_primary`，不是新发明的色）。
+
+〔判据落点〕`commons/src/main/ets/util/SwatchInk.ets`：@kit-free 的纯函数，
+`prefersInk(底色)` 取两个候选前景里对比度更高的那个，`luminance()`／`contrast()` 供核对。
+两条边界都写进实现而不是注释里：**相等留暖白**（不制造无谓翻面）、**认不出的串留暖白**
+（判不了就不改，也就不会把已经能看的字改坏）。
+`DesignTokens.foregroundOn(color: ResourceColor): Resource` 是界面侧唯一的入口。
+形参收 `ResourceColor` 是因为班次色在仓内常以 `ResourceColor` 流动（`DayShiftSheet.chipBg`），
+传进来是 `$r(...)` 而非串时判不出，按边界落回暖白——这一族有仓内先例（`ConfirmDialog:66`、
+`Breakpoints:68`、`NavUtil:93`）。
+**边界：只给用户选的颜色用。** 品牌粉那一族不许走这里——自动判会把 `.chip.on` 上的白字翻成深墨，
+那是改外观，不是修可读性。未选中画笔跟原型 `.chip{background:fill_weak;color:text_secondary}`。
+
+〔接线：八处 `foregroundOn(` 调用，覆盖十处上屏文字〕`CycleEditor` 3（调色板芯片、休息芯片、
+序列序号芯片）、`PaintMonth` 3（画笔板 2 颗 + 格子的 `ink()`，那一处喂日期数字与班次标签两行字）、
+`WeekScheduleView` 1（周历日程块上的活动名）、`DayShiftSheet` 1（`chipFg()`，服务真班次与休息两颗芯片）。
+`ScheduleEditor` 那处只改注释——旧前提已经不成立，八色的实测区间钉在 `SwatchInkTest` 里。
+
+〔顺带拆掉一处"用字符串相等判语义"〕`PaintMonth` 原先靠 `isRestColor()` 比对 `#B8C4CE` 判"这格是不是休"。
+用户给某个真班次挑了同一个色，就会被当休息画。改成 `DayCell.neutral`（`neutralBg(typeId)` 判在 id 上：
+休 = 无班次 id、认不出的 id 才算中性），底色与前景两处都读这一位，不再靠颜色串相等。
+
+〔离线用例七条（`entry/src/test/SwatchInkTest.ets`，`229 → 236` 的差额就是它）〕
+八色仍选暖白／浅中性选深墨／**阈值取对比度高的那侧而不是猜色相**（纯灰 `#979797` 白 2.921>墨 2.908 选白，
+`#989898` 墨 2.945>白 2.885 选墨）／选出来的前景永不跌破地板值 `2.9145`
+（= `sqrt(1.05/(L_墨+0.05))`，两候选取大的那条闭式下界）／短写与带 alpha 都认（ArkUI 是 **AARRGGBB**，
+alpha 在最前，所以长度 8 时丢**前**两位）／坏串留暖白（含 `parseInt('12ab34',16)` 会在第一个非法字符处
+停下返回 `0x12ab` 的截断陷阱，所以逐字符核十六进制位）／两串墨字面量就是资源里用的那两串。
+
+〔门禁 `contrast:` 两条（`tools/test/contrast-audit.mjs`，第五个静态口径）〕
+**C1** 底色的形状像"用户自选色"（对象上的 `.color`，或 `typeColor(`／`colorOf(` 这类配色助手）的节点，
+本链与**直接子节点**里出现的 `fontColor(` 必须写成 `foregroundOn(...)`——写死暖白
+（`'#FFFFFF'`／`Color.White`／`DesignTokens.heroText`）、用会翻面的 `app.color.text_*` 令牌、
+或前景由方法给出（`this.ink()`）都算没跟着底色走，要么改，要么写一行 `// contrast-exempt 理由`。
+**C2** `swatch_fg` 在 base 与 dark 都必须等于 `SwatchInk.inkHex()`、`hero_fg` 必须等于 `warmWhiteHex()`，
+且 `swatch_fg` **两档同值**；依赖方向是资源去跟 ArkTS 常量（判据写在 `SwatchInk` 里，
+`foregroundOn` 只是把那两个资源递出去）。
+`PaintMonth` 的格子是唯一写明理由的豁免——底色两式、前景在 `ink()` 里分派，静态看不见方法体。
+
+〔序号更正〕`run.mjs` 的口径行到这一批是**五条**：`copy`／`a11y`／`landing`／`press`／`contrast`，本批是第五个。
+AC 那笔把 `press:` 写成"第五个"，少数了一条（§8.13 自己写的是"从两条改三条"，`landing:` 排第三，
+`press:` 便排第四）；§7 与 §8.15 的那两处措辞随这一笔改回，数字本身（`last-run.log` 第 4 行、水位 32/1）没动，
+AC 的结论不受影响。
+
+〔首跑红 35 处，两个根因都不是"代码坏了"〕① `partsOf().block` 从开行一路收到链头，
+把孙辈、曾孙辈的字算到曾祖的底色上；② `$r('app.color.text_secondary')` 里的 `app.color`
+被读成"对象上的 `.color`"，于是一片纯令牌背景全红。
+修法不是给 C1 打补丁，而是把两台审计共用的那台机器抽出来：`tools/test/chain-scan.mjs`
+（`depthTable`／`chainOf` 原样搬自 `press-audit.mjs`，新增 `childLines`＝只看直接子节点那一层），
+`press-audit` 改从它取，行为逐位不变（仓内水位仍是 `wired=32 exempt=1 violations=0 skipped=48`，
+仓库外七形探针仍是 `wired=3 exempt=1 skipped=1 violations=3`）。
+**分两处抄写深度判定，就会各修各的 bug**——AC 那轮修过的"链尾被切掉"正是这一类。
+
+〔反向探针（仓库外 `.crdtest/contrast-fixture{,-bad-ink}`，不入库、不进门禁）〕
+C1 该红的三处（暖白写死／翻面令牌在直接子节点／裸十六进制前景配 `typeColor(`）全红 ✓；
+该绿的四处全绿 ✓：`foregroundOn` 那处计 wired、纯色块计 textless、令牌三元底色不误判、
+**孙辈的字不再算到曾祖的色上**（这一形就是首跑误伤的那一族）。
+C2 把 dark 的 `swatch_fg` 改成 `#8F7A82` 后报出两条：与 `inkHex()` 不一致、两档不等 ✓。
+仓内终态水位：`wired 4 / exempt 1 / textless 2 / helper 12`（`helper` 就是"底色取自助手、这条判不了"，
+现存一族是 `DayShiftSheet.chipBg`）。
+
+〔门禁实测·AD 收口（2026-09-28，`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0）〕
+
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`236 passed / 0 failed`**（AC 收口那次 229，
+  本批 +7 ＝ `SwatchInkTest` 七条），exit 0。`tools/test/out/last-run.log` 第 5 行
+  `contrast: PASS（压在用户自选色上的前景都由底色算出来：接 4 处，写明理由豁免 1 处，两档墨色字面量与 SwatchInk 同源）`。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；
+  `ohostest`：`BUILD SUCCESSFUL`，`ArkTS:WARN 269`（基线 269）。
+- `perf`：exit 0——`page_projection_44w` `0.055/0.081/0.098`、`page_projection_1000w` `0.727/1.040/2.852`；
+  视界扫描（paired，P50）60d=3.9ms … 366d=85.3ms。与 AC 收口同量级：这一批改的是色值分派，
+  每节点多算一次亮度，不改变投影规模。
+
+〔已知限制（五条，都写在工具文件头，不藏在注释里）〕
+① 真浅真深只有设备上判得了，静态只看"前景有没有跟着底色走"；
+② 底色认的是**名字形状**，换个别的名把用户色传进 `backgroundColor` 就看不见；
+③ 前景由方法给出时看不见方法体，靠写明理由的豁免钉住（两处）；
+④ 只看直接子节点那一层——孙子那层自己铺的底色归它自己，这条不追；
+⑤ 桌面卡片 `widget/RestCard2x2.ets` 的五处 `'#FFFFFF'` 归卡片自己的固定渐变底管，不判也不该判。
+
+〔留给用户点名的 delta（不自行合并）〕`DayShiftSheet` 选中「休息」那颗芯片：底色是令牌
+`textTertiary`（`#AC98A0`），前景暖白实测 **2.71:1**，换深墨是 3.14:1。
+它**不是**用户选的颜色，属于令牌对令牌的外观取舍，归原型裁定；
+C1 的地板值 2.9145 只承诺"用户挑的色上不低于它"，这颗在承诺之外。
+要么改原型那颗的配色，要么留着——不由门禁替谁决定。
+
+〔本轮发现、故意没夹带的一格 → 批次 AE〕`PaintMonth` 给工作日涂「休息」时画面上不落覆盖、
+红色「改」角标还会消失：`:135`（`loadMonth`）与 `:243`（`applyCellOverride`）都写成
+`eff = over !== null ? over : base`，把"库里存了 null 覆盖＝这天强制休息"与"没有覆盖"并成一件事。
+`null` 表示休息的证据：`data/src/main/ets/repo/ScheduleRepo.ets:166` 写入
+`o.shiftTypeId == null ? '' : …`、`:187` 读回 `idText === '' ? null : idText`，
+以及 `feature/src/main/ets/usecase/ScheduleOverviewQueryService.ets:67` 的原话
+「手动覆盖是否存在：shiftTypeId=null 表示"这天强制休息"，所以覆盖值判不出有无，需单独给一位」。
+判据要换成"覆盖表里有没有这个键"，角标也要一位真正的"有覆盖"标志。
+AD 里只动了颜色分派，没碰这条——混在一笔里，回滚与复核都得先区分两件事，不值当。
+
+〔证据缺口（不勾选）〕设备上要看四件事：浅色档画笔板**未选中**那颗（1.29 → 3.08 的正向 delta）、
+深色档休息格与"认不出的 id"格（现在走 `fill_weak` + `text_secondary`，5.33:1）、
+取色器挑一档近白（`#FBEFF3` 那一类）看班表格与周历块上的字是否真换成深墨、
+`DayShiftSheet` 选中那颗芯片的观感。本轮 `hdc list targets -v` 再验过一次，
+`127.0.0.1:5555` 与 `127.0.0.1:5557` 仍是 `TCP Offline`——与 AC／Z／AA／AB／§11 第 3／6 条
+排的是同一个设备会话。
 
 

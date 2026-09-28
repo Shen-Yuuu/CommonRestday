@@ -8,7 +8,7 @@
  * 退出码：0 类型编译、用例、文案口径审计**都**干净 / 1 有用例失败或文案口径冲突 /
  * 2 环境不满足（缺 tsc）/ 3 类型编译失败。完整输出同时写在 tools/test/out/last-run.log。
  *
- * 只有 `typecheck: 0 errors` + 八条静态口径（`copy`／`a11y`／`landing`／`press`／`contrast`／`horizon`／`endread`／`span`）全 PASS
+ * 只有 `typecheck: 0 errors` + 九条静态口径（`copy`／`a11y`／`landing`／`press`／`contrast`／`horizon`／`endread`／`span`／`clip`）全 PASS
  * + `tests: passed` + 退出码 0 才可以写成"全绿"：
  * 转译有类型错误时不产出 JS、也不启动用例（tsconfig 的 noEmitOnError=true），
  * 所以不存在"用例通过但工程编不过"的假绿。`copy` 见 tools/test/copy-audit.mjs。
@@ -28,6 +28,7 @@ import { auditContrast } from './contrast-audit.mjs';
 import { auditHorizonCeiling } from './horizon-audit.mjs';
 import { auditEndRead } from './endread-audit.mjs';
 import { auditDaySpan } from './span-audit.mjs';
+import { auditClip } from './clip-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -754,6 +755,16 @@ function main() {
   for (const v of span.violations) {
     say('  - ' + v);
   }
+  const clip = auditClip(REPO);
+  say('clip: ' + (clip.violations.length === 0
+    ? 'PASS（把区间裁进窗口这件事只在 domain 的 clipInto 定一次：非嵌套的 max/min 取界对全仓 '
+      + clip.pairSites + ' 处（家里 ' + clip.homePairs + ' 处），clipInto 家以外接 '
+      + clip.readerSites + ' 处、intersects 接 ' + clip.predicateSites
+      + ' 处，写明理由豁免 ' + clip.exempt + ' 处）'
+    : 'FAILED（' + clip.violations.length + ' 处区间裁剪／交叠谓词抄写）'));
+  for (const v of clip.violations) {
+    say('  - ' + v);
+  }
   prepare();
   if (!overrideTier(say)) {
     say('tests: FAILED（档位覆盖没落地，这一跑的结论不属于任何档位）');
@@ -789,10 +800,10 @@ function main() {
   }
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
-  // 八条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
+  // 九条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
   const auditViolations = copyViolations.length + a11yViolations.length + landingViolations.length
     + press.violations.length + contrast.violations.length + horizon.violations.length
-    + endread.violations.length + span.violations.length;
+    + endread.violations.length + span.violations.length + clip.violations.length;
   if (testsPassed && auditViolations > 0) {
     say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }

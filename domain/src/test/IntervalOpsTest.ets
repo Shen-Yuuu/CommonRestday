@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { Interval, MIN_PER_DAY } from '../main/ets/model/Types';
-import { mergeIntervals, complement, totalOverlap, unionIntervals, mkIv, overlapMin } from '../main/ets/merge/IntervalOps';
+import { mergeIntervals, complement, totalOverlap, unionIntervals, mkIv, clipInto, overlapMin } from '../main/ets/merge/IntervalOps';
 
 export default function intervalOpsTest() {
   describe('intervalOps', () => {
@@ -51,6 +51,31 @@ export default function intervalOpsTest() {
     it('overlapMin', 0, () => {
       expect(overlapMin(0, 10, 5, 20)).assertEqual(5);
       expect(overlapMin(0, 10, 10, 20)).assertEqual(0);
+    });
+
+    it('clip_into_treats_touching_as_empty', 0, () => {
+      // 相接不算：`[0,10)` 裁进 `[10,20)` 得空，而不是零长度那一段
+      expect(clipInto(0, 10, 10, 20) == null).assertTrue();
+      expect(clipInto(10, 20, 0, 10) == null).assertTrue();
+      expect(clipInto(5, 5, 0, 10) == null).assertTrue();
+      const left = clipInto(0, 10, 5, 20);
+      if (left != null) {
+        expect(left.start).assertEqual(5);
+        expect(left.end).assertEqual(10);
+      }
+      const wrapped = clipInto(3, 7, 0, 100);
+      if (wrapped != null) {
+        expect(wrapped.start).assertEqual(3);
+        expect(wrapped.end).assertEqual(7);
+      }
+      // 三份读数共用这一个家：裁空 ⇒ overlapMin 为 0、totalOverlap 也不计数
+      expect(overlapMin(0, 10, 10, 20)).assertEqual(0);
+      expect(totalOverlap([mkIv(0, 10, 'A')], 10, 20)).assertEqual(0);
+      expect(totalOverlap([mkIv(0, 10, 'A')], 5, 20)).assertEqual(5);
+      // 补集同理：忙碌段恰好压在窗口起点上，窗口开头不留一段零长度空闲
+      const free = complement(mergeIntervals([mkIv(0, 100, 'A'), mkIv(100, 200, 'B')]), 100, 300);
+      expect(free.length).assertEqual(1);
+      expect(free[0].start).assertEqual(200);
     });
   });
 }

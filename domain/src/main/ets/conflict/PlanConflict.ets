@@ -4,7 +4,7 @@ import {
   CONFLICT_REASON_PARTNER_TIME, CONFLICT_REASON_UNKNOWN, CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE,
   CONFLICT_SOURCE_PARTNER, Interval, PlanLite, Window
 } from '../model/Types';
-import { overlapMin } from '../merge/IntervalOps';
+import { clipInto, overlapMin } from '../merge/IntervalOps';
 
 /**
  * 计划冲突检测（PRD F7 / 阶段 2 Task 2.3）：
@@ -140,14 +140,14 @@ function maxOverlap(plan: PlanLite, ivs: Interval[] | null): OverlapHit | null {
   let best: OverlapHit | null = null;
   for (let i = 0; i < ivs.length; i++) {
     const iv = ivs[i];
-    const minutes = overlapMin(plan.startMin, plan.endMin, iv.start, iv.end);
-    if (minutes <= 0) {
+    const c = clipInto(iv.start, iv.end, plan.startMin, plan.endMin);
+    if (c == null) {
       continue;
     }
+    const minutes = c.end - c.start;
     if (best == null || minutes > best.minutes) {
       const hit: OverlapHit = {
-        start: Math.max(plan.startMin, iv.start), end: Math.min(plan.endMin, iv.end),
-        minutes: minutes, tag: iv.tag
+        start: c.start, end: c.end, minutes: minutes, tag: iv.tag
       };
       best = hit;
     }

@@ -1,6 +1,6 @@
 import { BlockTag, EngineParams, Interval, MIN_PER_DAY, ShiftInstance, ShiftType } from '../model/Types';
 import { bedEndMin, dayOfEnd, dayOfStart } from '../utils/TimeUtil';
-import { mkIv, mergeIntervals } from '../merge/IntervalOps';
+import { intersects, mkIv, mergeIntervals } from '../merge/IntervalOps';
 
 /**
  * 缓冲层：把班次实例转换为忙碌块（含通勤），生成个人"不可用"区间。
@@ -57,7 +57,7 @@ export function isNightShift(inst: ShiftInstance, cfg: ShiftType, params: Engine
   for (let d = firstDay; d <= lastDay; d++) {
     const ns = d * MIN_PER_DAY + params.nightStartMin;
     const ne = ns + nightLen;
-    if (workStart < ne && workEnd > ns) {
+    if (intersects(workStart, workEnd, ns, ne)) {
       return true;
     }
   }

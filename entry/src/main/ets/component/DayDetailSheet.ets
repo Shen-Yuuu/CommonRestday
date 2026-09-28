@@ -1,4 +1,5 @@
-import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel, dayOfStart } from 'domain';
+import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel, clipInto, dayOfStart,
+  totalOverlap } from 'domain';
 import { DateLabel } from 'commons';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
@@ -120,12 +121,12 @@ export struct DayDetailSheet {
     const s = this.dayStart();
     const e = s + MIN_PER_DAY;
     for (let i = 0; i < ivs.length; i++) {
-      const cs = Math.max(ivs[i].start, s);
-      const ce = Math.min(ivs[i].end, e);
-      if (ce > cs) {
-        const iv: Interval = { start: cs, end: ce, tag: ivs[i].tag };
-        out.push(iv);
+      const c = clipInto(ivs[i].start, ivs[i].end, s, e);
+      if (c == null) {
+        continue;
       }
+      const iv: Interval = { start: c.start, end: c.end, tag: ivs[i].tag };
+      out.push(iv);
     }
     return out;
   }
@@ -137,16 +138,16 @@ export struct DayDetailSheet {
     const e = s + MIN_PER_DAY;
     let cur = s;
     for (let i = 0; i < busy.length; i++) {
-      const bs = Math.max(busy[i].start, s);
-      const be = Math.min(busy[i].end, e);
-      if (bs > cur) {
-        segs.push({ pct: (bs - cur) / MIN_PER_DAY * 100, busy: false });
+      const c = clipInto(busy[i].start, busy[i].end, s, e);
+      if (c == null) {
+        continue;
       }
-      if (be > bs) {
-        segs.push({ pct: (be - bs) / MIN_PER_DAY * 100, busy: true });
+      if (c.start > cur) {
+        segs.push({ pct: (c.start - cur) / MIN_PER_DAY * 100, busy: false });
       }
-      if (be > cur) {
-        cur = be;
+      segs.push({ pct: (c.end - c.start) / MIN_PER_DAY * 100, busy: true });
+      if (c.end > cur) {
+        cur = c.end;
       }
     }
     if (cur < e) {
@@ -179,12 +180,15 @@ export struct DayDetailSheet {
 
   /** 页头下方的摘要行：段数与空闲总时长只算当日常规通道，旅行窗口跨整天不掺进来。 */
   private windowLead(): string {
+    const d = this.data;
     const wins: WindowSummary[] = this.regularWindows();
     const head = this.hasPartner() ? '当日共同窗口' : '当日我的空闲';
-    if (wins.length === 0) {
+    if (wins.length === 0 || d == null) {
       return head + ' 0 段';
     }
-    return head + ' ' + wins.length + ' 段 · 空闲 ' + DateLabel.duration(this.totalMinOf(wins));
+    const s = this.dayStart();
+    return head + ' ' + wins.length + ' 段 · 空闲 '
+      + DateLabel.duration(CommonTimeQueryService.regularFreeMin(d.windows, s, s + MIN_PER_DAY));
   }
 
   /** 忙碌区标题的括号部分：给出总时长，读的人不用自己加明细行。 */
@@ -193,21 +197,12 @@ export struct DayDetailSheet {
     return mins > 0 ? label + '（共 ' + DateLabel.duration(mins) + '）' : label;
   }
 
-  private totalMinOf(wins: WindowSummary[]): number {
-    let m = 0;
-    for (let i = 0; i < wins.length; i++) {
-      m += wins[i].durationMin;
-    }
-    return m;
-  }
-
   private clippedTotal(ivs: Interval[] | null): number {
-    const list = this.clipped(ivs);
-    let m = 0;
-    for (let i = 0; i < list.length; i++) {
-      m += list[i].end - list[i].start;
+    if (ivs == null) {
+      return 0;
     }
-    return m;
+    const s = this.dayStart();
+    return totalOverlap(ivs, s, s + MIN_PER_DAY);
   }
 
   /** 从「改这天」返回概览：改班立刻重算共同时间，不重新取数会把刚改的这天念成旧样子。 */

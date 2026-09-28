@@ -552,6 +552,27 @@ export default function commonTimeQueryServiceTest() {
       expect(detail.partnerShareLevel).assertEqual(3);
     });
 
+    it('regular_free_min_counts_only_the_part_inside_the_day', 0, () => {
+      // 今天 20:00 → 明天 06:00 的一段共同空闲：日详情页两天各列一次它，但每段只算属于自己那天的那一截。
+      // 旧页头直接把整段 durationMin 加进"当日空闲"，于是周六念 10 小时（其实只有 4 小时在本日内）。
+      const w = win(DAY, 1200, DAY + 1, 360, WindowChannel.REGULAR, [WindowTag.OVERNIGHT_TRIP]);
+      expect(w.durationMin).assertEqual(600);
+      expect(CommonTimeQueryService.regularFreeMin([w], DAY_START, DAY_END)).assertEqual(240);
+      expect(CommonTimeQueryService.regularFreeMin([w], DAY_END, DAY_END + MIN_PER_DAY)).assertEqual(360);
+      // 两天各算一次，加起来正好等于整段：不多算也不少算
+      expect(CommonTimeQueryService.regularFreeMin([w], DAY_START, DAY_END)
+        + CommonTimeQueryService.regularFreeMin([w], DAY_END, DAY_END + MIN_PER_DAY))
+        .assertEqual(w.durationMin);
+      // 旅行通道不掺进"当日共同空闲"（与周历同一口径）
+      const trip = win(DAY, 600, DAY + 1, 600, WindowChannel.TRIP, []);
+      expect(CommonTimeQueryService.regularFreeMin([w, trip], DAY_START, DAY_END)).assertEqual(240);
+      // 恰好从次日零点开始的窗口，与今天只相接 ⇒ 0 段分钟
+      const next = win(DAY + 1, 0, DAY + 1, 60, WindowChannel.REGULAR, []);
+      expect(CommonTimeQueryService.regularFreeMin([next], DAY_START, DAY_END)).assertEqual(0);
+      // 页头那句与 commonLabel 现在读同一个数
+      expect(CommonTimeQueryService.commonLabel([w], DAY_START, DAY_END)).assertEqual('共同空闲 4小时');
+    });
+
     it('channel_is_reported_from_the_engine_not_from_tags', 0, () => {
       const tripChannel = win(DAY + 2, 480, DAY + 4, 1080, WindowChannel.TRIP, []);
       const s = CommonTimeQueryService.summaryOf(tripChannel);

@@ -4,7 +4,7 @@ import {
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
   Window, buildAvailability, clampHorizonDays, decodeConflictHint, defaultParams, detectConflicts,
   encodeConflictHint, hintFromOutcome, HORIZON_MAX_DAYS, mergeIntervals, mkIv, todayEpochDay,
-  unionIntervals, withKeepCarried, dayOfStart, daySpan
+  unionIntervals, withKeepCarried, dayOfStart, daySpan, intersects
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import {
@@ -670,7 +670,7 @@ export class ScheduleUseCase {
     const all = await ScheduleRepo.listWindows();
     const windows: Window[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (all[i].start < dayEnd && all[i].end > dayStart) {
+      if (intersects(all[i].start, all[i].end, dayStart, dayEnd)) {
         windows.push(all[i]);
       }
     }

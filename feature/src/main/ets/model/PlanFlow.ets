@@ -6,7 +6,7 @@
  * "取消/拒绝时保留哪一份事实"这类判断留在这里，离线单测（tools/test/run.mjs）直接跑本文件。
  * 唯一的例外是 FeatureFlags：它是编译期常量而不是运行时依赖，读它不引入设备能力。
  */
-import { Interval } from 'domain';
+import { Interval, intersects } from 'domain';
 import { FeatureFlags } from '../config/FeatureFlags';
 
 /** Calendar Kit 归一后的能力结果；PlanUseCase 不直接看系统错误码。 */
@@ -262,7 +262,7 @@ function firstArrangableStart(winStart: number, winEnd: number, unavailable: Int
     let clashEnd = -1;
     for (let i = 0; i < unavailable.length; i++) {
       const iv = unavailable[i];
-      if (start < iv.end && end > iv.start && iv.end > clashEnd) {
+      if (intersects(start, end, iv.start, iv.end) && iv.end > clashEnd) {
         clashEnd = iv.end;
       }
     }

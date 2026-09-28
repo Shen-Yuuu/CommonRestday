@@ -1,5 +1,5 @@
 import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, nowEpochMin, todayEpochDay,
-  weekdayOf, dayOfStart } from 'domain';
+  weekdayOf, clipInto, dayOfStart, intersects } from 'domain';
 import { DateLabel } from 'commons';
 import {
   CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
@@ -202,7 +202,7 @@ export struct WeekScheduleView {
       const wins: WindowSummary[] = [];
       for (let i = 0; i < page.windows.length; i++) {
         const w = page.windows[i];
-        if (w.start < weekEnd && w.end > this.weekStart * MIN_PER_DAY) {
+        if (intersects(w.start, w.end, this.weekStart * MIN_PER_DAY, weekEnd)) {
           wins.push(w);
         }
       }
@@ -311,11 +311,11 @@ export struct WeekScheduleView {
     const out: WeekBlock[] = [];
     for (let i = 0; i < this.weekItems.length; i++) {
       const it = this.weekItems[i];
-      const cs = Math.max(it.start, s);
-      const ce = Math.min(it.end, e);
-      if (ce > cs) {
-        out.push({ start: cs, end: ce, name: it.name, color: it.color });
+      const c = clipInto(it.start, it.end, s, e);
+      if (c == null) {
+        continue;
       }
+      out.push({ start: c.start, end: c.end, name: it.name, color: it.color });
     }
     return out;
   }
@@ -330,10 +330,9 @@ export struct WeekScheduleView {
       if (w.channel !== WindowChannel.REGULAR) {
         continue;
       }
-      const cs = Math.max(w.start, s);
-      const ce = Math.min(w.end, e);
-      if (ce > cs) {
-        out.push({ start: cs, end: ce, winStart: w.start, winEnd: w.end });
+      const c = clipInto(w.start, w.end, s, e);
+      if (c != null) {
+        out.push({ start: c.start, end: c.end, winStart: w.start, winEnd: w.end });
       }
     }
     out.sort((a: FreeBlock, b: FreeBlock): number => a.start - b.start);
@@ -350,11 +349,11 @@ export struct WeekScheduleView {
     }
     for (let i = 0; i < list.length; i++) {
       const it = list[i];
-      const cs = Math.max(it.start, s);
-      const ce = Math.min(it.end, e);
-      if (ce > cs) {
-        out.push({ start: cs, end: ce, tag: it.tag });
+      const c = clipInto(it.start, it.end, s, e);
+      if (c == null) {
+        continue;
       }
+      out.push({ start: c.start, end: c.end, tag: it.tag });
     }
     return out;
   }
@@ -374,7 +373,7 @@ export struct WeekScheduleView {
     const e = s + MIN_PER_DAY;
     for (let i = 0; i < this.commonWindows.length; i++) {
       const w = this.commonWindows[i];
-      if (w.channel === WindowChannel.TRIP && w.start < e && w.end > s) {
+      if (w.channel === WindowChannel.TRIP && intersects(w.start, w.end, s, e)) {
         return true;
       }
     }

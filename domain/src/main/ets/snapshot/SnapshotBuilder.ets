@@ -2,7 +2,7 @@ import {
   clampHorizonDays, EngineParams, Interval, MIN_PER_DAY, MySchedule
 } from '../model/Types';
 import { buildMyAvailability } from '../engine/CommonFreeEngine';
-import { mergeIntervals, mkIv } from '../merge/IntervalOps';
+import { clipInto, mergeIntervals, mkIv } from '../merge/IntervalOps';
 import { SnapshotData } from './SnapshotCodec';
 
 const SLOT = 30;
@@ -37,14 +37,19 @@ export class SnapshotBuilder {
       busy30[i] = false;
     }
     const base = startEpochDay * MIN_PER_DAY;
+    const lastSlotMin = base + bitsLen * SLOT;
     for (let i = 0; i < merged.length; i++) {
       const iv = merged[i];
-      const fromSlot = Math.max(0, Math.floor((iv.start - base) / SLOT));
-      const toSlot = Math.min(bitsLen, Math.ceil((iv.end - base) / SLOT));
+      const c = clipInto(iv.start, iv.end, base, lastSlotMin);
+      if (c == null) {
+        continue;
+      }
+      // 起点向下取整、终点向上取整（宁可多算忙）：base 是日界，必是 SLOT 的整倍数，
+      // 所以先裁分钟再落槽与先落槽再夹界逐位一致。
+      const fromSlot = Math.floor((c.start - base) / SLOT);
+      const toSlot = Math.ceil((c.end - base) / SLOT);
       for (let s = fromSlot; s < toSlot; s++) {
-        if (s >= 0 && s < bitsLen) {
-          busy30[s] = true;
-        }
+        busy30[s] = true;
       }
     }
 

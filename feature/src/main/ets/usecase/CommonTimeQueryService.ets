@@ -2,8 +2,8 @@ import {
   CONFLICT_REASON_MIXED, CONFLICT_REASON_MY_COURSE, CONFLICT_REASON_MY_RHYTHM,
   CONFLICT_REASON_MY_SHIFT, CONFLICT_REASON_PARTNER_CHANGED, CONFLICT_REASON_PARTNER_TIME,
   CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER,
-  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, dayOfEnd, dayOfStart, daySpan,
-  decodeConflictHint, hasTagOf, overlapMin, todayEpochDay
+  Interval, MIN_PER_DAY, Window, WindowChannel, WindowTag, Clip, clipInto, dayOfEnd, dayOfStart, daySpan,
+  decodeConflictHint, hasTagOf, intersects, overlapMin, todayEpochDay
 } from 'domain';
 import { PAIRED as PAIR_PAIRED, PlanRow, ScheduleRepo, SettingsStore } from 'data';
 import { DateLabel } from 'commons';
@@ -87,7 +87,7 @@ function busyWithin(busy: Interval[], from: number, to: number): Interval[] {
     if (iv.tag === SLEEP_TAG) {
       continue;
     }
-    if (iv.start < to && iv.end > from) {
+    if (intersects(iv.start, iv.end, from, to)) {
       out.push(iv);
     }
   }
@@ -571,12 +571,13 @@ export class CommonTimeQueryService {
     const dayStart = input.day.epochDay * MIN_PER_DAY;
     const dayEnd = dayStart + MIN_PER_DAY;
     // getDayView 是单日视图：忙闲说明只覆盖窗口起始日，跨日窗口的其余日期由页面按日展开
-    const from = w.start > dayStart ? w.start : dayStart;
-    const to = w.end < dayEnd ? w.end : dayEnd;
+    const whole: Clip = { start: dayStart, end: dayEnd };
+    const c = clipInto(w.start, w.end, dayStart, dayEnd);
+    const span = c == null ? whole : c;
     const detail: WindowDetailData = {
       window: CommonTimeQueryService.summaryOf(w),
-      myBusyText: CommonTimeQueryService.myLabel(input.day, from, to),
-      partnerBusyText: CommonTimeQueryService.partnerLabel(input.day, from, to, ''),
+      myBusyText: CommonTimeQueryService.myLabel(input.day, span.start, span.end),
+      partnerBusyText: CommonTimeQueryService.partnerLabel(input.day, span.start, span.end, ''),
       partnerShareLevel: input.day.partnerShareLevel
     };
     return detail;
@@ -751,7 +752,11 @@ export class CommonTimeQueryService {
     return prefix + 'TA ' + busyLabel(segs, idleWord(from, to, day.epochDay * MIN_PER_DAY));
   }
 
-  static commonLabel(windows: Window[], from: number, to: number): string {
+  /**
+   * 常规通道窗口落在 [from,to) 内的共同空闲分钟：跨零点的窗口只算属于这一段的那一截。
+   * 说"这段时间共多久空闲"的读数都读它（页头那句"当日空闲"也是），不各自把整段 durationMin 加起来。
+   */
+  static regularFreeMin(windows: Window[], from: number, to: number): number {
     let min = 0;
     for (let i = 0; i < windows.length; i++) {
       const w = windows[i];
@@ -760,6 +765,11 @@ export class CommonTimeQueryService {
       }
       min += overlapMin(w.start, w.end, from, to);
     }
+    return min;
+  }
+
+  static commonLabel(windows: Window[], from: number, to: number): string {
+    const min = CommonTimeQueryService.regularFreeMin(windows, from, to);
     if (min <= 0) {
       return '暂无共同空闲';
     }

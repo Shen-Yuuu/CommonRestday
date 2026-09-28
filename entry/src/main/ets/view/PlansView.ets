@@ -4,6 +4,7 @@ import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult
 import { DateLabel } from 'commons';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
+import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { SkeletonBar } from '../component/Skeleton';
 import { SleepBunny } from '../component/StatePanel';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -61,6 +62,8 @@ export struct PlansView {
   };
   @State plans: PlanSummary[] = [];
   @State loading: boolean = true;
+  /** 列表是没读到还是真的空：空态卡会说"还没有计划"并推着用户去建，读失败时这句是谎。 */
+  @State failed: boolean = false;
   /** 同一时刻只放行一个写操作：改期/取消/补写日历都会重排列表，并发点击只会互相踩。 */
   @State private working: boolean = false;
   /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
@@ -81,9 +84,11 @@ export struct PlansView {
   reload(): void {
     CommonTimeQueryService.getPlanCards().then((rows: PlanSummary[]) => {
       this.plans = rows;
+      this.failed = false;
       this.loading = false;
     }).catch(() => {
       this.plans = [];
+      this.failed = true;
       this.loading = false;
     });
   }
@@ -294,6 +299,19 @@ export struct PlansView {
           if (this.loading) {
             ListItem() {
               this.skeleton()
+            }
+          } else if (this.failed) {
+            // 空态卡会念「还没有计划」并递一个"去建"的按钮：读失败时这两句都是错的。
+            ListItem() {
+              NoticeBar({
+                tone: NoticeTone.ERROR,
+                title: '计划没读到',
+                body: '不是没有计划，是这次没读出来。',
+                actionLabel: '重试',
+                onAction: () => {
+                  this.reload();
+                }
+              })
             }
           } else if (this.plans.length === 0) {
             // 空态引导（US5：窗口 → 计划的转化出口）

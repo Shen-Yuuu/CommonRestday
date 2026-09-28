@@ -5,6 +5,7 @@ import {
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { NoticeBar, NoticeTone } from './NoticeBar';
 import { appToast } from '../util/AppToast';
 
 /** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
@@ -30,6 +31,8 @@ export struct DayShiftSheet {
   @State private hasOv: boolean = false;
   @State private ovId: string = REST_ID;
   @State private loading: boolean = true;
+  /** 读失败时这一天的真相是未知的：不给选，也不说"当前是休息"（详见 load 的注释）。 */
+  @State private failed: boolean = false;
   @State private saving: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
@@ -42,6 +45,11 @@ export struct DayShiftSheet {
     this.load();
   }
 
+  /**
+   * 取这天的班次状态。失败时必须停在"未知"而不是退回空表：
+   * 空表会把界面渲染成「只剩休息可点」，而休息是真写一条覆盖——
+   * 一次读失败就被盖成"这天休息"，模板值也被遮住，用户看不出来。
+   */
   async load(): Promise<void> {
     this.loading = true;
     try {
@@ -52,11 +60,13 @@ export struct DayShiftSheet {
       this.baseId = st.baseTypeId;
       this.hasOv = st.hasOverride;
       this.ovId = st.overrideTypeId;
+      this.failed = false;
     } catch (e) {
       this.types = [];
       this.hasOv = false;
       this.ovId = REST_ID;
       this.baseId = REST_ID;
+      this.failed = true;
     }
     this.loading = false;
   }
@@ -93,6 +103,10 @@ export struct DayShiftSheet {
   }
 
   private currentNote(): string {
+    if (this.failed) {
+      // 未知就说未知：这句在页头，芯片行已经收起来了，不能还写着"当前：休息"。
+      return '这天的班表没读到';
+    }
     if (this.hasOv) {
       return '手动覆盖 · ' + this.nameOf(this.ovId);
     }
@@ -194,6 +208,17 @@ export struct DayShiftSheet {
           .fontColor(DesignTokens.textTertiary)
           .width('100%').textAlign(TextAlign.Center)
           .padding({ top: DesignTokens.space5, bottom: DesignTokens.space5 })
+      } else if (this.failed) {
+        // 不给选：状态未知时任何一次点按都是往覆盖表里写一条猜测。
+        NoticeBar({
+          tone: NoticeTone.ERROR,
+          title: '这天的班表没读到',
+          body: '为避免误改，先不给你选班次。',
+          actionLabel: '重试',
+          onAction: () => {
+            this.load();
+          }
+        })
       } else {
         Column({ space: DesignTokens.space2 }) {
           Text('这天算什么')
@@ -248,13 +273,14 @@ export struct DayShiftSheet {
       }
 
       Row({ space: DesignTokens.space3 }) {
-        Button(this.hasOv ? '清除覆盖' : '无覆盖可清除')
+        // 失败时这句也不能念"无覆盖可清除"：那是对一条没读到的数据下结论。
+        Button(this.failed ? '覆盖状态未知' : (this.hasOv ? '清除覆盖' : '无覆盖可清除'))
           .layoutWeight(1)
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .backgroundColor(DesignTokens.fillWeak)
           .fontColor(this.hasOv ? DesignTokens.textSecondary : DesignTokens.textDisabled)
           .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
-          .enabled(this.hasOv && !this.saving)
+          .enabled(!this.failed && this.hasOv && !this.saving)
           .onClick(() => this.clearOverride())
         Button('完成')
           .layoutWeight(1)

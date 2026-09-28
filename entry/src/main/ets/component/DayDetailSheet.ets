@@ -5,6 +5,7 @@ import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { NoticeBar, NoticeTone } from './NoticeBar';
 import { DayShiftSheet } from './DayShiftSheet';
 
 /** 时间轴条分段（顺序排列，宽度百分比之和 = 100）。 */
@@ -253,8 +254,16 @@ export struct DayDetailSheet {
         }.width('100%').padding({ top: 24, bottom: 24 })
         .alignItems(HorizontalAlign.Center)
       } else if (this.data == null) {
-        Text('数据加载失败，请稍后重试').fontSize(13).fontColor($r('app.color.text_tertiary'))
-          .width('100%').textAlign(TextAlign.Center).padding({ top: 24, bottom: 24 })
+        // 与首页／共同时间页同一套：失败要有重试的出口，不只是一句"请稍后重试"的灰字。
+        NoticeBar({
+          tone: NoticeTone.ERROR,
+          title: '这天的详情没读到',
+          body: '不是这天什么也没有，是这次没读出来。',
+          actionLabel: '重试',
+          onAction: () => {
+            this.load();
+          }
+        })
       } else {
         Scroll() {
           Column({ space: 14 }) {

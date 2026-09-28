@@ -7,6 +7,7 @@ import {
 import { DesignTokens } from '../theme/DesignTokens';
 import { busyTagLabel, tagColor } from '../util/WindowTagUtil';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { NoticeBar, NoticeTone } from './NoticeBar';
 
 /** 周视图模式：某一方的日程，或双方的共同空闲。 */
 export const WEEK_MODE_SCHEDULE = 'SCHEDULE';
@@ -78,6 +79,8 @@ export struct WeekScheduleView {
   @Prop @Watch('reload') refreshTick: number = 0;
   @State weekStart: number = currentWeekStart();
   @State loading: boolean = true;
+  /** 这一周是没读到，还是真的没有：两者在界面上必须是两句话（失败态不能说成"没有"）。 */
+  @State failed: boolean = false;
   @State weekItems: WeekBlock[] = [];
   @State commonWindows: WindowSummary[] = [];
   /** 共同模式的双方忙碌泳道：没有 TA 数据时 partner 为 null（右半不画，图例跟着改说法）。 */
@@ -159,9 +162,11 @@ export struct WeekScheduleView {
       const data: WeekSchedule = await ScheduleOverviewQueryService.getWeekSchedule(this.owner,
         this.weekStart);
       this.weekItems = data.blocks;
+      this.failed = false;
       this.fitAxis();
     } catch (e) {
       this.weekItems = [];
+      this.failed = true;
     }
     this.loading = false;
   }
@@ -189,10 +194,12 @@ export struct WeekScheduleView {
         }
       }
       this.commonWindows = wins;
+      this.failed = false;
       await this.loadLanes();
       this.fitAxis();
     } catch (e) {
       this.commonWindows = [];
+      this.failed = true;
     }
     this.loading = false;
   }
@@ -510,13 +517,37 @@ export struct WeekScheduleView {
         this.commonCols()
         this.busyLegendLine()
         this.commonLegend()
-        Text(this.commonNote())
-          .fontSize(11).fontColor(DesignTokens.textHint)
-          .width('100%').textAlign(TextAlign.Center)
+        if (this.failed) {
+          // 失败不能念成「这周没有共同空闲」：那句还带着"去改班表"的指令，
+          // 用户会照着一句没读出来的话去动真实排班。
+          NoticeBar({
+            tone: NoticeTone.ERROR,
+            title: '这一周没读到',
+            body: '不是没有共同空闲，是这次没读出来。',
+            actionLabel: '重试',
+            onAction: () => {
+              this.loadWeek();
+            }
+          })
+        } else {
+          Text(this.commonNote())
+            .fontSize(11).fontColor(DesignTokens.textHint)
+            .width('100%').textAlign(TextAlign.Center)
+        }
       } else {
         this.scheduleHead()
         this.scheduleCols()
-        if (this.weekItems.length === 0) {
+        if (this.failed) {
+          NoticeBar({
+            tone: NoticeTone.ERROR,
+            title: '这一周没读到',
+            body: '不是这周没有安排，是这次没读出来。',
+            actionLabel: '重试',
+            onAction: () => {
+              this.loadWeek();
+            }
+          })
+        } else if (this.weekItems.length === 0) {
           Text('这周还没有班次、课程和计划')
             .fontSize(11).fontColor($r('app.color.text_hint'))
             .width('100%').textAlign(TextAlign.Center)

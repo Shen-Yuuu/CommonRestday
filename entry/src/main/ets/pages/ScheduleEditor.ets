@@ -6,6 +6,7 @@ import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHint, nightModeIndex, nightModeOf } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
@@ -30,6 +31,8 @@ const NIGHT_MODE_OPTIONS: SelectOption[] = NIGHT_MODE_LABELS.map((label: string)
 struct ScheduleEditor {
   @State owner: string = OWNER_ME;
   @State types: ShiftType[] = [];
+  /** 读失败要说成"没读到"：留一片空白会被读成"我的班次类型都没了"（同 D-22 的口径）。 */
+  @State failed: boolean = false;
   @State editing: ShiftType | null = null;
   /** 编辑中的是否为已落库班次（false = 新增未保存，删除按钮退化为取消）。 */
   @State persisted: boolean = false;
@@ -54,8 +57,10 @@ struct ScheduleEditor {
       return ScheduleRepo.listShiftTypes(this.owner);
     }).then((list: ShiftType[]) => {
       this.types = list;
+      this.failed = false;
     }).catch(() => {
       this.types = [];
+      this.failed = true;
     });
   }
 
@@ -187,6 +192,19 @@ struct ScheduleEditor {
         Text('+ 新增').fontSize(15).fontColor($r('app.color.brand_pink')).onClick(() => this.newOne())
       }
       .width('100%').padding(12)
+
+      if (this.failed) {
+        // 空列表在这里没有任何说法，读失败与"一个班次类型都没有"看上去一模一样。
+        NoticeBar({
+          tone: NoticeTone.ERROR,
+          title: '班次类型没读到',
+          body: '不是还没有班次类型，是这次没读出来。',
+          actionLabel: '重试',
+          onAction: () => {
+            this.reload();
+          }
+        })
+      }
 
       List({ space: 10 }) {
         ForEach(this.types, (st: ShiftType) => {

@@ -105,7 +105,7 @@ export class CardSummaryService {
       return answers(CardState.NEXT_FULL_REST, full, tonight, home.computedAt, solo);
     }
     // 有数据也算完了，但两个答案都给不出：说"暂无"而不是猜一个时间
-    return prompt(CardState.NO_RESULT, question, '视界内暂无' + (solo ? '空闲' : '共同空闲'),
+    return prompt(CardState.NO_RESULT, question, '暂无' + (solo ? '空闲' : '共同空闲'),
       '放宽作息，或往后多看几天', '点开挑日子', CardRoutes.COMMON_TIME, home.computedAt);
   }
 }

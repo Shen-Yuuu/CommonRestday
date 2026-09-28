@@ -304,7 +304,7 @@ export class ProfileSettingsService {
     }
     const code = codeText.trim();
     if (code.length !== 6 || Number.isNaN(Number(code))) {
-      return fail('请输入对方分享的 6 位配对码');
+      return fail('请输入 TA 分享的 6 位配对码');
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
@@ -396,7 +396,7 @@ export class ProfileSettingsService {
       }
       // WAITING / EXPIRED / REVOKED / 未知：本机跟着回落，不替云端谎报进度
       await SettingsStore.setPairState(session.status === 'WAITING' ? PAIR_WAITING : PAIR_NONE, '');
-      return fail(session.status === 'WAITING' ? '对方还没有输入配对码' : '这次配对已经失效，重新配对一次');
+      return fail(session.status === 'WAITING' ? 'TA 还没有输入配对码' : '这次配对已经失效，重新配对一次');
     } catch (e) {
       Logger.warn(TAG, 'pairStatus degraded: ' + (e as Error).message);
       return fail(ProfileSettingsService.degradedMessage(e));

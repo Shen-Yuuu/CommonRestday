@@ -128,7 +128,7 @@ export default function conflictTest() {
     });
 
     it('coarse_partner_data_never_gets_a_shift_explanation', 0, () => {
-      // L1/L2 位图解码出来标签全是 BUSY：这种数据里睡眠和班次分不开，只能报"对方时间发生变化"
+      // L1/L2 位图解码出来标签全是 BUSY：这种数据里睡眠和班次分不开，只能报"TA 的时间有变"
       const plan = mkPlan('p1', base + 1140, base + 1290);
       const coarse: Interval[] = [mkIv(base + 1150, base + 1200, 'BUSY')];
       const coarseSrc: ConflictSources = { my: [], partner: coarse };

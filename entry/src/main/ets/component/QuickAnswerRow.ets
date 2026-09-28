@@ -45,7 +45,7 @@ export struct QuickAnswerRow {
       return '数据可能过期';
     }
     if (this.answerState === AnswerState.UNKNOWN) {
-      return '缺少对方的数据';
+      return '缺少 TA 的数据';
     }
     if (this.answerState === AnswerState.UNAVAILABLE) {
       return '暂时算不出结果';

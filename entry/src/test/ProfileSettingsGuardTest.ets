@@ -182,7 +182,7 @@ export default function profileSettingsGuardTest() {
         // 开档：加入停在 PENDING，绝不就地 PAIRED（协议 §4.2），非法码也不许先发请求
         expect(res.ok).assertTrue();
         expect(junk.ok).assertFalse();
-        expect(junk.message).assertEqual('请输入对方分享的 6 位配对码');
+        expect(junk.message).assertEqual('请输入 TA 分享的 6 位配对码');
         expect(AgcPairingClient.calls).assertEqual(1);
         // ensureIdentity + agreeKey：加入方就地完成协商，钥匙不在手就不写 pairId
         expect(PairKeyStore.calls).assertEqual(2);
@@ -215,8 +215,8 @@ export default function profileSettingsGuardTest() {
       expect(res.ok).assertFalse();
       expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
       if (CLOUD_ON) {
-        // 替身回的 WAITING → 照实回落并说出"对方还没有输入配对码"，不替云端谎报进度
-        expect(res.message).assertEqual('对方还没有输入配对码');
+        // 替身回的 WAITING → 照实回落并说出"TA 还没有输入配对码"，不替云端谎报进度
+        expect(res.message).assertEqual('TA 还没有输入配对码');
         expect(AgcPairingClient.calls).assertEqual(1);
         expect(PairKeyStore.calls).assertEqual(0);
         return;
@@ -249,7 +249,7 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getPairId()).assertEqual('');
       expect(ProfileSettingsService.getOutboundToken()).assertEqual(tokenBefore);
       if (CLOUD_ON) {
-        // 开档：手里没有会话时，别人发来的凭据本身不算数（拒绝话术换成"还没有配对会话"）
+        // 开档：手里没有会话时，别人发来的凭据本身不算数（拒绝话术是"现在没有要确认的配对"）
         expect(res.message !== CLOSED).assertTrue();
         // 有会话、且云端回的正是 ACTIVE，才轮到写 PAIRED
         await SettingsStore.savePairId('session-from-the-cloud');

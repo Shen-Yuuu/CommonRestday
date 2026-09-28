@@ -3,13 +3,13 @@ import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
 /**
  * 计划冲突提示条：只在真有冲突时出现，点进去到共同时间的计划分段处理。
- * 首页只给"几条 + 是谁的时间变了"（reason 来自读模型，已按对方隐私等级降维），
+ * 首页只给"几条 + 是谁的时间变了"（reason 来自读模型，已按 TA 的共享等级降维），
  * 具体哪条计划、能不能改期由计划分段展示，这里不复制结论文案。
  */
 @Component
 export struct ConflictNotice {
   @Prop conflictCount: number = 0;
-  /** 冲突归因摘要（'你的日程有变' / '对方时间发生变化' …）；'' = 读模型没给归因。 */
+  /** 冲突归因摘要（'你的日程有变' / 'TA 的时间有变' …）；'' = 读模型没给归因。 */
   @Prop reason: string = '';
   onTap: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;

@@ -88,7 +88,7 @@ export interface HomeSummary {
   trip: QuickAnswer;
   nextWindow: WindowSummary | null;
   conflictCount: number;
-  /** 冲突归因摘要（如"对方时间发生变化"）；无冲突为 ''。 */
+  /** 冲突归因摘要（如"TA 的时间有变"）；无冲突为 ''。 */
   conflictReason: string;
   today: TodaySummary;
   computedAt: number;
@@ -104,7 +104,7 @@ export interface WindowFilter {
 /**
  * 计划冲突解释（阶段 2 Task 2.3）。
  * 文案由 feature 生成，reasonCode 是稳定契约：UI 按码决定给不给"改到替代时间"，
- * 不靠猜文案；对方隐私等级不足时 reasonText 只会是"对方时间发生变化"。
+ * 不靠猜文案；TA 只给了粗粒度忙闲时 reasonText 只会是"TA 的时间有变"。
  */
 export interface PlanConflictView {
   /** CONFLICT_REASON_*（domain）；'' = 旧数据未归因。 */

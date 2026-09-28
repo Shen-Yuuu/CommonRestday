@@ -496,7 +496,7 @@ export default function commonTimeQueryServiceTest() {
 
       expect(sums[1].conflictText.indexOf('班') >= 0).assertFalse();
       expect(sums[1].conflictText.indexOf('课') >= 0).assertFalse();
-      expect(sums[1].conflictText.indexOf('对方时间发生变化') >= 0).assertTrue();
+      expect(sums[1].conflictText.indexOf('TA 的时间有变') >= 0).assertTrue();
       // 没有替代窗口时如实说没有：不能对着一个不存在的时段叫用户"改到"
       expect(sums[1].conflictText.indexOf('暂无替代时段') >= 0).assertTrue();
       expect((sums[1].conflict as PlanConflictView).altStart).assertEqual(0);
@@ -506,15 +506,15 @@ export default function commonTimeQueryServiceTest() {
         hintOf(CONFLICT_REASON_MIXED, CONFLICT_SOURCE_BOTH, 1140, 1200, 1380, 1500, true), 1200, 1290);
       const keptSums = CommonTimeQueryService.planSummaries([kept], NOW);
       expect((keptSums[0].conflict as PlanConflictView).kept).assertTrue();
-      expect(keptSums[0].conflictText.indexOf('与你的安排冲突，对方时间也发生了变化') >= 0).assertTrue();
+      expect(keptSums[0].conflictText.indexOf('与你的安排冲突，TA 的时间也有变') >= 0).assertTrue();
 
-      // 首页一句话摘要按来源级别合并：涉及对方就不细分是谁的哪件事
+      // 首页一句话摘要按来源级别合并：涉及 TA 就不细分是谁的哪件事
       expect(home(ExperienceMode.LOCAL_PARTNER, [], [mine, kept], soloDay(), FRESH, '小陈')
         .conflictReason).assertEqual('你们的日程有变');
       expect(home(ExperienceMode.LOCAL_PARTNER, [], [mine], soloDay(), FRESH, '小陈')
         .conflictReason).assertEqual('你的日程有变');
       expect(home(ExperienceMode.LOCAL_PARTNER, [], [coarse], soloDay(), FRESH, '小陈')
-        .conflictReason).assertEqual('对方时间发生变化');
+        .conflictReason).assertEqual('TA 的时间有变');
       // 旧格式 hint 归不出因：说不清是谁的时间就不下结论
       const legacy = plan('p4', 'CONFLICT', '{"altStart":' + (DAY_START + 1380) + ',"altEnd":'
         + (DAY_START + 1500) + '}', 1200, 1290);

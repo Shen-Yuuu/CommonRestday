@@ -108,7 +108,7 @@ export default function cardSummaryServiceTest() {
       const h = homeOf(COUPLE, [], PARTNER_DAY, FRESH, '小陈');
       const m = cardOf(h, true);
       expect(m.state).assertEqual(CardState.NO_RESULT);
-      expect(m.hero).assertEqual('视界内暂无共同空闲');
+      expect(m.hero).assertEqual('暂无共同空闲');
       expect(m.route).assertEqual('common-time');
     });
 
@@ -119,7 +119,7 @@ export default function cardSummaryServiceTest() {
       expect(m.question).assertEqual('今晚有空吗');
       const empty = cardOf(homeOf(ExperienceMode.SOLO, [], dayOf('NONE', 0), FRESH, ''), true);
       expect(empty.question).assertEqual('我的时间');
-      expect(empty.hero).assertEqual('视界内暂无空闲');
+      expect(empty.hero).assertEqual('暂无空闲');
       // 主语可以退，名词不能另起一个：单人态的完整休息日与已配对念同一个词
       const soloFull = cardOf(homeOf(ExperienceMode.SOLO, [FULL_W], dayOf('NONE', 0), FRESH, ''), true);
       expect(soloFull.state).assertEqual(CardState.NEXT_FULL_REST);

@@ -236,10 +236,10 @@ function conflictReasonText(code: string): string {
     return 'TA 这段时间有安排了';
   }
   if (code === CONFLICT_REASON_PARTNER_CHANGED) {
-    return '对方时间发生变化';
+    return 'TA 的时间有变';
   }
   if (code === CONFLICT_REASON_MIXED) {
-    return '与你的安排冲突，对方时间也发生了变化';
+    return '与你的安排冲突，TA 的时间也有变';
   }
   return '与日程冲突';
 }
@@ -255,7 +255,7 @@ function conflictTextOf(row: PlanRow): string {
 
 /**
  * 首页冲突归因摘要：一句话说清"该找谁"。
- * 对方数据可能只是粗粒度忙闲，所以涉及对方时一律只说"对方时间发生变化"。
+ * TA 那边可能只有粗粒度忙闲，所以涉及 TA 时只说"TA 的时间有变"，不猜原因。
  */
 function conflictReasonTextOf(rows: PlanRow[]): string {
   let mine = false;
@@ -284,7 +284,7 @@ function conflictReasonTextOf(rows: PlanRow[]): string {
     return '你们的日程有变';
   }
   if (partner) {
-    return '对方时间发生变化';
+    return 'TA 的时间有变';
   }
   if (mine) {
     return '你的日程有变';

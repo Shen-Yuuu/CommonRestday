@@ -267,7 +267,7 @@ export struct MeView {
       return FeatureFlags.cloudPairing ? '已配对' : '已标记配对';
     }
     if (this.pairState === PAIR_WAITING) {
-      return '等待对方输码';
+      return '等待 TA 输码';
     }
     if (this.pairState === PAIR_PENDING) {
       return '等待确认';
@@ -492,17 +492,17 @@ export struct MeView {
       return '我 & ' + this.pNick;
     }
     if (this.pairState === PAIRED) {
-      return '我 & 对方';
+      return '我 & TA';
     }
     return '我（单人模式）';
   }
 
   private identitySub(): string {
     if (this.pairState === PAIR_WAITING) {
-      return '等待对方输入配对码';
+      return '等待 TA 输入配对码';
     }
     if (this.pairState === PAIR_PENDING) {
-      return '已加入 · 还差对方确认，尚未同步';
+      return '已加入 · 还差 TA 确认，尚未同步';
     }
     if (this.pairState === PAIRED) {
       if (!FeatureFlags.cloudPairing) {
@@ -523,7 +523,7 @@ export struct MeView {
 
   // ---------- 隐私共享等级（L1/L2/L3 切换 + 持久化） ----------
 
-  /** 各等级"对方可见内容"对照说明。 */
+  /** 各等级 TA 能看到多少。 */
   levelDesc(level: number): string {
     if (level === 1) {
       return 'TA 只看得到你有空还是在忙，看不到原因和具体时间';

@@ -140,7 +140,7 @@ export struct DayDetailSheet {
     return segs;
   }
 
-  /** 对方数据来源/隐私等级说明。 */
+  /** TA 那边这份数据的来源与共享等级。 */
   partnerNote(): string {
     if (this.data == null || this.data.partnerBusy == null) {
       return '';
@@ -149,12 +149,12 @@ export struct DayDetailSheet {
       return '来源：本机代录（完整时段）';
     }
     if (this.data.partnerShareLevel === 1) {
-      return '来源：加密快照 · 对方仅共享忙闲状态';
+      return '来源：加密快照 · TA 只共享忙闲状态';
     }
     if (this.data.partnerShareLevel === 2) {
-      return '来源：加密快照 · 对方共享忙碌类型（30 分钟精度）';
+      return '来源：加密快照 · TA 共享忙碌类型（30 分钟精度）';
     }
-    return '来源：加密快照 · 对方共享完整时段';
+    return '来源：加密快照 · TA 共享完整时段';
   }
 
   /** 单人态下这些窗口就是"我的空闲"，不该谎称共同（与页头口径一致，D-23 顺手收敛）。 */

@@ -302,8 +302,16 @@ Z5（`df7ab53`）→ Z6（`2dd2a6e`），收口与 D-49 撤案见 §8.11。它�
 把新结果盖回旧结果，或它的 `catch` 把好数据念成"没读到"。
 〔对上句的偏离说明〕AA 不碰读模型、不碰协议、不碰 `CRD1`：改的全是视图层"读数何时允许落进 `@State`"
 的接线，属于第 4 条那句"每批一个提交、每批结束跑完整门禁"之内的自主空间。
-W／Z／AA 三批攒下的设备复验（Z 那五处失败态、AA 的四类连点、X 的两条、§11 第 3／6／8 条）
-仍排在同一个阻塞上：两台 HVD 都是 `Offline`。
+
+**AB 批次已于 2026-09-28 收线**：AB1＋AB2 一笔收在 `beab821`，见 §8.14。它管的是**写的那一侧**——
+AA 把读数落地顺序修完之后，同一个用户可见症状（"改了不跟着变"／"改掉的又回来了"）还剩一条来路：
+一次点击被数成两次（每次现生成主键的提交落两行），以及同一段重算被并行起两次（缓存表里两代并存，
+脏在库里，页面怎么重读都读不回来）。修法一个上闩一个排队，都没新造机制：闩沿用仓内既有形状，
+队列是 @kit-free 的 32 行原语，接进 `recompute` 之前先证了关键段不会再排同一个队列。
+〔对上句的偏离说明〕AB 不碰读模型、不碰协议、不碰 `CRD1`：改的是写侧的落地顺序与提交主键形状，
+仍在第 4 条那句"每批一个提交、每批结束跑完整门禁"之内的自主空间。
+W／Z／AA／AB 四批攒下的设备复验（Z 那五处失败态、AA 的四类连点、AB 的三处连点与一次重叠复现、
+X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`（AB 收口时再验过一次）。
 
 ---
 
@@ -314,6 +322,7 @@ W／Z／AA 三批攒下的设备复验（Z 那五处失败态、AA 的四类连�
 - 2026-09-28 批次 X（逻辑严谨）：X1 见 §8.4，提交 `6337a51`；X2／X3 见 §8.5，提交 `79fb174`。
 - 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`；Z6（D-50 · 心跳跟手）见 §8.12，提交 `2dd2a6e`；收口（全量门禁＋D-49 撤案）见 §8.11。
 - 2026-09-28 批次 AA（读数落地顺序）：D-51 见 §8.13，AA1（闸门本体 + 八个读数点接线）提交 `ff37490`；AA2（静态门禁 `landing:` 并入退出码 + 本文档收口）＝本笔。
+- 2026-09-28 批次 AB（写侧重入与重算串行）：D-52 见 §8.14，代码＋门禁一笔提交 `beab821`（AB1 三处闩 + 判据 R4；AB2 `SerialQueue` + `recompute` 排队 + 五格离线用例）；§8.14 与 §7 的收口段随本文档这一笔入库。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -897,3 +906,120 @@ R3 挂在 `@Prop` 上的 `@Watch` 若目标会跨 await 重读（含一层被调
 （把可达序列变成不可达），不是现场复现，所以以下都还是待验：连点周历翻页／连点「我的·TA」胶囊／
 连点共同时间筛选芯片／班次页与课程页连点删除，各要一次 `dumpLayout` 或截图对照（前四项目前只有静态与
 编译两级）。这一族和设备那一头的其他欠账（§11 第 3／6／8 条、批次 Z 那五处）合到同一个设备会话里做。
+
+### 8.14 批次 AB·D-52：同一次点击被数成两次，同一段重算叠成两代（提交 `beab821`）
+
+〔这一族在写的那一侧〕AA（§8.13）管的是**读数**落地顺序，全部改动都在视图层。AB 管**写**：
+同一个动作被点两下（AB1），以及同一段重算被八个文件里的 18 个调用点各起一次（AB2）。
+症状与 Z／AA 同形（"改了不跟着变"／"改掉的又回来了"），但脏的不是 `@State`，是库里的行——
+页面重读也读不回来，只能等下一次写或下一次重算把它盖掉。
+
+〔AB1 的判据为什么缩到"现生成主键"〕`ScheduleRepo` 清一色 `INSERT OR REPLACE`
+（`:80` shift_type、`:165` schedule_override、`:198` course、`:266` term_config、`:300` plan、`:459` computed_window），
+**幂等只在同主键上成立**。主键固定的那一族重入只会合同一行（`term_config` 的 `id=1`、
+`cycle_template` 每 owner 一行），所以"连点两下＝两行重复"只可能发生在**每次点击现生成 UUID** 的提交上。
+按这条盘点 `entry/src/main/ets`，命中五处：
+
+| 提交函数 | 主键从哪来 | 缺闩的后果 | 处置 |
+|---|---|---|---|
+| `CourseImport.saveParsed`（`:143`） | 每条课程现生成（`:150`） | 连点两次「保存通过项」＝整批课程各落两遍 | 上闩 `submitting`（`:55`），按钮 `:315` 同时禁用 |
+| `CourseImport.saveManual`（`:171`） | 现生成（`:182`） | 连点两次「添加课程」＝同一门课两行 | 与上同**一颗闩**（两按钮都 `.enabled(!submitting)`，一次只让一个写在路上） |
+| `OcrCourse.saveParsed`（`:89`） | 与 `CourseImport` 同形 | 同上 | **只记账不动代码**：课程照片识别按 2026-09-28 的裁定"先不做"，进 `EXEMPT_SUBMIT`，理由里写明重启该功能时第一件事是上闩并删掉这一格 |
+| `ScheduleEditor.save`（`:163`） | `:171` 三元的 else 支 | —— | **判定后撤回**（见下） |
+| `CycleEditor.save`（`:83`） | 恒为 `'main'`（`:92`），R4 看不见它 | 两次点击排成 delete→delete→insert→insert，后一次 insert 撞刚建好的那一行 → 命令层回 `WRITE_FAILED`，**一次已经落库的保存被念成"保存失败"** | 上闩（人工盘点所得，见"R4 的盲区"） |
+
+〔配方沿用仓内既有形状〕首行 `if (this.submitting) { return; }` → 发起前置 `true` → `await` 回来置 `false`
+→ 按钮 `.enabled(!this.submitting)`。先例：`WindowDetailSheet.submitPlan`、`DayShiftSheet.write`、
+`PlansView` 的六处 `working`、`PlanUseCase.ets:49` 的 `const CREATE_LATCH = new SubmitLatch()`。
+没有新造机制，也没有给删除按钮上闩（`removeCourse`／`removeShiftType`／`removeTemplate` 都是按 id 的
+单条 `DELETE`，重入合同一个终态，最坏是两句 toast，不是数据形状坏了）。
+
+〔一处判定被自己撤回，这正是 §8.11 的 D-49 教训〕`ScheduleEditor.save` 一开始被算进"要上闩"，
+`@State submitting` 都写进去了；读完 `newOne()`（`:114`）与本页渲染条件（`if (this.editing != null)`，`:254`）
+后**回滚**：id 是在点「+ 新增」那一刻就生成好并存进 `editing` 的，`:171` 那个三元的 else 支（`editing == null`）
+在本页走不到，"连点保存落两行"这条序列组不出来。别为组不出的序列上闸门——那次撤回的编辑没有留在树里，
+但它现在是 `EXEMPT_SUBMIT` 里的一格理由，写的是"哪条渲染条件挡住了它"，条件一变就得回来重判。
+
+〔R4 的盲区，写进规则自己的文件头〕R4 的判据是"每次点击现生成主键"，所以**固定主键但写入非事务**的
+那一族它看不见——`CycleEditor.save` 就是这么漏过规则、由人工盘点补上的（`saveTemplate` 是
+`ScheduleRepo.ets:128–133` 的"先 delete 再 insert"两条独立 SQL，没包在事务里）。要判它得能看见 repo 的
+SQL 形状，而 R4 的扫描面只有 `entry/src/main/ets`（闸门管的是组件状态落地顺序与按钮重入，纯逻辑层没有
+`@State`）。这一条同时写进 `landing-audit.mjs` 的"判不了的情形"与 `tools/test/README.md`：
+下一个人按"这笔写入是否由两条以上非事务 SQL 组成"自查，别指望规则替你逮。
+
+〔AB2 的机制：不是"旧盖新"，是"两代并存"〕`ScheduleUseCase.recompute` 的关键段是
+读输入 → 引擎 → `ScheduleRepo.replaceWindows(result.windows, Date.now())`（`:454`）写缓存表 → 回写冲突。
+而 `replaceWindows` 的清理是 `DELETE FROM computed_window WHERE computed_at < ?`（`:464`）——**只删更旧的**。
+于是两次重算重叠时，先起的那次（`computed_at` 更小）晚落地：它的 delete 扫不掉新一代，
+它自己那批行又全数插了进去（`computed_window` 主键是 `(start_min, end_min)`，交集部分被回写成旧一代的
+时间戳，差集部分谁也不删谁）→ 表里**两代并存**。用户可见症状是"已经改掉的班还在"，
+而且脏在库里，页面怎么重读都读不回来，只能等下一次重算自愈。入口按文件数是八个：
+`ScheduleCommandService:163`、`PlanUseCase:123/:425`、`ProfileSettingsService` 八处
+（`:147/:189/:201/:222/:389/:423/:544/:680`）、`PullRefresh:14`、`HomeView:107`、`CoTimeView:187`、
+`EntryAbility:40/:95`、`FormAbility:133`——写命令、下拉刷新、日切、冷启动/回前台、桌面卡片全在里面，
+重叠不是边角情形而是常态。
+〔修法：把重算排成独占队列，不碰引擎〕新增 `feature/src/main/ets/model/SerialQueue.ets`（32 行，@kit-free）：
+`run<T>(work)` 把每次调用接到上一条 promise 后面，返回的 promise 与任务同结果同失败，
+`finally` 里放行下一位。接线只有三行形状（`ScheduleUseCase.ets:161`）：
+
+```ts
+const RECOMPUTE_QUEUE = new SerialQueue();          // 模块级，仿 PlanUseCase:49 的 CREATE_LATCH
+static recompute(startEpochDay: number): Promise<CommonFreeResult> {
+  return RECOMPUTE_QUEUE.run((): Promise<CommonFreeResult> => ScheduleUseCase.recomputeLocked(startEpochDay));
+}
+private static async recomputeLocked(...)           // 原函数体整块降级，一行没改
+```
+
+排开之后新一代的 `computed_at` 必然更大，它那次 `DELETE ... < ?` 正好扫掉所有旧行——
+**这不是新语义，是原有清理条件本来就假定的前提**（"我这一批是最新的一代"）。
+广播留在队列外：`onScheduleChanged`（`:564`）与 `pullToRefresh`（`:581`）各自 `await` 排队后的 recompute
+再自增 `recomputeCount`，所以"每次调用各广播一次"的既有语义不变，只是重算这一段不再并行。
+
+〔一条约束要先证明才敢接〕**排进队列的任务里不许再排同一个队列**（嵌套会自己等自己，永久卡住）。
+这条在本 App 里成立，是接线前查的：`recomputeLocked` 关键段内的两个跨 await 调用——
+`buildPartnerBusy → pullPartnerSnapshot`（只读云 + 写 SettingsStore 缓存）与
+`detectAndWriteConflicts`（只碰 ScheduleRepo）——都不回调 `recompute`／`onScheduleChanged`。
+约束也写进了 `SerialQueue.ets` 的文件头，接新任务时先复核这一点。
+
+〔离线用例五格，并把"为什么这一族能真测"说清〕`entry/src/test/SerialQueueTest.ets`（新增 128 行，
+注册在 `List.test.ets`）：`runs_one_at_a_time_in_submission_order`（并发峰值恒为 1，慢的先发起也要先落地）、
+`each_caller_gets_its_own_result`（泛型返回值不串号）、`a_failing_task_rejects_its_caller_and_lets_the_next_run`
+（抛错只炸自己，队列不锁死）、`keeps_accepting_work_after_draining`（排空后还接得下活）、
+`a_task_is_not_interleaved_between_its_read_and_its_write`（一段任务里"读→写回"中间不插别人——正是
+`replaceWindows` 要的形状）。
+〔活性探针〕把 `previous.then` 临时换成 `Promise.resolve(undefined).then`（即取消排队）重跑本 suite：
+两条 FAIL —— `expected 1 but got 3`（峰值）与 `read-a,read-b,write-b,write-a`（交错，正是两代并存那条序列），
+其余三格仍过；改回即全绿。探针是临时改仓内文件跑的，用完还原，不入库。
+为什么这一族值得写用例而 AA 的闸门不值得（§8.13）：`feature/src/main` **参与转译**，队列是真的被跑；
+而被接线的那一段 `ScheduleUseCase.ets` 在离线面是桩（`run.mjs` 的 skip 表），所以**队列本身离线可测，
+"重算真的排进去了"只有编译与设备侧能验**——这句话要说在前头，别让五格用例冒充成接线覆盖。
+
+〔门禁实测·AB 收口（2026-09-28，`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0）〕
+
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`229 passed / 0 failed`**（AA 收口那次是 224，
+  多的五格就是 `serialQueue`），exit 0。`tools/test/out/last-run.log` 第 3 行
+  `landing: PASS（读数落地闸门齐、领过号都问过归属、现生成主键的提交都上了闩）`——R4 那句话已经进了口径行；
+  `copy: PASS`／`a11y: PASS` 同场。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，未上调）；`ohostest`：`BUILD SUCCESSFUL`，
+  `ArkTS:WARN 269`（基线 269）。本批改到的七个文件（闩两页 + 队列 + 接线 + barrel + 用例两处）没带进新告警；
+  **重算的接线在离线面是桩、在编译面是真的**：`ScheduleUseCase.ets` 的 `recompute`／`recomputeLocked`
+  分裂由 `debug`/`release`/`ohostest` 三档编译校验，这一层不能靠五格用例冒充。
+- `perf`：exit 0——`page_projection_44w` 80 行 `0.060/0.155/0.235`、`page_projection_1000w` 60 行
+  `0.747/1.415/1.522`；视界扫描（paired，P50）60d=4.5ms … 366d=94.0ms。与 AA 收口那次（366d=84.6ms）同量级，
+  队列只是多一次 promise 交接，这台开发机的 run-to-run 抖动本来就在这个幅度〔判断〕——
+  和 AA 一样，这一批改的是顺序，不是时间。
+- 静态侧另跑过两次独立复验。R4 探针（`harmony/.crdtest/probe-r4.mjs`，仓库外、用完即删）把 `EXEMPT_SUBMIT`
+  清空后跑真仓：命中 **2** 条（`OcrCourse#saveParsed`、`ScheduleEditor#save`，正是豁免表里写着理由的那两条），
+  其余规则 0 命中；再把 `CourseImport.saveParsed` 的首行 `if (this.submitting)` 临时删掉重跑，命中升到 **3**
+  并第一条就是它——**这条规则会在真的漏闩时变红**，不是只对着豁免表念数字。两处临时改动都已还原
+  （`grep -c "if (this.submitting)"` 仍为 2）。SerialQueue 的**反向探针**（临时把队列改成不排队）
+  让五格里的两格 FAIL（峰值 `expected 1 but got 3`，以及 `read-a,read-b,write-b,write-a` 那条交错），
+  改回即全绿。
+
+〔证据缺口（不勾选）〕AB1 的连点复验：`uitest uiInput` 对「保存通过项」「添加课程」「更新模板」各连点两下，
+再数课程行数／看模板是否只剩一行——`dumpLayout` 不体现行数，得配合列表页截图或读库。
+AB2 的现场复现更难撞：引擎段在开发机是毫秒级（见 perf 数字），要重叠得刻意把视界拉到 366d
+再在重算飞行途中触发第二次（下拉刷新与保存同排、或卡片刷新与页面保存同排）。
+两条都和 §11 第 3／6／8 条、批次 Z 那五处、AA 那四类连点合到**同一个设备会话**里做；
+该会话仍然阻塞在同一件事上：两台 HVD 都是 `TCP Offline`。
+

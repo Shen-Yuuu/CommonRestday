@@ -15,8 +15,10 @@
  *    那句口号没改，用户读到的还是同一句假话（R1 的界面侧）；
  * 6. `clearAllMessageOf` 里不许再出现"稍后重试"，且 `cleanupMessageOf` 必须还有（R2：
  *    清库后重试凭据已随本机记录一起删掉，取消/改期那条路径则留着句柄）；
- * 7. 一句说法只许由一颗节点念出来：`NoticeBar` / `StatePanel` 的显示字段是**普通成员**，
- *    父页重渲染不更新它们，所以这些字段里出现三元表达式（同一颗节点换颜色换字）即判违规（D-45）。
+ * 7. 说法的载体必须跟手：`NoticeBar` / `StatePanel` 的说法字段（tone/title/body/kind/description/
+ *    actionLabel/glyph）声明时得由 `@Prop` 一类的装饰器持有。普通成员只在子组件构造时赋值一次，
+ *    而"门槛没变、说法变了"是这一族组件的常态（同一格 WARN 里换了 code，空态里换了筛选），
+ *    于是节点留着、句子冻在上一份真相上（D-46）。
  *
  * 违反即由调用方（`tools/test/run.mjs`）非零退出，不参与"绿"的定义就不算检查。
  */
@@ -168,70 +170,56 @@ function describeDiff(label, expected, actual, out) {
 }
 
 /**
- * 只负责"一句说法一颗节点"的那一类组件：它们的显示字段是普通成员（不是 @Prop），
- * 所以值换了也不会重渲染——一个块只能念一种说法。
+ * 说"当前真相"的那一类组件：它们的显示字段是说法的载体。
+ * 回调（onAction）不在内——函数不能做 @Prop，而闭包读的是父组件的当前状态，本来就跟手。
  */
 const SENTENCE_NODES = ['NoticeBar', 'StatePanel'];
 /** 上面这些节点里承载"说法"的参数（回调与布局参数不在内）。 */
 const SENTENCE_FIELDS = ['tone', 'kind', 'title', 'body', 'description', 'actionLabel', 'glyph'];
-
-/** 从 `Name({` 起按花括号配平切出实例块：随包源码的字符串里不写花括号，够用了。 */
-function instanceBlocks(src, componentName) {
-  const out = [];
-  const head = new RegExp('\\b' + componentName + '\\(\\s*\\{', 'g');
-  let m = head.exec(src);
-  while (m !== null) {
-    const open = src.indexOf('{', m.index);
-    let depth = 0;
-    let i = open;
-    for (; i < src.length; i += 1) {
-      if (src[i] === '{') {
-        depth += 1;
-      } else if (src[i] === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          break;
-        }
-      }
-    }
-    out.push({ line: src.slice(0, open).split('\n').length, text: src.slice(open, i + 1) });
-    head.lastIndex = i + 1;
-    m = head.exec(src);
-  }
-  return out;
-}
-
-/** 剥掉字符串字面量：`glyph: '?'` 里那个问号不是三元。 */
-function stripStrings(s) {
-  return s.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
-}
+/** 会随父页重渲染而更新的装饰器。 */
+const REACTIVE_DECORATORS = ['@Prop', '@State', '@Link', '@ObjectLink', '@Provide', '@Consumer'];
 
 /**
- * D-45：把"读失败"和"结果过期"挂在同一颗 NoticeBar 上、靠 `tone: failed ? ERROR : WARN`
- * 换色换字，是这一族组件最容易被顺手写出来的错——字段是普通成员，父页重渲染不更新它们，
- * 于是 stale→failed 那次下拉之后，界面上还念着"班表可能变了，重新算一次"，而真相是没读出来。
- * 判据只有一条：这些参数里不许出现三元。一种说法一颗节点，各挂在自己的 if 上。
+ * D-46：字段是普通成员时只在子组件构造时赋值一次，父页重渲染不改它。
+ * 而这一族组件的说法多半由好几个状态算出来（同一格 WARN 里换了 code、空态里换了筛选），
+ * 门槛不变、节点不拆，屏幕上就留着上一份真相的句子——所以判据钉在组件自己的声明上：
+ * 说法字段必须由会跟手的装饰器持有。
+ * 刻意**不**禁三元：Z1 一度禁"同一颗节点用三元换说法"，那条判据把机制搞反了——
+ * 字段跟手之后，同一颗节点换色换字正是这类组件该有的写法（撤回记录见交付文档 §8.7）。
  */
-function auditSentenceNodes(repo, violations) {
-  for (const rel of listSource(repo, 'entry/src/main')) {
-    if (!rel.endsWith('.ets')) {
+/**
+ * 这一行声明挂的是哪个装饰器：写在同一行，或写在上面的装饰器行（跳过注释与空行）。
+ * 只认"上一行整行就是个装饰器"，否则紧邻的上一条声明（`@Prop tone: ...`）会把没装饰的字段也放行。
+ */
+function decoratorOf(lines, i) {
+  const onLine = lines[i].match(/^\s*(@[A-Z]\w*(?:\([^)]*\))?)\s/);
+  if (onLine !== null) {
+    return onLine[1];
+  }
+  for (let k = i - 1; k >= 0; k--) {
+    const t = lines[k].trim();
+    if (t === '' || t.startsWith('//') || t.startsWith('/*') || t.startsWith('*')) {
       continue;
     }
-    const src = read(repo, rel);
-    for (const node of SENTENCE_NODES) {
-      for (const block of instanceBlocks(src, node)) {
-        const lines = block.text.split('\n');
-        for (let k = 0; k < lines.length; k++) {
-          const field = lines[k].match(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.*)$/);
-          if (field === null || !SENTENCE_FIELDS.includes(field[1])) {
-            continue;
-          }
-          const value = stripStrings(field[2]);
-          if (value.indexOf('?') >= 0 && value.indexOf(':') > value.indexOf('?')) {
-            violations.push(rel + ':' + (block.line + k) + ' ' + node + ' 的 ' + field[1]
-              + ' 用三元换说法：这一族字段是普通成员，重渲染不更新，一种说法要各挂一颗节点（D-45）');
-          }
-        }
+    const solo = t.match(/^@[A-Z]\w*(?:\([^)]*\))?$/);
+    return solo === null ? '' : solo[0];
+  }
+  return '';
+}
+
+function auditSentenceNodes(repo, violations) {
+  for (const node of SENTENCE_NODES) {
+    const rel = 'entry/src/main/ets/component/' + node + '.ets';
+    const lines = read(repo, rel).split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      // 声明行才有 `名字: 类型 = 初值`，对象字面量里的 `title: 'x'` 不会被当成声明。
+      const decl = lines[i].match(/^\s*(?:@[A-Z]\w*(?:\([^)]*\))?\s+)?([A-Za-z][A-Za-z0-9_]*)\s*:\s*[A-Za-z][A-Za-z0-9_.| ]*\s*=/);
+      if (decl === null || !SENTENCE_FIELDS.includes(decl[1])) {
+        continue;
+      }
+      if (!REACTIVE_DECORATORS.includes(decoratorOf(lines, i))) {
+        violations.push(rel + ':' + (i + 1) + ' ' + node + ' 的 ' + decl[1]
+          + ' 是普通成员：父页重渲染不更新它，说法会冻在上一份真相上（D-46）');
       }
     }
   }

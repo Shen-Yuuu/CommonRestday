@@ -480,8 +480,8 @@ export struct HomeView {
                 }
               } else {
                 if (this.failed) {
-                  // 这一串四种说法各挂一颗节点：NoticeBar 的 tone/title/body 是普通成员，父页重渲染
-                  // 不更新它们，只有整颗拆掉重挂才换得了那一句（共同页与「我的」配对卡同一口径）。
+                  // 这一串四种说法各挂一颗节点，门槛与句子一一对得上（共同页与「我的」配对卡同一口径）。
+                  // 换句子这件事本身由 NoticeBar 的说法字段是 @Prop 保证（D-46）。
                   NoticeBar({
                     tone: NoticeTone.ERROR,
                     title: '刷新失败，下面是上次的结果',

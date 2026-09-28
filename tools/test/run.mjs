@@ -684,7 +684,7 @@ function main() {
   };
   const copyViolations = auditPrivacyCopy(REPO);
   say('copy: ' + (copyViolations.length === 0
-    ? 'PASS（隐私政策三处全文同源 + 摘要五条 + 全仓无绝对化表述 + 清空文案口径 + 一种说法一颗节点）'
+    ? 'PASS（隐私政策三处全文同源 + 摘要五条 + 全仓无绝对化表述 + 清空文案口径 + 说法载体跟手）'
     : 'FAILED（' + copyViolations.length + ' 项口径冲突）'));
   for (const v of copyViolations) {
     say('  - ' + v);

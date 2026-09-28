@@ -48,10 +48,13 @@ export struct SleepBunny {
  */
 @Component
 export struct StatePanel {
-  kind: StatePanelKind = StatePanelKind.EMPTY;
-  title: ResourceStr = '';
-  description: ResourceStr = '';
-  actionLabel: ResourceStr = '';
+  // 与 NoticeBar 同一口径（D-46）：整页空态的说法常由好几个状态算出来（筛选键、是否单身），
+  // 而"有没有内容"这一格门槛不变，普通成员就会把上一句留在屏幕上。
+  @Prop kind: StatePanelKind = StatePanelKind.EMPTY;
+  @Prop title: ResourceStr = '';
+  @Prop description: ResourceStr = '';
+  @Prop actionLabel: ResourceStr = '';
+  /** 函数不能做 @Prop，留普通成员：闭包读的是父组件的当前状态。 */
   onAction: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。

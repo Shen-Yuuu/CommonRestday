@@ -446,8 +446,7 @@ export struct CoTimeView {
               })
             } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
               // 这一页的窗口是拿 TA 的那一份算出来的，同步停了就得说清用的是哪一份。
-              // 两格坏值各挂一颗节点：NoticeBar 的 tone/title/body 是普通成员，父节点重建不更新它们，
-              // 只有整颗拆掉重挂才换得了那一句（与「我的」配对卡同一口径）。
+              // 两格坏值各挂一颗节点，门槛与句子一一对得上（与「我的」配对卡同一口径）。
               NoticeBar({
                 tone: NoticeTone.ERROR,
                 title: syncStateTitleOf(this.syncState),

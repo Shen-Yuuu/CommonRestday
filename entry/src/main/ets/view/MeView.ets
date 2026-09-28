@@ -983,8 +983,9 @@ export struct MeView {
         // 三态里唯一的坏消息出口（协议 §3.4 末行）：待重试用警示色 ↻，已停止用错误色 !。
         // 刻意不给「立即重试」这颗按钮：§3.3 明写端侧没有自动退避重试，手动重试也不在 §7 的触发时机里，
         // 给了等于让用户自己按一次就烧一次免费档的按天配额。
-        // 两种结论走 if / else if 两个分支而不是同一个节点换颜色：NoticeBar 的 tone/title/body 是普通成员，
-        // 父节点重建时不会更新它们，只有整颗节点被拆掉重挂才会——「待重试」变「已停止」必须让人看见换的那一句。
+        // 两种结论走 if / else if 两个分支而不是同一个节点：门槛与句子一一对得上，读页面的人不用推。
+        // （句子本身跟着状态换是靠 NoticeBar 的说法字段是 @Prop——普通成员只在构造时赋值一次，
+        //  同格里换个 code 就换不了那一句，见 D-46。）
         if (this.syncTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
           NoticeBar({
             tone: NoticeTone.ERROR,

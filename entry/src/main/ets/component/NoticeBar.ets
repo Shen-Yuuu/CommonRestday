@@ -14,12 +14,16 @@ export enum NoticeTone {
  */
 @Component
 export struct NoticeBar {
-  tone: NoticeTone = NoticeTone.WARN;
-  title: string = '';
-  body: string = '';
+  // 这几格必须是 @Prop：提示条的说法由父页的状态算出来（`syncStateNoteOf(s)` 一类），
+  // 而父页重渲染时门槛常常没变（同一格 WARN 里换了个 code），普通成员只在构造时赋值一次，
+  // 于是节点留着、句子冻在上一份真相上（D-46）。
+  @Prop tone: NoticeTone = NoticeTone.WARN;
+  @Prop title: string = '';
+  @Prop body: string = '';
   /** 覆盖语气默认符号（如"缺对方数据"用 ?），空串走默认。 */
-  glyph: string = '';
-  actionLabel: string = '';
+  @Prop glyph: string = '';
+  @Prop actionLabel: string = '';
+  /** 函数不能做 @Prop，留普通成员：闭包读的是父组件的当前状态，节点不拆也点得对。 */
   onAction: () => void = () => {};
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。

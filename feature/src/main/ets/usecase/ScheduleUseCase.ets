@@ -525,6 +525,24 @@ export class ScheduleUseCase {
   }
 
   /**
+   * 下拉刷新的统一动作：重算一遍视界，然后广播让各页重读读模型。
+   *
+   * 重算本身就是"同步"：已配对时 recompute → buildPartnerBusy → pullPartnerSnapshot 会带着本机
+   * 游标去云上要新版本、解出对方的忙碌再参与本轮计算。所以在共同时间页下拉一次就能看到对方刚改的
+   * 班表，不必退回后台再切回来等回前台那一次。
+   *
+   * 与 onScheduleChanged 只差一步：这里不排推送。下拉时本机数据没有变化，而快照版本是本机单调游标、
+   * 云函数按天计费——每拉一次就推一版，烧的是配额，换不来任何新数据。
+   */
+  static async pullToRefresh(): Promise<void> {
+    await ScheduleUseCase.recompute(todayEpochDay());
+    const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
+    AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
+    // 「现在」那条线也跟着挪一挪：下拉这一次就是用户主动要求重看当下
+    ScheduleUseCase.notifyClockTick();
+  }
+
+  /**
    * 排一次"合并同步"（协议 §7 触发时机表）：同一 5 秒窗口内的多次触发只推送一次。
    *
    * 合并掉的只是重复调用，不是内容——到点时 `pushMySnapshot` 读的是**当时**的最新班表，

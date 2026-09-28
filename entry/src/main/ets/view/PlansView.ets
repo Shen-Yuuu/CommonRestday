@@ -7,6 +7,7 @@ import { SleepBunny } from '../component/StatePanel';
 import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
+import { syncOnPull } from '../util/PullRefresh';
 
 /** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
 function joinNote(main: string, note: string): string {
@@ -60,6 +61,8 @@ export struct PlansView {
   @State loading: boolean = true;
   /** 同一时刻只放行一个写操作：改期/取消/补写日历都会重排列表，并发点击只会互相踩。 */
   @State private working: boolean = false;
+  /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
+  @State private refreshing: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
@@ -284,53 +287,67 @@ export struct PlansView {
       if (!this.loading && this.plans.length > 0) {
         this.headerRow()
       }
-      List({ space: 12 }) {
-        if (this.loading) {
-          ListItem() {
-            Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
-          }
-        } else if (this.plans.length === 0) {
-          // 空态引导（US5：窗口 → 计划的转化出口）
-          ListItem() {
-            Column({ space: 12 }) {
-              // 原型 emptyCard() 被三个空态共用，App 此前只有共同页接了它，计划页画的是心形符号
-              SleepBunny()
-              Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
-              Text($r('app.string.plans_empty_desc'))
-                .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
-              Button('去选一个窗口创建计划')
-                .backgroundColor($r('app.color.brand_pink'))
-                .borderRadius(22)
-                .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-                .onClick(() => {
-                  this.onGoWindow();
-                })
+      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+        List({ space: 12 }) {
+          if (this.loading) {
+            ListItem() {
+              Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
             }
-            .alignItems(HorizontalAlign.Center)
-            .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(DesignTokens.cardRadius(false))
-            .backgroundColor($r('app.color.brand_pink_bg'))
-          }
-        } else {
-          // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
-          Repeat<PlanSummary>(this.plans)
-            .key((p: PlanSummary) => this.cardKey(p))
-            .each((ri: RepeatItem<PlanSummary>) => {
-              ListItem() {
-                this.planCard({ p: ri.item })
+          } else if (this.plans.length === 0) {
+            // 空态引导（US5：窗口 → 计划的转化出口）
+            ListItem() {
+              Column({ space: 12 }) {
+                // 原型 emptyCard() 被三个空态共用，App 此前只有共同页接了它，计划页画的是心形符号
+                SleepBunny()
+                Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
+                Text($r('app.string.plans_empty_desc'))
+                  .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
+                Button('去选一个窗口创建计划')
+                  .backgroundColor($r('app.color.brand_pink'))
+                  .borderRadius(22)
+                  .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+                  .onClick(() => {
+                    this.onGoWindow();
+                  })
               }
-              .swipeAction({
-                end: () => {
-                  this.cancelSwipe({ p: ri.item })
-                },
-                edgeEffect: SwipeEdgeEffect.Spring
+              .alignItems(HorizontalAlign.Center)
+              .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(DesignTokens.cardRadius(false))
+              .backgroundColor($r('app.color.brand_pink_bg'))
+            }
+          } else {
+            // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
+            Repeat<PlanSummary>(this.plans)
+              .key((p: PlanSummary) => this.cardKey(p))
+              .each((ri: RepeatItem<PlanSummary>) => {
+                ListItem() {
+                  this.planCard({ p: ri.item })
+                }
+                .swipeAction({
+                  end: () => {
+                    this.cancelSwipe({ p: ri.item })
+                  },
+                  edgeEffect: SwipeEdgeEffect.Spring
+                })
               })
-            })
+          }
         }
+        .padding({ bottom: DesignTokens.dockClearance })
+        .width('100%').height('100%')
+        // alwaysEnabled：一条计划都没有时列表不满一屏，默认不接下拉手势，Refresh 就白挂。
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-      .padding({ bottom: DesignTokens.dockClearance })
+      .onRefreshing(() => {
+        this.onRefresh();
+      })
       .width('100%').layoutWeight(1)
     }
     .width('100%').height('100%')
+  }
+
+  /** 下拉刷新：重算一遍视界（已配对时顺带拉对方最新快照），重算广播会带动本页重读列表。 */
+  private async onRefresh(): Promise<void> {
+    await syncOnPull();
+    this.refreshing = false;
   }
 
   /**

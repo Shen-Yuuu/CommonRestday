@@ -16,6 +16,7 @@ import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
+import { syncOnPull } from '../util/PullRefresh';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
@@ -76,6 +77,8 @@ export struct MeView {
   @State private myHorizon: string = '120';
   @State private myMinSlot: number = 120;
   @State private clearing: boolean = false;
+  /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
+  @State private refreshing: boolean = false;
   /** 《隐私政策》全文半模态（与首启弹窗同一个组件，随包出厂、离线可读）。 */
   @State private policyOpen: boolean = false;
   /** 本页容器宽度档位：expanded 把卡片区并成两列，其余档位与改造前一致。 */
@@ -95,6 +98,12 @@ export struct MeView {
 
   onRecomputeChanged(): void {
     this.reload();
+  }
+
+  /** 下拉刷新：重算一遍视界（已配对时顺带拉对方最新快照），本页摘要跟着重读广播走。 */
+  private async onRefresh(): Promise<void> {
+    await syncOnPull();
+    this.refreshing = false;
   }
 
   onPairOffer(): void {
@@ -554,46 +563,54 @@ export struct MeView {
 
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
-      Scroll() {
-        if (Breakpoints.isExpanded(this.bp)) {
-          // 宽屏两列：伴侣/日程一列，作息/数据一列，读屏顺序仍是先左后右自上而下
-          Row({ space: DesignTokens.space4 }) {
+      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+        Scroll() {
+          if (Breakpoints.isExpanded(this.bp)) {
+            // 宽屏两列：伴侣/日程一列，作息/数据一列，读屏顺序仍是先左后右自上而下
+            Row({ space: DesignTokens.space4 }) {
+              Column({ space: DesignTokens.space3 }) {
+                this.identityCard()
+                this.partnerSyncCard()
+                this.scheduleCard()
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+
+              Column({ space: DesignTokens.space3 }) {
+                this.rhythmCard()
+                this.dataCard()
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+            }
+            .width('100%')
+            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+            .alignItems(VerticalAlign.Top)
+            .padding(this.contentPadding())
+          } else {
             Column({ space: DesignTokens.space3 }) {
               this.identityCard()
               this.partnerSyncCard()
               this.scheduleCard()
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-
-            Column({ space: DesignTokens.space3 }) {
               this.rhythmCard()
               this.dataCard()
             }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
+            .width('100%')
+            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+            .padding(this.contentPadding())
           }
-          .width('100%')
-          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-          .alignItems(VerticalAlign.Top)
-          .padding(this.contentPadding())
-        } else {
-          Column({ space: DesignTokens.space3 }) {
-            this.identityCard()
-            this.partnerSyncCard()
-            this.scheduleCard()
-            this.rhythmCard()
-            this.dataCard()
-          }
-          .width('100%')
-          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-          .padding(this.contentPadding())
         }
+        .width('100%')
+        .height('100%')
+        .align(Alignment.Top)
+        .scrollBar(BarState.Off)
       }
+      .onRefreshing(() => {
+        this.onRefresh();
+      })
       .width('100%')
       .height('100%')
-      .align(Alignment.Top)
-      .scrollBar(BarState.Off)
+      // 页面底画在 Refresh 上而不是 Scroll 上：下拉时 Scroll 整体平移，底跟着走会露出一条空白
       .linearGradient(DesignTokens.pageGradient())
     }
   }

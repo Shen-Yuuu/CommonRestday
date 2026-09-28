@@ -7,6 +7,7 @@ import {
 import { ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options, SegmentButtonV2Items } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
+import { syncOnPull } from '../util/PullRefresh';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
@@ -206,9 +207,10 @@ export struct CoTimeView {
     });
   }
 
-  private onRefresh(): void {
+  private async onRefresh(): Promise<void> {
     this.weekTick++;
-    this.load(false);
+    await syncOnPull();
+    this.refreshing = false;
   }
 
   private selectFilter(key: WindowFilterKey): void {
@@ -609,34 +611,15 @@ export struct CoTimeView {
     .align(Alignment.Start)
   }
 
+  /**
+   * 列表分段：Refresh 始终包在最外层，四种状态（读取中 / 读取失败 / 没有窗口 / 有窗口）
+   * 都能下拉。空态尤其要能下拉——已配对却还没拉到对方数据时，这一屏就是空白的，
+   * 用户看到的只有一句"还没有共同时间"，没有下拉就等于只能退回后台再切回来。
+   */
   @Builder
   listContent() {
-    if (this.page == null) {
-      if (this.failed) {
-        StatePanel({
-          kind: StatePanelKind.ERROR,
-          title: '共同时间读取失败',
-          description: '本机日程数据没有变化，重试一次通常就能恢复。',
-          actionLabel: '重试',
-          onAction: () => {
-            this.load(true);
-          }
-        })
-      } else {
-        this.skeleton()
-      }
-    } else if (this.rows().length === 0) {
-      StatePanel({
-        kind: StatePanelKind.EMPTY,
-        title: this.emptyTitle(),
-        description: this.emptyDesc(),
-        actionLabel: this.emptyAction(),
-        onAction: () => {
-          this.onEmptyAction();
-        }
-      })
-    } else {
-      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+    Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+      if (this.rows().length > 0) {
         // List.space 只收 number/string，收不了 Resource 令牌：值与 space_3(12vp) 对齐
         List({ space: 12 }) {
           ForEach(this.rows(), (w: WindowSummary, idx: number) => {
@@ -658,14 +641,50 @@ export struct CoTimeView {
         .width('100%')
         .height('100%')
         .scrollBar(BarState.Off)
+        // alwaysEnabled：只有一两张卡时列表不满一屏，默认不响应下拉手势，Refresh 就永远接不到这一次。
+        // Scroll 分支不用加——Scroll 的 alwaysEnabled 本来就是 true。
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+        .padding({ bottom: DesignTokens.dockClearance })
+      } else {
+        Scroll() {
+          if (this.page == null) {
+            if (this.failed) {
+              StatePanel({
+                kind: StatePanelKind.ERROR,
+                title: '共同时间读取失败',
+                description: '本机日程数据没有变化，重试一次通常就能恢复。',
+                actionLabel: '重试',
+                onAction: () => {
+                  this.load(true);
+                }
+              })
+            } else {
+              this.skeleton()
+            }
+          } else {
+            StatePanel({
+              kind: StatePanelKind.EMPTY,
+              title: this.emptyTitle(),
+              description: this.emptyDesc(),
+              actionLabel: this.emptyAction(),
+              onAction: () => {
+                this.onEmptyAction();
+              }
+            })
+          }
+        }
+        .width('100%')
+        .height('100%')
+        .align(Alignment.Top)
+        .scrollBar(BarState.Off)
         .padding({ bottom: DesignTokens.dockClearance })
       }
-      .onRefreshing(() => {
-        this.onRefresh();
-      })
-      .width('100%')
-      .layoutWeight(1)
     }
+    .onRefreshing(() => {
+      this.onRefresh();
+    })
+    .width('100%')
+    .layoutWeight(1)
   }
 
   @Builder

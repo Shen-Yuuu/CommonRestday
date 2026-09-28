@@ -13,10 +13,10 @@ import {
 } from 'feature';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
+import { syncOnPull } from '../util/PullRefresh';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
-import { EditorialSection } from '../component/EditorialSection';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { ConflictNotice } from '../component/ConflictNotice';
@@ -35,11 +35,11 @@ const RETRY_DELAY_MS = 250;
 const SETTLE_DELAY_MS = 300;
 
 /**
- * 首页（答案优先）：一屏内按"下一段共同时间 → 冲突 → 三个问题 → 今天"的层级给结论，
+ * 首页（答案优先）：一屏内按"下一段共同时间 → 冲突 → 三个答案 → 今天"给结论，
  * 所有结论文本来自 CommonTimeQueryService 的读模型，页面不查仓储、不自行筛选窗口。
  *
- * 刷新口径：首次进入若缓存为空或跨天过期才补一次本机重算；手动刷新只重读读模型，
- * 不触发重算、通知注册与云端推送（权限只在用户显式创建计划时申请）。
+ * 刷新口径：首次进入若缓存为空或跨天过期才补一次本机重算；此后的手动刷新只有下拉一种，
+ * 下拉会带着本机游标去云上要对方最新的快照（见 syncOnPull）。
  */
 @Component
 export struct HomeView {
@@ -49,6 +49,7 @@ export struct HomeView {
   @State private home: HomeSummary | null = null;
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
+  @State private refreshing: boolean = false;
   @State private sheetVisible: boolean = false;
   @State private sheetStart: number = 0;
   @State private sheetEnd: number = 0;
@@ -115,6 +116,15 @@ export struct HomeView {
         resolve();
       }, ms);
     });
+  }
+
+  /**
+   * 下拉刷新：重算一遍视界，已配对时这一步就把对方最新的快照拉下来。
+   * 重算完成的广播会带动本页重读读模型，这里只负责把转圈落回地面。
+   */
+  private async onRefresh(): Promise<void> {
+    await syncOnPull();
+    this.refreshing = false;
   }
 
   // ---------- 读模型取值（集中处理空值，build 里不做可空判断） ----------
@@ -445,143 +455,144 @@ export struct HomeView {
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
       Stack() {
-        Scroll() {
-          Column({ space: DesignTokens.space3 }) {
-            this.header()
+        Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+          Scroll() {
+            Column({ space: DesignTokens.space3 }) {
+              this.header()
 
-            if (this.home == null) {
-              if (this.failed) {
-                StatePanel({
-                  kind: StatePanelKind.ERROR,
-                  title: '首页读取失败',
-                  description: '本机日程数据没有变化，重试一次通常就能恢复。',
-                  actionLabel: '重试',
-                  onAction: () => {
-                    this.load(true);
-                  }
-                })
+              if (this.home == null) {
+                if (this.failed) {
+                  StatePanel({
+                    kind: StatePanelKind.ERROR,
+                    title: '首页读取失败',
+                    description: '本机日程数据没有变化，重试一次通常就能恢复。',
+                    actionLabel: '重试',
+                    onAction: () => {
+                      this.load(true);
+                    }
+                  })
+                } else {
+                  this.skeleton()
+                }
               } else {
-                this.skeleton()
-              }
-            } else {
-              if (this.failed || this.isStale()) {
-                NoticeBar({
-                  tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
-                  title: this.noticeTitle(),
-                  body: this.noticeBody(),
-                  actionLabel: this.failed ? '重试' : '重新计算',
-                  onAction: () => {
-                    this.load(true);
+                if (this.failed || this.isStale()) {
+                  NoticeBar({
+                    tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
+                    title: this.noticeTitle(),
+                    body: this.noticeBody(),
+                    actionLabel: this.failed ? '重试' : '重新计算',
+                    onAction: () => {
+                      this.load(true);
+                    }
+                  })
+                }
+
+                NextWindowHero({
+                  variant: this.heroVariant(),
+                  experience: this.home.mode,
+                  todayEpoch: todayEpochDay(),
+                  winStart: this.winStart(),
+                  winEnd: this.winEnd(),
+                  winDuration: this.winDuration(),
+                  winSubtitle: this.winSubtitle(),
+                  onTapHero: () => {
+                    this.openHero();
+                  }
+                })
+
+                if (this.conflictCount() > 0) {
+                  ConflictNotice({
+                    conflictCount: this.conflictCount(),
+                    reason: this.conflictReason(),
+                    onTap: () => {
+                      this.openConflicts();
+                    }
+                  })
+                }
+
+                EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+                  Column() {
+                    QuickAnswerRow({
+                      question: this.tonightQuestion(),
+                      answerState: this.home.tonight.state,
+                      headline: this.home.tonight.headline,
+                      supporting: this.home.tonight.supportingText,
+                      onTap: () => {
+                        this.openTonight();
+                      }
+                    })
+                    QuickAnswerRow({
+                      question: this.fullDayQuestion(),
+                      showDivider: true,
+                      answerState: this.home.fullRestDay.state,
+                      headline: this.home.fullRestDay.headline,
+                      supporting: this.home.fullRestDay.supportingText,
+                      onTap: () => {
+                        this.openFullRestDay();
+                      }
+                    })
+                    QuickAnswerRow({
+                      question: '最近能出行吗',
+                      showDivider: true,
+                      answerState: this.home.trip.state,
+                      headline: this.home.trip.headline,
+                      supporting: this.home.trip.supportingText,
+                      onTap: () => {
+                        this.openTrip();
+                      }
+                    })
+                  }
+                  .width('100%')
+                  .alignItems(HorizontalAlign.Start)
+                }
+
+                TodayOverview({
+                  myText: this.todayMy(),
+                  partnerText: this.todayPartner(),
+                  commonText: this.todayCommon(),
+                  partnerVisible: !this.isSolo(),
+                  partnerName: this.partnerName(),
+                  weekdayText: DateLabel.mdw(todayEpochDay()),
+                  onEditSchedule: () => {
+                    this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
+                  },
+                  onAddPlan: () => {
+                    this.openPlan();
                   }
                 })
               }
-
-              NextWindowHero({
-                variant: this.heroVariant(),
-                experience: this.home.mode,
-                todayEpoch: todayEpochDay(),
-                winStart: this.winStart(),
-                winEnd: this.winEnd(),
-                winDuration: this.winDuration(),
-                winSubtitle: this.winSubtitle(),
-                onTapHero: () => {
-                  this.openHero();
-                }
-              })
-
-              if (this.conflictCount() > 0) {
-                ConflictNotice({
-                  conflictCount: this.conflictCount(),
-                  reason: this.conflictReason(),
-                  onTap: () => {
-                    this.openConflicts();
-                  }
-                })
-              }
-
-              EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-                EditorialSection({
-                  eyebrow: '三个问题',
-                  title: '先看结论',
-                  trailing: '刷新',
-                  trailingAction: true,
-                  onTrailingTap: () => {
-                    this.load(false);
-                  }
-                }) {
-                  QuickAnswerRow({
-                    question: this.tonightQuestion(),
-                    answerState: this.home.tonight.state,
-                    headline: this.home.tonight.headline,
-                    supporting: this.home.tonight.supportingText,
-                    onTap: () => {
-                      this.openTonight();
-                    }
-                  })
-                  QuickAnswerRow({
-                    question: this.fullDayQuestion(),
-                    showDivider: true,
-                    answerState: this.home.fullRestDay.state,
-                    headline: this.home.fullRestDay.headline,
-                    supporting: this.home.fullRestDay.supportingText,
-                    onTap: () => {
-                      this.openFullRestDay();
-                    }
-                  })
-                  QuickAnswerRow({
-                    question: '最近能出行吗',
-                    showDivider: true,
-                    answerState: this.home.trip.state,
-                    headline: this.home.trip.headline,
-                    supporting: this.home.trip.supportingText,
-                    onTap: () => {
-                      this.openTrip();
-                    }
-                  })
-                }
-              }
-
-              TodayOverview({
-                myText: this.todayMy(),
-                partnerText: this.todayPartner(),
-                commonText: this.todayCommon(),
-                partnerVisible: !this.isSolo(),
-                partnerName: this.partnerName(),
-                weekdayText: DateLabel.mdw(todayEpochDay()),
-                onEditSchedule: () => {
-                  this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
-                },
-                onAddPlan: () => {
-                  this.openPlan();
-                }
-              })
             }
+            // 宽屏只收正文宽度和留白，答案层级不变：Scroll 的 align(Top) 会把这列居中
+            .width('100%')
+            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+            .padding({
+              left: Breakpoints.hPadding(this.bp),
+              right: Breakpoints.hPadding(this.bp),
+              bottom: DesignTokens.dockClearance
+            })
           }
-          // 宽屏只收正文宽度和留白，答案层级不变：Scroll 的 align(Top) 会把这列居中
           .width('100%')
-          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-          .padding({
-            left: Breakpoints.hPadding(this.bp),
-            right: Breakpoints.hPadding(this.bp),
-            bottom: DesignTokens.dockClearance
+          .height('100%')
+          // 页面底画在最外层：渐变要像原型的 #screen 那样定住，滚动容器自己不能再铺底
+          .backgroundColor(Color.Transparent)
+          .align(Alignment.Top)
+          .scrollBar(BarState.Off)
+          .bindSheet($$this.sheetVisible, this.detailSheet(), {
+            detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+            dragBar: false,
+            showClose: false,
+            // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
+            // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
+            backgroundColor: Color.Transparent,
+            blurStyle: BlurStyle.NONE,
+            maskColor: DesignTokens.scrim
           })
         }
+        .onRefreshing(() => {
+          this.onRefresh();
+        })
         .width('100%')
         .height('100%')
-        // 页面底画在最外层：渐变要像原型的 #screen 那样定住，滚动容器自己不能再铺底
-        .backgroundColor(Color.Transparent)
-        .align(Alignment.Top)
-        .scrollBar(BarState.Off)
-        .bindSheet($$this.sheetVisible, this.detailSheet(), {
-          detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-          dragBar: false,
-          showClose: false,
-          // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
-          // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
-          backgroundColor: Color.Transparent,
-          blurStyle: BlurStyle.NONE,
-          maskColor: DesignTokens.scrim
-        })
       }
       .width('100%')
       .height('100%')

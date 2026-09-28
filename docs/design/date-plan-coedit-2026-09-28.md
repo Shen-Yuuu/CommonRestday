@@ -300,7 +300,7 @@ X2 的跨午夜界面表现（§8.5 末尾给了做法，要拨 HVD 时钟）。
 - 2026-09-28 批次 U·U5：见 §1，提交 `9a82055`。
 - 2026-09-28 批次 W（体验封口）：见 §8.1–§8.3，提交 `eceafa3`／`6dfc64d`／`35d6167`（W-a 与 W-b 同笔）。
 - 2026-09-28 批次 X（逻辑严谨）：X1 见 §8.4，提交 `6337a51`；X2／X3 见 §8.5，提交 `79fb174`。
-- 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`。
+- 2026-09-28 批次 Z（体验打磨）：Z1（D-45）见 §8.6，提交 `cb9ae36`；Z2（D-46，含撤回 Z1 的三元禁令）见 §8.7，提交 `917e9b4`；Z3（D-46 第二形 · 多形参 `@Builder`）见 §8.8，提交 `b817b50`；Z4（D-47 · 日详情概览刷新）见 §8.9，提交 `f10d103`；Z5（D-48 · 列表键纳入上屏字段）见 §8.10，提交 `df7ab53`；Z6（D-50 · 心跳跟手）见 §8.12，提交 `2dd2a6e`；收口（全量门禁＋D-49 撤案）见 §8.11。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -707,6 +707,7 @@ D-40 已经把这条立成规则（**键不变的项不重建，所以画上屏�
   改键也换不出新值。要修的是"子页返回后重取调色板"（壳层只有 `SCHEDULE_HUB` 挂了 `onShown`，
   见 `AppNavigator.ets:292`，其余 destination 没有重进信号）。
   〔立案 D-49·排队〕这一条与 §8.5 那条"时钟只在入口看一次"是同一族，下一笔单独决定改法。
+  **〔更正·见 §8.11：D-49 已撤案——这条序列在本 App 的导航结构里走不出来。〕**
 
 门禁：`--steps=offline,debug` → ALL PASS（两档 224／0、0 type error；debug 289 告警与基线一致）。
 
@@ -714,3 +715,82 @@ D-40 已经把这条立成规则（**键不变的项不重建，所以画上屏�
 （此前也没人复现过它们）。要证：周历页改一次班次配色 + 共同时间列表删中间一张卡，各取一次 `dumpLayout`。
 〔判断〕`idx` 进键会让整列在重排时重建，这是**故意**的——镜像切角本来就是位置属性；
 共同时间页一次几十张卡的量，重建成本远低于念错样子。
+
+### 8.11 批次 Z 收口：全量门禁一次跑齐，并把 D-49 撤案
+
+〔门禁·Z1–Z6 的全量一次〕`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → **ALL PASS**：
+
+- offline 两档（`CRD_TIER=closed`／`open`）各 `typecheck=0 errors`、`224 passed / 0 failed`；
+- debug `BUILD SUCCESSFUL`，ArkTS:WARN **289**（基线 289）；release 同样 289；ohosTest **269**（基线 269）；
+- perf `exit 0`，两档投影都在预算内：`page_projection_44w` 80 帧 → 0.052／0.078／0.169，
+  `page_projection_1000w` 60 帧 → 0.720／0.789／1.388；视界扫描（paired，P50）
+  60d=3.6 90d=7.6 120d=14.5 150d=20.7 180d=26.4 240d=43.2 366d=74.2 ms。
+
+〔口径说明，免得下次误读〕`ohostest` 这一步只是**出包**（`tools/verify.mjs:136` 走的是
+`buildStep('ohostest', 'entry@ohosTest', …)`），不在设备上执行用例，所以它不会清 `pair_id`，
+也不构成任何设备证据——本批次全部六项仍然只有静态＋编译两级，§8.6–§8.10 的「证据缺口」一条都没销。
+
+〔跑砸的那一次〕收口前我并行做了两件事：一边改 Z6、一边让后台跑全量门禁。结果那份日志
+（`.crdtest/gate-Z-closeout-2.log`）在 debug／release／ohostest 三步全 FAIL——它是 Z6 的
+`AnimatorOptions` 缺 `delay`／`fill` 造成的编译失败，不是既有代码回退。读日志前没核对 mtime，
+差点把这一次 FAIL 记成"收口不达标"。规矩补一条：**改动与门禁不同时开，读日志先看它晚于最后一次编辑。**
+
+〔D-49 撤案〕§8.10 末尾立的"D-49·子页返回后重取调色板"站不住，**撤案且不写代码**。查的是导航结构：
+
+- 全仓只有 `ScheduleHub.ets:147` 一处 `router.pushUrl`，即四个录入页（班次类型／循环模板／课程表／月历涂抹）
+  都只能从班表页进去；`CycleEditor`／`PaintMonth`／`ScheduleEditor` 里没有任何 `pushUrl`，
+  从调色板页走不到"改班次类型"那一页。
+- 四处按 `id` 查名字／底色的地方（`DayShiftSheet:88`、`CycleEditor:58`、`PaintMonth:130`、`ScheduleEditor:94`）
+  都在自己创建时取一次 `types`：前一处是半模态、每次打开重建，后三处是路由页、每次 `pushUrl` 重建。
+  所以"改完类型回到一张还活着的调色板"这条序列在本 App 里根本组不出来，**改键或加 `onShown` 都换不出新东西**。
+- 唯一会长驻的是班表页自己那颗「班次 N」统计（`ScheduleHub.ets:257`，它同时是"能不能改班"的判据），
+  而它已经跟手：保存走 `ScheduleUseCase.onScheduleChanged` → `recomputeCount` 自增（`ScheduleUseCase.ets:548`），
+  班表页 `@Watch` 后重读读模型（`ScheduleHub.ets:109`）。
+
+〔为什么当初判错〕我在 §8.10 只查了"这三处键里有没有显示字段"，没查"这三处的数据源还能不能刷"，
+就把 D-40 的配方套了上去。教训：**判断一个 staleness 是否成立，先证序列走得通，再谈改法**——
+这也是 §8.9 那条"改法照仓里已有的配方"能成立的前提。
+
+〔批次 Z 结论〕六项落地的都是"说法／样子跟不跟手"这一条线上的，全绿只到编译层。
+批次 Z 到此收口，下一批不动 UI 口径：批次 U §11 还欠设备证据的行（第 3／6／8 条）与 Z 批次这五处
+`dumpLayout` 复验，应该在同一个设备会话里一起补。
+
+### 8.12 批次 Z·Z6：那颗白心要能被当场关掉（D-50，提交 `2dd2a6e`）
+
+排队时记下的一条，这一批把它做掉了。机理：`crd_reduce_motion` 不是只在启动时读一次——
+`AccessibilityPolicy` 注册了 `onAnimationReduceStateChange`（`AccessibilityPolicy.ets:64`），用户在
+系统设置里拨这个开关时它当场写进 AppStorage。全仓 10 个消费方都跟手，因为它们是**渲染期分支**
+（`DockFx.ets:182` 的 `if (!this.reduceMotion)`、各处 `.transition(this.reduceMotion ? … : …)`）
+或**一次性的 `animateTo`**（每次触发时才读当前值）。只有首页 hero 那颗心跳例外：它用
+`animateTo({ iterations: -1, playMode: PlayMode.Alternate })` 起，起一次就再也不读这个值，
+而 `.onAppear(() => this.startBeat())` 里的 `reduceMotion` 判断只挡"要不要起"，挡不住"已经起来了"。
+于是 App 开着时去把"减少动效"拨开，那颗心会一直跳到节点销毁。
+
+〔另一处循环为什么不用改〕`grep -rn iterations --include=*.ets entry commons feature data` 只有两处，
+另一处是 Dock 粒子（`DockFx.ets:89` 的 `keyframeAnimateTo({ iterations: -1 })`）：它整层被
+`if (!this.reduceMotion)` 包着，开关一拨**承载它的节点直接拆掉**，循环随节点结束。
+这条差别就是规则：**常驻动效要么让开关能拆掉承载它的节点，要么给驱动器留一个 cancel 口。**
+心跳两条都不满足——`Image` 在 `WINDOW` 分支里恒在，驱动器又没有取消入口。
+
+〔改法〕换成 `getUIContext().createAnimator`：`begin 1 → end beatScale(1.18)`、`duration beatMs(800)`、
+`direction 'alternate'`、`iterations -1`，`onFrame` 把插值写进 `@State beat`。有了 animator 就有 cancel：
+
+- `@StorageProp('crd_reduce_motion') @Watch('onReduceMotionChanged')`：拨开→`stopBeat()`，拨回→`startBeat()`；
+- `stopBeat()` 先 `cancel()` 再把 `beat` 归 **1**——停在原尺寸，而不是停在某一帧的 1.07 之类；
+- 节点 `.onDisAppear(() => this.stopBeat())` 与 `aboutToDisappear()`：hero 换成"缺 TA 数据"／"近期没有窗口"
+  形态时心形不在了，驱动器也别在后台逐帧写一个看不见的 `@State`。
+  行为不变的部分：仍然只在 `WINDOW` 形态跳，仍然在 `reduceMotion` 为真时压根不挂上。
+
+〔编译踩坑，记下来免得再撞〕本 SDK 的 `AnimatorOptions` 里 **`delay` 与 `fill` 是必填**，
+少写就是 `10505001 ArkTS Compiler Error: … 'AnimatorOptions' is missing the following properties from type 'AnimatorOptions': delay, fill`；
+补成 `delay: 0, fill: 'forwards'` 才过。第一次收口门禁那三条 FAIL 就是它（见 §8.11）。
+
+〔不新增静态审计〕这一族只有这一个实例，另一处已被渲染分支覆盖，为它写规则不划算；
+下次加常驻动效时按上面那条规则自查，复查命令就是那次 `grep iterations`。
+
+门禁：本笔单独 `--steps=debug` 过（BUILD SUCCESSFUL，WARN 289 与基线一致），随后 §8.11 的全量五步收口跑覆盖它。
+
+证据缺口（不勾选）：**"中途拨开减少动效，心跳当场停"没有设备证据**，而且这条不能用 `dumpLayout` 验——
+layout 树不体现 `scale` 的当前值，得靠连拍截图或 hidumper 的渲染节点。前置还多一步：
+得先在模拟器上把系统的"减少动效"开关拨得动（`accessibility.isAnimationReduceEnabledSync` 在 HVD 上
+是否返回可用值，本仓从未取证过）。〔判断〕与 §8.9 那条合到同一个设备会话里做，届时先探开关可拨性。

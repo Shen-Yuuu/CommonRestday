@@ -477,6 +477,33 @@ perf 366d=83.7ms／120d=15.3ms，在 AH／AI 记过的 82–93ms 带内（同样
 **不改任何用户可见读数**（三种拼法今天等价）。若用户认定那句约束要严格执行，AG 之后的四条（AG 自身合规、AH／AI／AJ 靠里）
 我可以按指令逐笔退回——不是现在做，是把口子留在记录里，别让连续六批的同族改动变成"顺理成章"。
 
+**AK 批次已于 2026-09-29 收线**：代码＋门禁一笔 `59fc2df`（＋本文档一笔），见 §8.23。它收的是这一族里最基础的一条——"把半开区间裁进窗口，**相接不算**"。这条看着最不可能有第二份，
+因为管区间的那个文件从仓库第一笔（`44cce50`）就在了；查 `git show HEAD:domain/src/main/ets/merge/IntervalOps.ets`
+才发现**它里面从来没有裁剪函数**：`complement`／`totalOverlap`／`overlapMin` 各自内联了一遍 max/min，
+外面又抄了七遍。所以 AK 是**立家**，不是"并回一个已有的家"。
+在 HEAD 快照上跑本批门禁量出**改前 14 份实现**——非嵌套 max/min 取界对 10 处（家里 3 处、家以外 7 处）、
+相邻两行三元 1 处、同一条判据的**谓词形状** 6 处（`a.start < to && a.end > from`），另有一处"整段时长直接相加"
+根本没取界。家加了 `intersects`（实现就是 `clipInto(...) != null`），接线 14 处／8 个文件，家里从 3 对降到 1 对，
+第九口静态门禁 `clip` 并入退出码（四条判据 S1–S4）。
+〔这一族到这里第一次出现**改前就念错**的数〕日详情页头那句"当日空闲"把**整段**窗口时长加进那一天，
+而喂它的 `getDayView` 按交叠筛窗口，于是"今天 20:00 → 明天 06:00"的过夜窗口两天各念 10 小时，
+同一两天的共同时间页念 4／6 小时。现在两句读同一个 `regularFreeMin`。红→绿的边界要写清：
+新用例那格改前**编译不过**（函数是本批新抠的），错码又在 `entry/src/main`（离线面跑不到），
+所以缺陷由源码逐字核对得出、修正后的口径由离线用例钉住、**界面上那两个数字只有出包编译与设备复验能证**——
+本批因此**新增一格设备判据**（跨零点窗口下日详情页头与共同时间页对一次数），仍排在
+`127.0.0.1:5555`／`127.0.0.1:5557` 的 `TCP Offline` 上（AK 收口再探，两个都还是离线）。
+〔第二条真缺陷又在门禁自己身上，这一回没进过仓库〕第一版的跨行成对判定会把"写在次行的行尾豁免标记"那一行吞掉：
+`exempt 0／抄写 1`，且行号偏到上一行——**口子写着有、实际不通**。改成豁免与水位单列一遍、跨行对要求两行各只含
+max/min 之一、判定前先看次行标记，并用 `p9b`（没写理由仍应响）证明 `p9` 的绿不是判据瞎了。
+这与 AH／AJ 同族，三次都是同一课：**静态口径入库时要逐条证伪一次。**
+〔门禁实测〕`verify: ALL PASS` exit 0（这一跑打在含 S4 的最终字节上）；offline 两档 `typecheck=0 errors`、
+**`261 passed / 0 failed`**（`259 → 261`）；debug/release `WARN 289`、ohostest `269`，基线**均未上调**；
+perf 这次把**噪声带自己量了出来**：同一份字节连跑四次，120d = 15.3／15.5／15.8／17.1ms、366d = 85.0／90.3／91.8／92.1ms，
+带内跨度与前几批之间的差值同量级，所以这一跑既不能判"变慢"也不能判"没变"，只能判"没跳出 82–93ms 那根带子"。
+探针二十五次全部打在最终字节上并逐字节还原。〔待裁定〕**无新增**，承 AJ 三条；§0–§5 一字未改，不碰协议／云／`CRD1`。
+〔对上句的偏离说明〕AK 与 AI／AJ 同一侧，但比它们多一条：它修了一处用户可见的错读数，不是纯防回潮。
+AG→AK 已五批同族，若那句约束要严格执行，逐笔退回的口子仍留在记录里。
+
 ---
 
 ## 8. 追加区（后续批次的改动继续写在这里）
@@ -495,6 +522,7 @@ perf 366d=83.7ms／120d=15.3ms，在 AH／AI 记过的 82–93ms 带内（同样
 - 2026-09-29 批次 AH（区间终点的念法并成一处）：D-58 见 §8.20，代码＋门禁一笔提交 `47be3eb`（`DateLabel.edgeDay`／`edgeTime` 做唯一的判定家 + 拆掉那三份抄写（`DateLabel.endLabel`、`DateLabel.stamp`、`WindowDetailSheet` 的私有 `edgeDay` 与 `'24:00'` 三元）+ 七个没接的终点调用点接上（含 `busyLabel`）+ 第七个静态口径 `endread-audit.mjs` + 五格离线用例，`247 → 252`，其中只有一格改前是真红的）；§8.20 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**七条**，这一笔还修掉一个真缺陷：`horizon-audit` 与新写的 `endread-audit` 的**行尾豁免标记原先都不生效**（判定用的 `code` 已把 `//…` 剥掉，再拿它找标记等于没这条口子），两处都改成先看整行原文，探针过程记在 §8.20。
 - 2026-09-29 批次 AI（视界天数收回三个家）：D-59 见 §8.21，代码＋门禁两笔提交——前半 `393d77e`（domain 的 `HORIZON_DEFAULT_DAYS` + feature 的 `horizonFromStore` 接到 `SettingsStoreParams()` + `hasPartnerScheduleData` 的裸 `400` 改 `HORIZON_MAX_DAYS - 1` + `horizon-audit` 加 H3 与"默认值有家"的存活判定 + 两格离线用例，`252 → 254`）；后半 `bc17e49`（**写文档时 grep 校对才发现读取口不止一个**：`ProfileSettingsService.loadMyRhythm` 直接调 `SettingsStore.getParams()` 把 5000 原样回填进设置页输入框，而同一页的校验不认它——先写用例跑到红 `expected 366 but got 5000`，再修，`254 → 255`；并把 H4「口子只许在白名单里」并进 `horizon`）；§8.21 与 §7 的收口段随本文档这一笔入库。口径条数**仍是七条**（H3／H4 都归在 `horizon` 里面），`run.mjs` 的 PASS 行多报两个水位：commons 那份旧默认值的读者数（现 0）、离开存储的口子数（现 2）。
 - 2026-09-29 批次 AJ（端点归日与跨零点作息并回一处）：D-60 见 §8.22，代码一笔提交 `9ed2190`（domain `TimeUtil` 的五个家 `dayOfStart`／`dayOfEnd`／`daySpan`／`bedCrossesMidnight`／`bedEndMin` + 接线 35 处（11 个文件，含删掉私有 `spanDays`、起草器第三种拼法、`RhythmRules` 的判定委托）+ commons `DateLabel.edgeDay` 以行尾标记明知故留、改由 `DateLabelTest` 逐点扫等式 + 第八个静态口径 `span-audit.mjs` 并入退出码 + 四格离线用例，`255 → 259`）；§8.22、§7 的收口段与**本批第二条真缺陷**（S2 那条 `bed<wake` 正则在 `9ed2190` 里空转，拦不住它自己管的那条口径——探针暴露后收口这一笔修好，并补对照探针证明退化输入仍不拦）随本文档这一笔入库。**本批没有红→绿**：五份终点抄写与三份 bed 抄写今天等价，改的是"下一次改动会不会分家"。
+- 2026-09-29 批次 AK（区间裁剪与"算不算相交"并回一处）：D-61 见 §8.23，代码＋门禁一笔提交 `59fc2df`（domain `IntervalOps` 立家三件 `clipInto`／`Clip`／`intersects`——**这条口径改前从来没有家**，在 HEAD 快照上量出 14 份实现：非嵌套 max/min 取界对 10 处（家里 3／家以外 7）＋相邻两行三元 1 处＋端点交叠谓词 6 处，另有一处"整段时长直接相加"根本没取界 + 接线 14 处／8 个文件（家里三处也改读 `clipInto`，取界对 3→1）+ 第九个静态口径 `clip-audit.mjs`（S1–S4）并入退出码 + 两格离线用例，`259 → 261`）；§8.23、§7 的收口段与**本批第二条真缺陷**（第一版判据把"写在次行的行尾豁免标记"那一行吞掉，`exempt 0／抄写 1` 且行号偏一行——**这一条没进过仓库**，与 AH／AJ 同族但收得早）随本文档这一笔入库。**这一族到这里第一次出现改前就念错的数**：日详情页头那句"当日空闲"把整段窗口时长加进那一天，跨零点的过夜窗口两天各念 10 小时，而同一两天的共同时间页念 4／6 小时；页头改读从 `commonLabel` 抠出来的 `regularFreeMin`。**它也是这一族里证据最薄的一处修正**：错码在 `entry/src/main`，离线面连类型都不过，所以本批**新增一格设备判据**（跨零点窗口下日详情页头与共同时间页对一次数），仍排在两台 `TCP Offline` 的模拟器后面。perf 这一批把噪声带自己量了出来：同一份字节连跑四次，120d = 15.3／15.5／15.8／17.1ms、366d = 85.0／90.3／91.8／92.1ms，带内跨度与批间差值同量级，故只判"没跳出带子"。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1997,6 +2025,140 @@ entry 六个文件十处读数点接上（含 `PlansView` 那两处裸 `1440`）
 后果：不加，`DateLabel.edgeDay` 就是永久存在的第二份，它靠行尾标记与那格扫点等式活着；加了，本批可以把豁免清零。
 第 1 条（`ScheduleOverviewQueryService:150-158` 的第四份合流）与第 3 条（`AppConst.HORIZON_DAYS` 零读者：删还是留）承 AH／AI，
 仍在原处等，不由清理批次替谁决定。
+
+### 8.23 批次 AK·D-61：区间裁剪与"算不算相交"并回一处——第九口静态门禁（代码＋门禁一笔 `59fc2df` ＋ 本文档一笔）
+
+〔这一格从哪来〕AG（D-57）／AH（D-58）／AI（D-59）／AJ（D-60）之后同一条"同一规则写了几份"盘点的第六条，
+也是这一族里**第一条改前就念错数**的。裁剪这件事看起来最不用操心：文件 `IntervalOps.ets` 从项目第一天就管区间，
+`clipInto` 这个名字听起来像"肯定早就有了"。查 `git show HEAD:domain/src/main/ets/merge/IntervalOps.ets` 才把它查穿——
+**改前那份文件里根本没有裁剪函数**，只有 `complement`／`totalOverlap`／`overlapMin` 三个各自内联了一遍 max/min 的读数函数；
+需要"把一段区间裁进窗口"的其余七个地方又各写了一遍，写成三种形状，还有一种根本没取界。
+也就是说：**这条口径从来没有家，本批是给它立家，不是"并回一个已有的家"。**
+
+〔改前有几份·数字是量出来的〕把 HEAD 用 `git archive` 原样解到仓库外（`.crdtest/ak-pre`），拿本批这条门禁跑那份快照：
+**非嵌套的 `Math.max`／`Math.min` 取界对全仓 10 处**，其中家里 3 处（`complement`／`totalOverlap`／`overlapMin`
+自己各写了一遍）、家以外 7 处——`domain/src/main/ets/conflict/PlanConflict.ets:149`（**同一个循环里 `:143` 刚用
+`overlapMin` 量过这段交叠多少分钟，`:149` 又把两个端点各夹一次取的那正是同一段**——一条判据在六行里读两遍，
+将来改"相接算不算"要记得改两处）、`domain/src/main/ets/snapshot/SnapshotBuilder.ets:42`（跨两行的成对写法）、
+`entry/src/main/ets/component/DayDetailSheet.ets:123`／`:140`、`entry/src/main/ets/component/WeekScheduleView.ets:314`／`:333`／`:353`。
+形状另两种：`feature/src/main/ets/usecase/CommonTimeQueryService.ets:574` 用**相邻两个三元**各取一边的界，
+`DayDetailSheet` 页头那句"当日空闲"干脆**整段时长直接相加**（连裁都没裁）。同一条判据的**谓词形状**另有 **6 处**：
+`AvailabilityBuilder.ets:60`、`CommonTimeQueryService.ets:90`、`ScheduleUseCase.ets:673`、`WeekScheduleView.ets:205`、
+`WeekScheduleView.ets:376`、`PlanFlow.ets:265`，全都写成 `a.start < to && a.end > from`。
+加起来一句人话：**"裁进窗口"这件事改前有十四份实现加一份不实现。**
+
+〔本批有一条真缺陷，而且是用户可见的那句读数〕`DayDetailSheet.windowLead()` 改前是
+`DateLabel.duration(totalMinOf(wins))`，而 `wins` 是 `summaryOf(w)` 的列表、`durationMin` 是**整段窗口的时长**；
+喂给它的 `getDayView` 又按**交叠**筛窗口，所以一个"今天 20:00 → 明天 06:00"的过夜窗口会在**两天各出现一次**，
+两天都念 10 小时。同一两天的共同时间页读的是 `commonLabel` → `overlapMin` → 240／360 分钟。
+**同一条口径的两半在两个页面上给出两个数**。错的是**聚合**不是筛选：这段窗口在两天都出现是对的（它这两天都占着），
+但挂在"当日空闲"这句底下念整段时长就不对——周六本日内只有 4 小时。
+现在页头改读 `CommonTimeQueryService.regularFreeMin(d.windows, s, s + MIN_PER_DAY)`——它就是从 `commonLabel`
+里抠出来的那句"跨零点只算属于这一段的那一截"，两个页面从今往后共用一个数。
+〔红→绿要说边界〕这一条**不是**自动化能证的红：改前那格编译不过（`regularFreeMin` 是本批新函数），
+而错码在 `entry/src/main/ets`，离线面连类型都不过。留在记录里的证据是两样：
+① 上面那段逐字源码（`git show HEAD:entry/src/main/ets/component/DayDetailSheet.ets` 可查）；
+② `entry/src/test/CommonTimeQueryServiceTest.ets:regular_free_min_counts_only_the_part_inside_the_day`
+把同一个窗口在两天各算一次，断言 `240 + 360 == durationMin(600)`，并要求页头那句与 `commonLabel` 同数。
+所以准确说法是：**缺陷由源码逐字核对得出，修正后的口径由离线用例钉住，界面上那两个数字的改动只有出包编译与设备复验能证**。
+
+〔家〕`domain/src/main/ets/merge/IntervalOps.ets` 三件，全在本批立起来：`clipInto`（唯一的取界处，返回 `Clip | null`，
+裁空给 null 而不是零长度区间）、`Clip`（裁剪结果的形状，有了它调用方才不必再写一对 max/min）、
+`intersects`（同一条判据的谓词形状，实现就是 `clipInto(...) != null`——不另起炉灶比端点）。
+原来那份文件里内联的三处也一并并掉了：`complement`／`totalOverlap`／`overlapMin` 现在都读 `clipInto`，**家里从 3 对降到 1 对**，
+门禁才敢要求"恰好 1 处"而不是"别太多"。`SnapshotBuilder` 那一处换了单位顺序（先把区间裁进视界、再向外取整到 30 分钟槽），
+改前是"落槽后再夹界"，两者只是**恰好**等价（`base` 是日界，必为 `SLOT` 整倍数）——注释里把那句"恰好"写成了条件，
+因为没人会去验证一个"恰好"。
+
+〔接线 14 处·8 个文件〕`clipInto` 家以外读者 **8 处**：`PlanConflict:143`、`SnapshotBuilder:43`、
+`CommonTimeQueryService:575`、`DayDetailSheet:124`／`:141`、`WeekScheduleView:314`／`:333`／`:352`；
+`intersects` 家以外读者 **6 处**（就是上面那六处谓词抄写）。`DayDetailSheet.clippedTotal` 另从"自己裁完再相加"
+改读 `totalOverlap`。这些数字是门禁 PASS 行自己报的水位，不是我另数一遍的。
+两位数的 **14** 与上面那句"改前 14 份"是同一批点位从两边的数法：7 对 max/min ＋ 1 处三元 ⇒ 8 个 `clipInto` 读者，
+6 处谓词 ⇒ 6 个 `intersects` 读者；不是两份 14，别拿来互相校验。
+
+〔明知故留的相邻形状，以及为什么它们不进这一条〕三处**嵌套夹界** `Math.max(a, Math.min(b, x))`——
+`domain/src/main/ets/model/Types.ets:156`（视界天数）、`WeekScheduleView.ets:276`（格高）、
+`WindowDetailSheet.ets:197`（百分比）：那是"把一个数夹进上下界"，与"裁一段区间"不同量，并进来会把两种量搅成一锅。
+`CommonTimeQueryService.ets:614` 的 `w.start > nowEpochMin ? w.start : nowEpochMin` 只定起点、没有上界，不是裁剪。
+`commons/src/main/ets/util/SwatchInk.ets:45-46` 相邻两行三元与那处抄写**形状一模一样**，靠 `l1`／`l2` 里没有边界字样躲过——
+判据按命名认、不按语义认，这条口子写在门禁文件头。`domain/src/main/ets/classify/WindowClassifier.ets:89`
+是**包含**判定（`w.start <= coreS && w.end >= coreE`），不是交叠。`mergeIntervals` 里的"相接要合并"
+（`cur.start <= last.end`）与本条的"相接不算"是两回事：一条说两个忙碌段挨着算一段，一条说区间与窗口的交叠，不并。
+
+〔第九口·四条判据〕`tools/test/clip-audit.mjs`，已并入 `run.mjs` 的 `auditViolations` 与退出码。
+S1 非嵌套取界对只许写在 `clipInto` 定义处且家里恰好 1 处（跨行成对也算，行号落在真正的起点）；
+S2 相邻两行的三元取界算抄写；S3 存活判定——`clipInto`／`Clip`／`intersects` 任一定义读不到，或家以外读者／谓词读者归零，
+**判"这一条判不了"，不冒充绿**；S4 端点交叠谓词（正序与反序）只许走 `intersects`。
+水位行：`非嵌套的 max/min 取界对全仓 1 处（家里 1 处，应当恰好 1），家以外 clipInto 读者 8 处／intersects 读者 6 处，
+写明理由豁免 0 处，抄写 0 处`。静态口径到这一批是**九条**（`copy`／`a11y`／`landing`／`press`／`contrast`／`horizon`／`endread`／`span`／`clip`）。
+
+〔本批第二条真缺陷在门禁自己身上：跨行之对的豁免标记原先不生效〕第一次写出来的判据是"任意一行 ＋ 次行"拼起来
+只要 max/min 都在就算一对，于是注入探针里 `function probeExempt(…): number {` 与它的下一行（带着 `// clip-exempt`）
+被拼成一笔：报的行号偏到**上一行**，而 `i++` 把带标记的那一行吞掉，结果 `exempt 0／抄写 1`——**口子写着有、实际不通**。
+三处一起改：豁免计数与读者水位单列一遍、按行数、不吃成对判定的游标；跨行对要求两行**各只含其中一个**
+（所以行号必然落在真正的起点，`p11` 专门钉这个）；成对判定前先看次行有没有标记。
+`p9b`（跨行之对**没**写理由）仍然响，用来证明 `p9` 绿不是判据瞎了。这与 AH 的"行尾豁免标记原先都不生效"、
+AJ 的"`bed<wake` 正则空转"同族，但**区别要写清**：AJ 那条正则**入了库**（`9ed2190`）才被逮到，AK 这一条在
+`59fc2df` 之前就被同一套探针逮住、没进过仓库。同一个错第三次犯，只是这回收得早——
+**静态口径入库前逐条证伪一次已经不是可选项**：光看它在当前代码上 PASS 没有信息量。
+
+〔S4 有一条留着的口子，写在明处〕S4 **只认严格比较**：`<=`／`>=` 那一族是"包含"（`WindowClassifier:89`），拦了会误报。
+代价说清楚：谁把交叠写成 `start <= to && end >= from`（相接也算相交，正是本条要防的那个错），S4 看不见，
+它也不会被 S1／S2 抓住（那行里没有 max/min、没有三元）。这条按已知欠账留着，不假装判据覆盖到了。
+同理拦不住"只夹单侧边界"的写法与"整段时长直接相加"那种根本没取界的形状——后者本批靠把读数并回
+`regularFreeMin` 解决，不靠想像出来的正则。
+
+〔探针二十五次＋基线还原，全部打在最终字节上，逐字节还原并用 `.equals()` 确认〕
+S1：`p1a` 单行、`p1b` 跨行、`p1c` 反序（min 在前）三向都响，`p2` 嵌套夹界不响，`p3` 家里多一对；
+S2：`p4a` 响，`p4b` 单边三元与 `p4c` `SwatchInk` 形都不响；
+S3 存活：`p5` `clipInto` 改名、`p6` `Clip` 改名、`p7` 读者水位归零、`p14` `intersects` 改名、`p15` 谓词水位归零；
+豁免：`p8`／`p8b`／`p9`／`p10`／`p13c` 五种落点都放行，`p9b` 对照仍响；
+行号：`p11`；S4：`p12`／`p12b`／`p12c` 三种写法都响，`p13`（包含判定）与 `p13b`（单边比较）不响。
+证据文件 `.crdtest/probe-clip.txt`（不入库）。
+
+〔门禁实测·AK 收口（2026-09-29）〕
+
+- `node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0。
+  这一跑打在**含 S4／`intersects` 的最终字节**上（上一轮那次全绿早于 S4 入库，不算本批收口）。
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`261 passed / 0 failed`**（`259 → 261`）。
+  新增两格：domain 的 `clip_into_treats_touching_as_empty`（相接裁空 ⇒ `overlapMin` 为 0、`totalOverlap` 不计数、
+  补集开头不留零长度空闲）＋上面那格 `regularFreeMin` 的两天等式。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`WARN 269`（基线 269）。
+  本批只往 import 里加名字（`clipInto`／`intersects`／`totalOverlap`／`Clip`）且都有读者，没有制造未使用符号。
+- `perf`：exit 0。视界扫描（paired，P50）**同一份字节连跑四次**（门禁那次 + 三次复跑）：
+  120d = **15.3／15.5／15.8／17.1ms**，366d = **85.0／90.3／91.8／92.1ms**。
+  这一回能把话说得比前几批准：**噪声带自己就被量出来了**——120d 四次采样的跨度 1.8ms，
+  与"AJ 记的 15.3 → 本批门禁那次 17.1"的差值同量级，所以这一跑**既不能判"变慢了"也不能判"没变"**，
+  只能判"没有跳出前几批记过的带子"（366d 仍在 82–93ms）。`page_projection_96w` 0.125/0.191/0.246、
+  `1000w` 0.857/1.086/1.973 在预算内。§2 的表**仍不回填**。〔判断〕`intersects` 走 `clipInto` 会多一次对象分配，
+  它出现在按日展开的循环里，理论上是要付钱的；四次采样没把它顶出带子，所以不动它——**为了这条口径的单一性付一点分配，
+  是本批的取舍**，真设备上是另一回事，见下面那条欠账。
+
+〔证据的边界〕离线面能证的：`PlanConflict`／`SnapshotBuilder`／`AvailabilityBuilder`（domain 主源码树，
+被窗口展开与冲突类用例间接经过）、`CommonTimeQueryService` 与 `PlanFlow`（feature 主源码树在面上），
+加上那两格新用例。**只在离线面之外的**：`ScheduleUseCase:673` 那处（该文件在离线面是 STUB）与
+`entry/src/main/ets` 的两个文件七处（`DayDetailSheet` 两处 ＋ `WeekScheduleView` 五处，连类型都不过离线 tsc）
+——这两块只有三档出包的 ArkTS 编译证明。**页头那句是本批唯一一处用户可见的读数变化（其余接线今天等价），
+而它恰好落在证据最薄的那一侧。**
+还有一条只算观察、不算结论：`SnapshotBuilder` 的 L2／L3 `segments` 完全不裁到视界（本批改的是它裁进位图窗口那一处），
+对端会不会因此读出不存在的天，我没验；要验得连云侧解码，留给协议那一族的复验窗口。
+
+〔设备欠账（本批**新增一格判据**）〕造一个跨零点的过夜窗口（例：周六 20:00 → 周日 06:00），
+打开日详情半模态：周六页头那句"当日…空闲"应念 **4小时**、周日念 **6小时**，且与共同时间页的"当日空闲"逐字相同；
+改前那两天各念 10 小时。同一格里顺带核对周历列的块不再从午夜多出一段、窗口详情半模态的起止与它一致。
+AK 收口时 `hdc list targets -v` 再探：`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，
+这一格与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH／AI／AJ 攒下的复验排在同一个阻塞上。
+
+〔待裁定没有新增〕承 AJ 三条：`ScheduleOverviewQueryService:150-158` 的第四份合流、`commons → domain` 要不要加依赖边、
+`AppConst.HORIZON_DAYS` 零读者删还是留。AK 不碰协议、不碰云、不碰 `CRD1`，§0–§5 一字未改。
+
+〔对上句的偏离说明〕AK 与 AI／AJ 同一侧，仍在"读模型与算法"那一侧，不在 §7 第 3 条那句
+"余下的自主空间是布局／组件／动效级的体验打磨"的字面范围里。但本批比它们多一条理由，也多一条要请用户判的东西：
+它**修了一条用户念错的数**（日详情页头那句），不是纯防回潮。我继续这一族的理由仍是那两条
+（① 两台设备离线，体验级改动只会再留一层不可复验的欠账；② 这一族每条判据都能当场证伪，不靠设备）。
+〔判断〕AG→AK 已经五批同族，若用户认定那句约束要严格执行，我可以按指令逐笔退回；
+不必现在答复，只是别让连续五批变成"顺理成章"。
 
 
 

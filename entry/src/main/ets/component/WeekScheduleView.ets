@@ -7,6 +7,7 @@ import {
 } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { busyTagLabel, tagColor } from '../util/WindowTagUtil';
+import { LatestLanding } from '../util/LatestLanding';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { NoticeBar, NoticeTone } from './NoticeBar';
 
@@ -100,6 +101,11 @@ export struct WeekScheduleView {
   @StorageProp('crdClockTick') @Watch('refreshNow') clockTick: number = 0;
   /** 当下分钟数（epoch 分钟，与窗口起止同一把尺子）；0 表示还没看过钟。 */
   @State nowMin: number = 0;
+  /**
+   * 并发读数闸门（D-51）：owner 切换、父页下拉、重算广播、翻页点击四个触发点共用这一周的数据面，
+   * 而 weekStart 是翻页时**同步**改掉的——旧读数晚落地就会让色块和表头日期分家。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.loadWeek();
@@ -153,14 +159,21 @@ export struct WeekScheduleView {
 
   /** 周日程块由 feature 读模型装配（班次+课程+共同计划），这里只负责画。 */
   async loadScheduleWeek(): Promise<void> {
+    const token = this.landing.begin();
     this.loading = true;
     try {
       const data: WeekSchedule = await ScheduleOverviewQueryService.getWeekSchedule(this.owner,
         this.weekStart);
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.weekItems = data.blocks;
       this.failed = false;
       this.fitAxis();
     } catch (e) {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.weekItems = [];
       this.failed = true;
     }
@@ -172,6 +185,7 @@ export struct WeekScheduleView {
    * 因此按周起点取全量（ALL 档）再按日裁剪；筛选只在列表视图生效，两个视图看到的是同一批窗口。
    */
   async loadCommonWeek(): Promise<void> {
+    const token = this.landing.begin();
     this.loading = true;
     try {
       const params = SettingsStoreParams();
@@ -181,6 +195,9 @@ export struct WeekScheduleView {
         fromEpochMin: this.weekStart * MIN_PER_DAY
       };
       const page = await CommonTimeQueryService.getCommonTimePage(filter, this.nowMin);
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       const weekEnd = (this.weekStart + 7) * MIN_PER_DAY;
       const wins: WindowSummary[] = [];
       for (let i = 0; i < page.windows.length; i++) {
@@ -191,9 +208,15 @@ export struct WeekScheduleView {
       }
       this.commonWindows = wins;
       this.failed = false;
-      await this.loadLanes();
+      await this.loadLanes(token);
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.fitAxis();
     } catch (e) {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.commonWindows = [];
       this.failed = true;
     }
@@ -203,13 +226,20 @@ export struct WeekScheduleView {
   /**
    * 单独读一周的双方忙碌。失败只让左右两半空着：空闲块是另一条读模型算好的，
    * 不因为"看不出为什么没空"就把已有的答案一起抹掉。
+   * token 由调用方那一次读数传入：泳道和这一周的窗口必须同一批落地。
    */
-  private async loadLanes(): Promise<void> {
+  private async loadLanes(token: number): Promise<void> {
     try {
       const lanes: WeekLanes = await ScheduleOverviewQueryService.getWeekLanes(this.weekStart);
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.myLanes = lanes.mine;
       this.partnerLanes = lanes.partner;
     } catch (e) {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.myLanes = [];
       this.partnerLanes = null;
     }

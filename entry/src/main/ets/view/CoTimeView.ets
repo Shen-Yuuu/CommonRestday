@@ -10,6 +10,7 @@ import { ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options, Se
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
+import { LatestLanding } from '../util/LatestLanding';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
@@ -102,6 +103,11 @@ export struct CoTimeView {
   private chips: ChipV2Options[] = [];
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  /**
+   * 并发读数闸门（D-51）：筛选档是查询条件，点芯片时**同步**改掉 filterKey 再起一次读数；
+   * 连点两颗时先起的那读晚落地，列表就成了上一档的结果，而选中态已经翻到下一颗。
+   */
+  private landing: LatestLanding = new LatestLanding();
   // 跨 Tab 导航广播（首页冲突条、计划页空态引导）：切 Tab 由壳层做，分段由本页认领
   @StorageProp('navToCoTimeCount') @Watch('onNavRequest') navToCoTimeCount: number = 0;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
@@ -169,6 +175,7 @@ export struct CoTimeView {
    * 筛选档是查询条件：换档就是换一次查询，页面不再自己过滤一遍。
    */
   private async load(allowRecompute: boolean): Promise<void> {
+    const token = this.landing.begin();
     // 一次加载只读一次表：筛选下界与查询用的"现在"分两次读数时，跨午夜那瞬会劈成两天
     const now = nowEpochMin();
     const filter: WindowFilter = { key: this.filterKey, fromEpochMin: now };
@@ -185,6 +192,9 @@ export struct CoTimeView {
             page = await CommonTimeQueryService.getCommonTimePage(filter, now);
           }
         }
+        if (!this.landing.isCurrent(token)) {
+          return;
+        }
         this.page = page;
         this.failed = false;
         this.pairState = ProfileSettingsService.getPairState();
@@ -193,6 +203,9 @@ export struct CoTimeView {
         return;
       } catch (e) {
         if (attempt >= LOAD_ATTEMPTS) {
+          if (!this.landing.isCurrent(token)) {
+            return;
+          }
           // 有旧结果就不清空，只把状态标成可恢复错误（提示条在内容上方）
           this.failed = true;
           this.refreshing = false;

@@ -11,6 +11,7 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
+import { LatestLanding } from '../util/LatestLanding';
 
 /**
  * 班次调色板：02「Q糖」的糖果八色。存库的是这里的字面值，不是资源键，所以取值要一次定对——
@@ -46,6 +47,11 @@ struct ScheduleEditor {
   @State color: string = COLORS[0];
   // 自定义取色 sheet（HdsColorPicker，API 26）
   @State colorSheetVisible: boolean = false;
+  /**
+   * 并发读数闸门（D-51）：删除/保存的本地收尾各读一次列表，连点两次删除时先起的那读晚落地，
+   * 调色板会把已经删掉的那个班次画回来（D-40 之后键吃进了显示字段，所以它真会重画）。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -53,12 +59,19 @@ struct ScheduleEditor {
   }
 
   reload(): void {
+    const token = this.landing.begin();
     ScheduleUseCase.ensureSeeded(this.owner).then(() => {
       return ScheduleRepo.listShiftTypes(this.owner);
     }).then((list: ShiftType[]) => {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.types = list;
       this.failed = false;
     }).catch(() => {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.types = [];
       this.failed = true;
     });

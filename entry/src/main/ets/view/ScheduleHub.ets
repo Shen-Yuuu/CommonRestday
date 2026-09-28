@@ -12,6 +12,7 @@ import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
 import { pushPendingRoute } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
+import { LatestLanding } from '../util/LatestLanding';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
@@ -107,6 +108,11 @@ export struct ScheduleHub {
   @StorageProp('crd_senior_mode') senior: boolean = false;
   // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  /**
+   * 并发读数闸门（D-51）：摘要按 side 查，而侧别那颗胶囊是同步改 @State 的——
+   * 连点两次「我的班表 / TA 的班表」时，旧的那一侧读晚落地就会把四项统计念成另一侧的数。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.side = this.initialOwner === OWNER_PARTNER ? OWNER_PARTNER : OWNER_ME;
@@ -119,8 +125,12 @@ export struct ScheduleHub {
 
   /** 当前侧录入概况：班次/循环/临时调整/课程四项 + 真实视界 + 是否代录过 TA。 */
   async loadStatus(): Promise<void> {
+    const token = this.landing.begin();
     try {
       const ov: ScheduleOverview = await ScheduleOverviewQueryService.getOverview(this.side);
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.types = ov.shiftTypes;
       this.tplSet = ov.hasTemplate;
       this.ovs = ov.overrides;
@@ -129,6 +139,9 @@ export struct ScheduleHub {
       this.partnerLocal = ov.partnerLocal;
       this.statusFailed = false;
     } catch (e) {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       // 保留上一次读到的值，只把这一态标出来：静默归零等于对着有数据的用户说"没数据"（D-22）
       Logger.warn(TAG, 'overview read failed: ' + (e as Error).name + ': ' + (e as Error).message);
       this.statusFailed = true;

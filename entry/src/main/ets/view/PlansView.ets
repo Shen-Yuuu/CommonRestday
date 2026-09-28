@@ -11,6 +11,7 @@ import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
 import { syncOnPull } from '../util/PullRefresh';
+import { LatestLanding } from '../util/LatestLanding';
 
 /** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
 function joinNote(main: string, note: string): string {
@@ -71,6 +72,11 @@ export struct PlansView {
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  /**
+   * 并发读数闸门（D-51）：写操作（改期/取消）本地收尾要读一次，重算广播又触发一次，
+   * 两次重叠时先起的那读可能落回写前的表——列表会退回"还没取消"那一版。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.reload();
@@ -82,11 +88,18 @@ export struct PlansView {
   }
 
   reload(): void {
+    const token = this.landing.begin();
     CommonTimeQueryService.getPlanCards().then((rows: PlanSummary[]) => {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.plans = rows;
       this.failed = false;
       this.loading = false;
     }).catch(() => {
+      if (!this.landing.isCurrent(token)) {
+        return;
+      }
       this.plans = [];
       this.failed = true;
       this.loading = false;

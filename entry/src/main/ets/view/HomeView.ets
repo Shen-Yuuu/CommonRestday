@@ -23,6 +23,7 @@ import {
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
+import { LatestLanding } from '../util/LatestLanding';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
@@ -71,6 +72,11 @@ export struct HomeView {
   @State private bp: Breakpoint = Breakpoint.COMPACT;
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
+  /**
+   * 并发读数闸门（D-51）：首帧那次 load(true) 里最坏要走"读→重算→读→等 300ms→读"，
+   * 期间任何一次重算广播都会再起一读；先起的那读晚落地就把首页整体念回改前的答案。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.load(true);
@@ -88,6 +94,7 @@ export struct HomeView {
    * 不触发重算、通知注册与云端推送。
    */
   private async load(allowRecompute: boolean): Promise<void> {
+    const token = this.landing.begin();
     // 一次加载只读一次表：三次读数各算各的"现在"，跨午夜那瞬能把同一次渲染劈成两天
     const now = nowEpochMin();
     for (let attempt = 1; attempt <= LOAD_ATTEMPTS; attempt++) {
@@ -105,6 +112,9 @@ export struct HomeView {
             summary = await CommonTimeQueryService.getHomeSummary(now);
           }
         }
+        if (!this.landing.isCurrent(token)) {
+          return;
+        }
         this.home = summary;
         this.failed = false;
         this.pairState = ProfileSettingsService.getPairState();
@@ -112,6 +122,9 @@ export struct HomeView {
         return;
       } catch (e) {
         if (attempt >= LOAD_ATTEMPTS) {
+          if (!this.landing.isCurrent(token)) {
+            return;
+          }
           // 有旧结果就不清空，只把状态标成可恢复错误（提示条在内容上方）
           this.failed = true;
           Logger.error(TAG, 'load home summary failed: ' + (e as Error).message);

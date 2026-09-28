@@ -11,6 +11,7 @@ import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
+import { LatestLanding } from '../util/LatestLanding';
 
 /**
  * 学期起点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
@@ -41,6 +42,12 @@ struct CourseImport {
   // 学期起点 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才保存
   @State termSheetVisible: boolean = false;
   @State termPick: Date = new Date();
+  /**
+   * 并发读数闸门（D-51）：这条 reload 串了三次 RDB 读，而五处写操作（存学期/导入课表/
+   * 手动添加/删除/解析入库）都在本地收尾各读一次——连点两次删除时先起的那读晚落地，
+   * 列表会把刚删掉的那门课又念回来。
+   */
+  private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -48,11 +55,23 @@ struct CourseImport {
   }
 
   async reload(): Promise<void> {
-    this.courses = await ScheduleRepo.listCourses(this.owner);
-    this.termStart = await ScheduleRepo.getTermStart();
+    const token = this.landing.begin();
+    const list = await ScheduleRepo.listCourses(this.owner);
+    if (!this.landing.isCurrent(token)) {
+      return;
+    }
+    this.courses = list;
+    const term = await ScheduleRepo.getTermStart();
+    if (!this.landing.isCurrent(token)) {
+      return;
+    }
+    this.termStart = term;
     // 当前生效节次模板：已保存值优先，否则默认模板
-    this.sectionText = this.formatSectionText(
-      ScheduleUseCase.sectionTimesFromJson(await ScheduleRepo.getSectionTimes()));
+    const times = ScheduleUseCase.sectionTimesFromJson(await ScheduleRepo.getSectionTimes());
+    if (!this.landing.isCurrent(token)) {
+      return;
+    }
+    this.sectionText = this.formatSectionText(times);
   }
 
   /** SectionTime[] → 每行 "HH:MM-HH:MM" 的编辑文本。 */

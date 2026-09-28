@@ -8,6 +8,7 @@ import { ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
+import { LatestLanding } from '../util/LatestLanding';
 
 /** 日历格数据（@Observed：涂抹时原地修改属性，子组件 @ObjectLink 精准刷新，不重建组件、不打断拖动手势）。 */
 @Observed
@@ -56,6 +57,11 @@ struct PaintMonth {
   @State types: ShiftType[] = [];
   @State template: CycleTemplate | null = null;
   private overMap: Map<number, string | null> = new Map();
+  /**
+   * 并发读数闸门（D-51）：翻月是同步改 year/month 再起读数，表头跟着新月份走，
+   * 而旧月份那次覆盖读晚落地就会把格子涂成上个月的班——乐观涂抹的格子也会被它盖掉。
+   */
+  private landing: LatestLanding = new LatestLanding();
   /** 当月首日 epochDay（epochDay → cells 下标换算用）。 */
   private monthStart: number = 0;
   private lastPainted: number = -1;
@@ -90,12 +96,16 @@ struct PaintMonth {
   }
 
   async loadMonth(): Promise<void> {
+    const token = this.landing.begin();
     const start = epochDayOf(this.year, this.month, 1);
     this.monthStart = start;
     const dim = new Date(this.year, this.month, 0).getDate();
     const firstWd = new Date(this.year, this.month - 1, 1).getDay();
     this.leadingBlanks = (firstWd + 6) % 7;
     const ovs = await ScheduleRepo.listOverrides(start, start + dim - 1, this.owner);
+    if (!this.landing.isCurrent(token)) {
+      return;
+    }
     this.overMap = new Map();
     for (let i = 0; i < ovs.length; i++) {
       this.overMap.set(ovs[i].epochDay, ovs[i].shiftTypeId);

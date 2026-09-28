@@ -26,6 +26,7 @@ const KEY_PARTNER_SNAP_CACHE = 'partner_snap_cache';
 const KEY_CLOUD_SYNC_STATE = 'cloud_sync_state';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
 const KEY_LAST_HEARTBEAT_AT = 'last_heartbeat_at';
+const KEY_PENDING_CLOUD_UNPAIR = 'pending_cloud_unpair';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
@@ -44,6 +45,18 @@ export interface PartnerProfile {
   wakeMin: number;
   bedMin: number;
   windDownMin: number;
+}
+
+/**
+ * 云侧那两行快照没删掉时留下的重试凭据（协议 §4.5 批次 U·U5）。
+ *
+ * 只有两个字段，而且是故意的：`pairing.unpair` 认的是会话行里的 `creatorUid`/`joinerUid`，
+ * 删除**不需要任何密钥材料**。别的一概不存——HUKS 别名、对方快照、任何明文忙碌时段
+ * 都不属于"把云上那行删掉"这件事，把它们留在一次「清空我的全部数据」之后就是漏披露。
+ */
+export interface PendingCloudUnpair {
+  pairId: string;
+  uid: string;
 }
 
 export class SettingsStore {
@@ -283,6 +296,46 @@ export class SettingsStore {
     await SettingsStore.p().flush();
   }
 
+  /**
+   * 待补删的云侧配对（`pairId` + 本机 `uid`）；没有欠账时返回 null。
+   *
+   * 脏值（缺任一字段、解析炸了）一律按"没有欠账"处理，而不是按"有一条但读不出来"：
+   * 读不出来的那条本来就补删不了，留着只会让每次回前台白敲一次云。
+   */
+  static getPendingCloudUnpair(): PendingCloudUnpair | null {
+    const text = SettingsStore.p().getSync(KEY_PENDING_CLOUD_UNPAIR, '') as string;
+    if (text === '') {
+      return null;
+    }
+    try {
+      const o = JSON.parse(text) as Record<string, Object>;
+      const pairId = o['pairId'] == null ? '' : String(o['pairId']);
+      const uid = o['uid'] == null ? '' : String(o['uid']);
+      if (pairId === '' || uid === '') {
+        return null;
+      }
+      const rec: PendingCloudUnpair = { pairId: pairId, uid: uid };
+      return rec;
+    } catch (e) {
+      Logger.warn(TAG, 'pending cloud unpair parse failed');
+      return null;
+    }
+  }
+
+  /**
+   * 写待补删凭据。调用方必须排在 `clearAllSettings()` **之后**：清空动作是把整张表推平，
+   * 而这条记录存在的意义正是"本机已经没有别的地方记得这次删除了"。
+   */
+  static async setPendingCloudUnpair(pairId: string, uid: string): Promise<void> {
+    await SettingsStore.p().put(KEY_PENDING_CLOUD_UNPAIR, JSON.stringify({ pairId: pairId, uid: uid }));
+    await SettingsStore.p().flush();
+  }
+
+  static async clearPendingCloudUnpair(): Promise<void> {
+    await SettingsStore.p().delete(KEY_PENDING_CLOUD_UNPAIR);
+    await SettingsStore.p().flush();
+  }
+
   // ---------- 日切重算 ----------
 
   /** 最近一次重算的 epochDay（日切判断用；App 切前台时与其比较，跨天即重算）。 */
@@ -346,7 +399,12 @@ export class SettingsStore {
 
   // ---------- 全量清空 ----------
 
-  /** 清空 crd_settings 的全部条目（"清空我的全部数据"设置项的设置侧；数据侧配合 ScheduleRepo.clearAllData）。 */
+  /**
+   * 清空 crd_settings 的全部条目（"清空我的全部数据"设置项的设置侧；数据侧配合 ScheduleRepo.clearAllData）。
+   *
+   * 连 `device_uid` 与 `pending_cloud_unpair` 一起推平，所以调用方要在这句之后补写云侧的待补删凭据，
+   * 且补写用的 uid 必须是**推平前**读到的那一个——云端认的是成员表里那个旧 uid，换新的是对不上的。
+   */
   static async clearAllSettings(): Promise<void> {
     await SettingsStore.p().clear();
     await SettingsStore.p().flush();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
-import { AgcPairingClient, PairKeyStore } from 'cloud';
+import { AgcPairingClient, CloudApiError, CLOUD_NETWORK, PairKeyStore } from 'cloud';
 import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, encodeSyncState, FeatureFlags,
   PlanCapabilities, ProfileSettingsService, ReminderCapability, RemoveOutcome, SYNC_STATE_BLOCKED
@@ -292,6 +292,115 @@ export default function profileSettingsGuardTest() {
       expect(SettingsStore.getCloudSyncState()).assertEqual('');
     });
 
+    /**
+     * 云端删不动时，解除配对**一个字节都不许先清**（批次 U·U5 修的就是这一格）。
+     *
+     * 旧写法把云侧异常吞成一句 warn，接着照删 pairId 与 HUKS 别名，最后回一句「已解除配对」。
+     * 那是三份损失叠成的一句假话：协议 §4.5 里删除的凭据就是 `pairId` + `uid`，本机一清，
+     * 云上那行密文从此谁都对不上号；界面上"已解除"又把欠账抹平，用户连重试的入口都摸不到。
+     * 所以这里断言的是"失败之后手里还剩什么"：配对态、pairId、游标、信封、三态、别名全部原样，
+     * 而重试入口就是同一颗按钮——不再另存一份凭据，多一处存就多一处会漂。
+     */
+    it('unpair_keeps_every_credential_when_the_cloud_refuses', 0, async () => {
+      await SettingsStore.savePairId('session-still-on-the-cloud');
+      await SettingsStore.setPairState(PAIRED, 'peer-uid');
+      await SettingsStore.setPartnerSnapVer(9);
+      await SettingsStore.setPartnerSnapCache('{"pairId":"session-still-on-the-cloud","version":9}');
+      await SettingsStore.setCloudSyncState(encodeSyncState(SYNC_STATE_BLOCKED, 20453, 'FORBIDDEN'));
+      await SettingsStore.clearPendingCloudUnpair();
+      AgcPairingClient.calls = 0;
+      PairKeyStore.calls = 0;
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+
+      const refused = await ProfileSettingsService.unpair();
+      AgcPairingClient.unpairFailure = null;
+
+      if (!CLOUD_ON) {
+        // 关闭态没有云端可删，本机标记照旧一手清掉（「开关只关能力，不关数据」）
+        expect(refused.ok).assertTrue();
+        expect(refused.message).assertEqual('已解除配对');
+        expect(AgcPairingClient.calls).assertEqual(0);
+        expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
+        expect(SettingsStore.getPairId()).assertEqual('');
+        return;
+      }
+
+      expect(refused.ok).assertFalse();
+      expect(AgcPairingClient.calls).assertEqual(1);
+      // 失败的话术要说出"云上那份还在"，而不是把错误码念给用户
+      expect(refused.message.indexOf('云上那份还没删掉') >= 0).assertTrue();
+      expect(refused.message.indexOf('配对我留着了') >= 0).assertTrue();
+      expect(SettingsStore.getPairState()).assertEqual(PAIRED);
+      expect(SettingsStore.getPairId()).assertEqual('session-still-on-the-cloud');
+      expect(SettingsStore.getPartnerSnapVer()).assertEqual(9);
+      expect(SettingsStore.getPartnerSnapCache()).assertEqual('{"pairId":"session-still-on-the-cloud","version":9}');
+      expect(SettingsStore.getCloudSyncState())
+        .assertEqual(encodeSyncState(SYNC_STATE_BLOCKED, 20453, 'FORBIDDEN'));
+      // 一次都没去碰 HUKS 别名：删了它，重试时要解的东西就真解不开了
+      expect(PairKeyStore.calls).assertEqual(0);
+      // 也不落待补删凭据——本机这一屏就是凭据
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+
+      // 网络回来了：同一颗按钮再点一次就补上，用户不需要先去做别的动作
+      const second = await ProfileSettingsService.unpair();
+      expect(second.ok).assertTrue();
+      expect(second.message).assertEqual('已解除配对');
+      expect(AgcPairingClient.calls).assertEqual(2);
+      expect(PairKeyStore.calls).assertEqual(1);
+      expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
+      expect(SettingsStore.getPairId()).assertEqual('');
+      expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
+    });
+
+    /**
+     * 回前台补删那条欠账（`retryPendingCloudUnpair`，挂在 `EntryAbility.onForeground` 的初始化链尾）。
+     *
+     * 清库之后本机只剩 `pending_cloud_unpair` 这一处记得云上还有东西，所以"什么时候必须继续敲"
+     * 与"什么时候不再敲"两格都得钉住。后者尤其要紧：免费档的按天配额是**项目级共享**的，
+     * 而云端一旦给了终局判定（不是那个会话的成员）再敲一百次也是同一句——留着就是白付。
+     */
+    it('pending_cloud_unpair_retry_stops_at_a_final_verdict', 0, async () => {
+      await SettingsStore.setPendingCloudUnpair('orphan-session', 'uid-from-before-the-wipe');
+      AgcPairingClient.calls = 0;
+
+      if (!CLOUD_ON) {
+        await ProfileSettingsService.retryPendingCloudUnpair();
+        expect(AgcPairingClient.calls).assertEqual(0);
+        // 守卫在第一句：连欠账都不去读，原样留着等开档
+        expect(SettingsStore.getPendingCloudUnpair() == null).assertFalse();
+        await SettingsStore.clearPendingCloudUnpair();
+        await ProfileSettingsService.retryPendingCloudUnpair();
+        expect(AgcPairingClient.calls).assertEqual(0);
+        return;
+      }
+
+      // 通路还没通：欠账必须留着，否则这台设备就再也没有删掉它的办法
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      expect(AgcPairingClient.calls).assertEqual(1);
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertFalse();
+      AgcPairingClient.unpairFailure = null;
+
+      // 通了：删完就地清掉，凭据不该留在机器上过夜
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      expect(AgcPairingClient.calls).assertEqual(2);
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+
+      // 会话行本来就不在：服务端把"已经删过了"报成 OK + 0 行（§4.5 幂等），欠账同样就地清掉
+      await SettingsStore.setPendingCloudUnpair('already-gone', 'uid-y');
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      expect(AgcPairingClient.calls).assertEqual(3);
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+
+      // 终局判定：不是成员 = 这份数据不归这台设备删，凭据跟着走，不再白敲门
+      await SettingsStore.setPendingCloudUnpair('not-mine', 'uid-z');
+      AgcPairingClient.unpairFailure = new CloudApiError('FORBIDDEN', false, 'not a member');
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      expect(AgcPairingClient.calls).assertEqual(4);
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+      AgcPairingClient.unpairFailure = null;
+    });
+
     it('cancel_waiting_needs_no_cloud', 0, async () => {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, 'stale-partner');
@@ -409,6 +518,73 @@ export default function profileSettingsGuardTest() {
       expect(clean.ok).assertTrue();
       expect(clean.message).assertEqual('已清空本机全部数据');
       expect(await activePlanCount()).assertEqual(0);
+    });
+
+    /**
+     * 清空全部数据时云端删不动：本机照清，云上那份**留下能重试的凭据**，话要说全（批次 U·U5）。
+     *
+     * 这里与上一条 `unpair` 的口径**故意不同**：清空是用户对自己设备的即时处置权，不该因为
+     * 云侧一次失败就把本机数据锁在"还在"的状态里。所以断言的重心是清完之后本机还剩什么——
+     * 只剩 `pending_cloud_unpair` 那两个字符串。协议 §4.5 的删除只认会话成员（`pairId` + `uid`），
+     * 密钥材料对删除毫无用处，所以这两个字段既够用也有界：多存一个字段就多一处会漂的披露面。
+     * `uid` 取的是**清库之前**那一个：`clearAllSettings()` 把 `device_uid` 一起推平，事后再生成的
+     * 新 uid 不是那个会话的成员，补删永远撞 FORBIDDEN——这一格只能靠断言钉住。
+     */
+    it('clear_all_leaves_a_cloud_retry_credential_and_says_so', 0, async () => {
+      await emptyPlanTable();
+      await mkPlanWithHandles('plan-cloud', 'evt-cloud', 43);
+      PlanCapabilities.bind(new CleanCalendar(), new OkReminder());
+      await SettingsStore.savePairId('session-to-wipe');
+      await SettingsStore.setPairState(PAIRED, 'peer-uid');
+      await SettingsStore.setPartnerSnapVer(9);
+      await SettingsStore.clearPendingCloudUnpair();
+      const uidBefore = await SettingsStore.getOrCreateUid();
+      AgcPairingClient.calls = 0;
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+
+      const wiped = await ProfileSettingsService.clearAllData();
+      AgcPairingClient.unpairFailure = null;
+
+      if (!CLOUD_ON) {
+        // 关闭态没有"云上那份"可言，欠账也无从记起：整句就是本地清空的口径
+        expect(wiped.ok).assertTrue();
+        expect(wiped.message).assertEqual('已清空本机全部数据');
+        expect(AgcPairingClient.calls).assertEqual(0);
+        expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+        return;
+      }
+
+      expect(wiped.ok).assertTrue();
+      expect(AgcPairingClient.calls).assertEqual(1);
+      expect(wiped.message).assertEqual('已清空本机全部数据；云上那份加密快照还没删掉，下次打开应用会自动再试一次');
+      // 最终验收 R2 的禁句仍然成立：这句"会自动再试"背后有落库的凭据撑着，不是空承诺
+      expect(wiped.message.indexOf('稍后重试') < 0).assertTrue();
+      // 本机这一侧确实清干净了，没有因为云端删不动而少清一项
+      expect(await activePlanCount()).assertEqual(0);
+      expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
+      expect(SettingsStore.getPairId()).assertEqual('');
+      expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
+      const left = SettingsStore.getPendingCloudUnpair();
+      expect(left == null ? '' : left.pairId).assertEqual('session-to-wipe');
+      expect(left == null ? '' : left.uid).assertEqual(uidBefore);
+
+      // 下一次回前台补删成功：凭据就地清掉，不让它在这台机器上过夜
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      expect(AgcPairingClient.calls).assertEqual(2);
+      expect(SettingsStore.getPendingCloudUnpair() == null).assertTrue();
+
+      // 还没补成又清一次：第二次不许把第一条欠账顶掉（它自己也没删动，记的还是同一格）
+      await SettingsStore.setPendingCloudUnpair('orphan-session', 'uid-of-the-orphan');
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+      const again = await ProfileSettingsService.clearAllData();
+      AgcPairingClient.unpairFailure = null;
+      expect(again.ok).assertTrue();
+      expect(AgcPairingClient.calls).assertEqual(3);
+      const still = SettingsStore.getPendingCloudUnpair();
+      expect(still == null ? '' : still.pairId).assertEqual('orphan-session');
+      expect(still == null ? '' : still.uid).assertEqual('uid-of-the-orphan');
+
+      await SettingsStore.clearPendingCloudUnpair();
     });
   });
 }

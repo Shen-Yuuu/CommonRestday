@@ -5,6 +5,6 @@ export {
 } from './src/main/ets/db/MigrationRunner';
 export { ScheduleRepo, PlanRow } from './src/main/ets/repo/ScheduleRepo';
 export {
-  SettingsStore, PartnerProfile, emptyOverride,
+  SettingsStore, PartnerProfile, PendingCloudUnpair, emptyOverride,
   PAIR_NONE, PAIR_WAITING, PAIR_PENDING, PAIRED, PAIR_ERROR
 } from './src/main/ets/settings/SettingsStore';

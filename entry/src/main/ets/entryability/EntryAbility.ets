@@ -109,6 +109,9 @@ export default class EntryAbility extends UIAbility {
     // （§3.3/§7 的硬约束），所以"每周一跳"只能靠回前台带起、由节流窗口决定该不该发。
     // 同样排在初始化链之后：Preferences 没就绪时读到的 pairId 是假的。
     this.initChain.then(() => ProfileSettingsService.beatIfDue());
+    // 补删「清空全部数据」那一次没删掉的云上快照（协议 §4.5 批次 U·U5）：配对标记与 pairId
+    // 都随那次清空推平了，偏好里剩的两个字段就是它最后的凭据，而用户不会再有入口点"重试"。
+    this.initChain.then(() => ProfileSettingsService.retryPendingCloudUnpair());
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 

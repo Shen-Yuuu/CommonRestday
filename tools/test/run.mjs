@@ -210,6 +210,9 @@ export interface PlanRow {
 
 export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number; windDownMin: number; }
 
+/** 云侧待补删凭据（设备侧同名）：只有 pairId + uid，桩也照这个形状存，别多给一个字段。 */
+export interface PendingCloudUnpair { pairId: string; uid: string; }
+
 /** 离线计划表：upsertPlan 存行，后续 update* 就地改字段（设备侧同一段是 SQL UPDATE）。 */
 const planRows = new Map<string, PlanRow>();
 
@@ -371,6 +374,34 @@ export class SettingsStore {
   static async setLastHeartbeatAt(ms: number): Promise<void> {
     settingsRows.set('last_heartbeat_at', ms);
   }
+  /**
+   * 云侧待补删凭据（设备侧同名，含"脏值按没有欠账处理"那一半）：批次 U·U5 的三条用例
+   * 要证的正是清空之后本机还剩不剩得出 pairId + uid，所以桩必须真的把这两个字段存取一遍。
+   */
+  static getPendingCloudUnpair(): PendingCloudUnpair | null {
+    const text = settingOf('pending_cloud_unpair', '') as string;
+    if (text === '') {
+      return null;
+    }
+    try {
+      const o = JSON.parse(text) as Record<string, Object>;
+      const pairId = String(o['pairId'] ?? '');
+      const uid = String(o['uid'] ?? '');
+      if (pairId === '' || uid === '') {
+        return null;
+      }
+      const rec: PendingCloudUnpair = { pairId: pairId, uid: uid };
+      return rec;
+    } catch (e) {
+      return null;
+    }
+  }
+  static async setPendingCloudUnpair(pairId: string, uid: string): Promise<void> {
+    settingsRows.set('pending_cloud_unpair', JSON.stringify({ pairId: pairId, uid: uid }));
+  }
+  static async clearPendingCloudUnpair(): Promise<void> {
+    settingsRows.delete('pending_cloud_unpair');
+  }
   static async getOrCreateUid(): Promise<string> {
     const existing = settingOf('device_uid', '') as string;
     if (existing !== '') {
@@ -447,6 +478,11 @@ export function newRequestId(): string {
 export class AgcPairingClient {
   /** 云对象调用计数（设备侧同名字段）：关闭态的断言就打这里。 */
   static calls: number = 0;
+  /**
+   * 让 unpair 抛一次的开关（null = 正常返回）。设备侧的"云端删不动"是断网/配额/服务端拒绝
+   * 撞出来的，离线复现不了，所以这一格只能靠桩注入——批次 U·U5 那三条用例打的就是它。
+   */
+  static unpairFailure: CloudApiError | null = null;
 
   async createPairing(uid: string, publicKey: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
@@ -470,6 +506,9 @@ export class AgcPairingClient {
 
   async unpair(pairId: string, uid: string, requestId: string): Promise<number> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    if (AgcPairingClient.unpairFailure !== null) {
+      throw AgcPairingClient.unpairFailure;
+    }
     return 0;
   }
 

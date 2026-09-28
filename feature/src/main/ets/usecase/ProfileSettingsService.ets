@@ -1,6 +1,7 @@
 import { EngineParams, defaultParams, hhmmToMin, minToHHmm } from 'domain';
 import {
-  PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PartnerProfile, ScheduleRepo, SettingsStore
+  PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PartnerProfile, PendingCloudUnpair,
+  ScheduleRepo, SettingsStore
 } from 'data';
 import {
   AgcPairingClient, CLOUD_LOCAL, CLOUD_NETWORK, CloudApiError, newRequestId, PairKeyStore, PairSession
@@ -54,6 +55,20 @@ export interface MyRhythm extends RhythmInput {
   minSlotMin: number;
 }
 
+/** 一次云侧删除的结论：`removed` 是"云上那两行不用再管了"，`retryLater` 是"还值不值得再敲一次门"。 */
+interface CloudUnpairOutcome {
+  removed: boolean;
+  message: string;
+  retryLater: boolean;
+}
+
+/** 本机手里那份"该删的云端配对"，以及它是从配对状态来的还是从上次欠账翻出来的。 */
+interface CloudUnpairTarget {
+  pairId: string;
+  uid: string;
+  fromPending: boolean;
+}
+
 function ok(message: string): SettingsResult {
   const r: SettingsResult = { ok: true, message: message };
   return r;
@@ -62,6 +77,25 @@ function ok(message: string): SettingsResult {
 function fail(message: string): SettingsResult {
   const r: SettingsResult = { ok: false, message: message };
   return r;
+}
+
+/**
+ * 清空结果里"云上还剩一份"的那半句（批次 U·U5）。
+ *
+ * 两支话不同是故意的：**只有真的落了重试凭据才敢说"会自动再试"**。这与最终验收 R2 钉住的
+ * 是同一条规矩——`clearAllMessageOf` 里之所以不许出现"可稍后重试"，是因为系统日历的投影句柄
+ * 随计划行一起没了，那句话兑现不了。云侧这一项现在有了兑现它的东西
+ * （`pending_cloud_unpair` + 回前台补删），所以承诺可以说，且只在这一支说；
+ * 云端已经给了终局判定（不是成员、档位对不上）的那一支就只报事实，不再留任何承诺。
+ */
+function cloudCleanupNote(cloud: CloudUnpairOutcome | null, keptPending: boolean): string {
+  if (cloud === null || cloud.removed) {
+    return '';
+  }
+  if (keptPending) {
+    return '；云上那份加密快照还没删掉，下次打开应用会自动再试一次';
+  }
+  return '；云上那份加密快照删不掉（' + cloud.message + '），本机数据已经清干净了';
 }
 
 /**
@@ -436,19 +470,71 @@ export class ProfileSettingsService {
   }
 
   /**
+   * 云侧那两行快照的一次删除尝试，把"删没删成"和"还值不值得再试"分开报回来。
+   *
+   * 分开的理由在免费档：`pairing` 的按天配额是项目级共享的，而"这台设备不是那个会话的成员"
+   * 这类判定（`retryable = false`）重跑一百次也是同一句——留着凭据只会让每次回前台白敲一次门。
+   * 认不出形态的异常按"可以再试"处理：宁可多敲一次，也不把一份还删得动的密文判成永久留存。
+   */
+  private static async cloudUnpair(pairId: string, uid: string): Promise<CloudUnpairOutcome> {
+    try {
+      await new AgcPairingClient().unpair(pairId, uid, newRequestId());
+      const done: CloudUnpairOutcome = { removed: true, message: '', retryLater: false };
+      return done;
+    } catch (e) {
+      const err = e as CloudApiError;
+      const outcome: CloudUnpairOutcome = {
+        removed: false,
+        message: ProfileSettingsService.degradedMessage(e),
+        retryLater: err.name === 'CloudApiError' ? err.retryable : true
+      };
+      return outcome;
+    }
+  }
+
+  /**
+   * 本机手里那份"要删的云端配对"：pairId 优先，其次才是上一次清空没删掉的欠账。
+   *
+   * 两次清空之间用户可能根本没能连上网，第二次清空不该把第一条欠账忘掉——那等于把
+   * 一份还能删的密文判成永久留存，而界面上连提都不再提。
+   */
+  private static cloudUnpairTarget(): CloudUnpairTarget | null {
+    const pairId = SettingsStore.getPairId();
+    if (pairId !== '') {
+      const carried: CloudUnpairTarget = { pairId: pairId, uid: '', fromPending: false };
+      return carried;
+    }
+    const pending = SettingsStore.getPendingCloudUnpair();
+    if (pending === null) {
+      return null;
+    }
+    const target: CloudUnpairTarget = { pairId: pending.pairId, uid: pending.uid, fromPending: true };
+    return target;
+  }
+
+  /**
    * 解除配对：云侧级联删快照 + 本机配对标记/协商密钥/对方快照游标一律清干净。
    *
    * 注意这条**不受关闭态拒绝**：上一版原型可能在本机留下 PAIRED 与残留密钥，而云入口已经藏起来了，
    * 用户必须还能亲手撤掉这些标记，否则界面会一直挂着"已配对"。「开关只关能力，不关数据」。
+   *
+   * **[批次 U·U5] 云端删不动时 fail-closed，本机一行都不清。** 旧写法是把云侧异常吞成一句 warn，
+   * 接着照删 pairId 与 HUKS 别名，最后回一句「已解除配对」——那是三件事叠出来的谎：
+   * 云上那行密文还在（协议 §4.5 的删除凭据就是 pairId + uid，本机一清就再没有别的入口能删它）、
+   * 用户以为已经删了所以不会再试、界面上"已解除"三个字把欠账抹平了。
+   * 现在失败原样回给用户，配对标记留在原地，于是**重试的凭据就是这一屏本身**：
+   * 同一颗按钮、同一条提示，网络通了再点一次就补上。
+   * 真要连不上云端也还有出路——「清空我的全部数据」这条会把待补删凭据落进偏好（见 `clearAllData`）。
    */
   static async unpair(): Promise<SettingsResult> {
     try {
-      if (FeatureFlags.cloudPairing) {
-        try {
-          await new AgcPairingClient().unpair(SettingsStore.getPairId(),
-            await SettingsStore.getOrCreateUid(), newRequestId());
-        } catch (e) {
-          Logger.warn(TAG, 'unpair cloud degraded: ' + (e as Error).message);
+      const target = FeatureFlags.cloudPairing ? ProfileSettingsService.cloudUnpairTarget() : null;
+      if (target !== null) {
+        const uid = target.fromPending ? target.uid : await SettingsStore.getOrCreateUid();
+        const out = await ProfileSettingsService.cloudUnpair(target.pairId, uid);
+        if (!out.removed) {
+          Logger.warn(TAG, 'unpair cloud failed, local marks kept: ' + out.message);
+          return fail('云上那份还没删掉，本机配对我留着了：' + out.message);
         }
       }
       await ProfileSettingsService.forgetPair();
@@ -540,6 +626,17 @@ export class ProfileSettingsService {
    * 计划级提醒句柄，再整本清掉应用专属「同休日」日历作兜底（句柄丢了的那些日程也一并删掉）。
    * "清空我的全部数据"这句话若只管本机表，用户删掉的只是自己看得见的那份，
    * 日程和提醒还留在系统里——所以清不干净的部分必须报数，不能回一句"已清空"。
+   *
+   * **[批次 U·U5] 云侧那两行快照是同一条要求的第四项**，旧写法压根没打算碰它：清库把
+   * `pairId`、HUKS 别名与 uid 一起推平之后，云上那份密文就成了谁都对不上号的孤儿行，
+   * 而本机界面上连"还剩这么个东西"都不再说一句。这里的口径与系统侧那两项一致：
+   *
+   * 1. **本机能收回的先收回**——清空不因为云端删不动而失败（用户对自己的设备有即时处置权，
+   *    这一条与 `unpair` 的 fail-closed 相反，因为 `unpair` 没有"必须删干净本机"的压力）；
+   * 2. **删不掉的要留下凭据**——只留 `pairId` + 本机 `uid`（`pairing.unpair` 认的就是会话行里
+   *    那两列成员，密钥材料对删除毫无用处），写在 `clearAllSettings()` 之后，否则它自己就是第一个被推平的；
+   * 3. **要如实报，不承诺做不到的**——`retryable = false` 的判定（不是成员、参数不合法、版本对不上）
+   *    重跑也是同一句，所以那种欠账不入库、只在结果里说清楚；能补删的那句才说"下次打开会自动再试"。
    */
   static async clearAllData(): Promise<SettingsResult> {
     const report = emptyCleanupReport();
@@ -556,17 +653,65 @@ export class ProfileSettingsService {
     }
     try {
       const privacyWas = SettingsStore.isPrivacyAccepted();
+      // 云端那两行要在本机身份还在的时候删：pairId 与 uid 一推平，就再没有别的地方记得它们了
+      const target = FeatureFlags.cloudPairing ? ProfileSettingsService.cloudUnpairTarget() : null;
+      let cloud: CloudUnpairOutcome | null = null;
+      let keepPairId = '';
+      let keepUid = '';
+      if (target !== null) {
+        // 待补删那条自带 uid：清空会把 `device_uid` 一起推平，换新 uid 去敲门就认不出成员了
+        const uid = target.fromPending ? target.uid : await SettingsStore.getOrCreateUid();
+        cloud = await ProfileSettingsService.cloudUnpair(target.pairId, uid);
+        if (!cloud.removed && cloud.retryLater) {
+          keepPairId = target.pairId;
+          keepUid = uid;
+        }
+      }
       // 协商密钥要跟着一起毁：pairId 随 Preferences 清掉之后，HUKS 里那把别名就成了没人认领的钥匙
       await PairKeyStore.dropPairKey(SettingsStore.getPairId());
       await ScheduleRepo.clearAllData();
       await SettingsStore.clearAllSettings();
+      if (keepPairId !== '') {
+        await SettingsStore.setPendingCloudUnpair(keepPairId, keepUid);
+      }
       if (privacyWas) {
         await SettingsStore.acceptPrivacy();
       }
       await ScheduleUseCase.onScheduleChanged();
+      return ok(clearAllMessageOf(report, calendarPurged) + cloudCleanupNote(cloud, keepPairId !== ''));
     } catch (e) {
       return fail('清空失败：' + (e as Error).message);
     }
-    return ok(clearAllMessageOf(report, calendarPurged));
+  }
+
+  /**
+   * 上一次「清空全部数据」没删掉的云侧快照，在这里补删。
+   *
+   * 挂在回前台的初始化链尾、与心跳同一排，是因为本机已经没有别的入口记得这件事了：
+   * 配对标记、pairId、对方快照全随清空推平，只剩偏好里那两个字段，而 §3.3/§7 又禁后台常驻。
+   * 于是"下一次打开应用"就是它唯一的机会——与系统侧投影的 `sweepPendingProjections` 同一形状。
+   *
+   * 不建重试计数也不排闹钟：这条链的触发频率就是用户的启动频率，本身已经被"人还在用这个应用"
+   * 限住了；而云端一旦给了终局判定（`retryLater = false`）就把凭据删掉，不会一直白敲门。
+   */
+  static async retryPendingCloudUnpair(): Promise<void> {
+    if (ProfileSettingsService.cloudBlocked()) {
+      return;
+    }
+    let pending: PendingCloudUnpair | null = null;
+    try {
+      pending = SettingsStore.getPendingCloudUnpair();
+    } catch (e) {
+      // Preferences 尚未初始化：这一趟不补删，下一次回前台还有机会
+      return;
+    }
+    if (pending === null) {
+      return;
+    }
+    const cloud = await ProfileSettingsService.cloudUnpair(pending.pairId, pending.uid);
+    if (cloud.removed || !cloud.retryLater) {
+      await SettingsStore.clearPendingCloudUnpair();
+    }
+    Logger.warn(TAG, 'pending cloud unpair: ' + (cloud.removed ? 'removed' : cloud.message));
   }
 }

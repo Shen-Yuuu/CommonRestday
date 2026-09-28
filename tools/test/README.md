@@ -10,15 +10,15 @@ node tools/test/run.mjs
 
 | 码 | 含义 |
 |---|---|
-| 0 | 类型编译 0 error **且**全部用例通过 **且**两条离线口径审计（文案 / 读屏挂点）都通过 |
+| 0 | 类型编译 0 error **且**全部用例通过 **且**三条离线口径审计（文案 / 读屏挂点 / 读数落地）都通过 |
 | 1 | 有失败用例，或离线口径审计报出冲突（明细见输出与日志） |
 | 2 | 环境不满足（找不到 TypeScript 编译器） |
 | 3 | 类型编译未通过：不产出 JS、**不启动用例** |
 
-输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy:` + `a11y:` + `typecheck: N errors` +
+输出末尾给出日志路径：`tools/test/out/last-run.log`（`copy:` + `a11y:` + `landing:` + `typecheck: N errors` +
 每个用例 PASS/FAIL + 汇总计数 + `tests: passed/FAILED`）。
 
-**"全绿"的唯一口径是 `copy: PASS` + `a11y: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
+**"全绿"的唯一口径是 `copy: PASS` + `a11y: PASS` + `landing: PASS` + `typecheck: 0 errors` + `tests: passed` + 退出码 0。**
 `tsconfig.json` 用 `noEmitOnError: true`，转译有类型错误时既没有产物也没有绿灯——曾经
 `noEmitOnError: false` 让 5 个类型错误照样跑出 "177 passed, exit 0"，那种数字不能写进任何验收文档。
 
@@ -44,6 +44,21 @@ node tools/test/run.mjs
 `no`，而子块里出现 `Text`/`SymbolGlyph`/`Image`/`Span`/`RichText` 即违规**。挂在叶子节点上
 （正确写法）、挂在没有文字子节点的容器上（装饰条、网格线）、子块里只调用别的 `@Builder`
 （静态看不见里面有没有字）都不报。扫描面与 `copy-audit` 的 `CLAIM_TREES` 同一批目录。
+
+## 并发读数落地审计（`landing-audit.mjs`）
+
+一次读数从发起到写 `@State` 之间隔着 `await`，而 RDB 与云读数的**返回顺序没有保证**。读数的触发点
+从来不止一个（重算广播、下拉刷新、父页 `@Prop` 变化、翻页/切侧点击、写操作本地收尾），两次读数
+必然重叠；先起的那次晚落地就把界面按回旧结果，而表头/选中档/侧别这些**同步**改掉的部分已经是新的
+——数据和它的说明分家。旧读数抛错时更坏：`failed = true` 会盖掉新读数的成功，把好数据念成"没读到"。
+差异文档 D-51 修的是这一类，机制与批次 Z 的"节点不重绘"不同，症状同为"改了不跟着变"。
+
+规则三条：**订阅 `recomputeCount` 的文件必须带 `LatestLanding` 闸门**（不进闸门表就要进 `EXEMPT`
+并写出"这条读数的数据写入点全程同步"的理由）；**按文件计 `begin()` 次数不得多于 `isCurrent(` 次数**
+（防"复制了闸门字段却漏掉检查"）；**挂在 `@Prop` 上的 `@Watch` 若会跨 await 重读（含一层被调方法），
+该文件必须带闸门**——前一条只管广播订阅者，这一条管"父页改参数"那半边，豁免同样要写"这条序列为什么走不通"。
+两张豁免表都校验文件仍然存在。扫描面只有 `entry/src/main/ets`——闸门管的是组件状态落地顺序，
+纯逻辑层没有 `@State`。
 
 ## 环境要求
 

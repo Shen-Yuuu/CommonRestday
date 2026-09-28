@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { auditPrivacyCopy } from './copy-audit.mjs';
 import { auditAccessibility } from './a11y-audit.mjs';
+import { auditLanding } from './landing-audit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.normalize(path.join(HERE, '..', '..'));
@@ -696,6 +697,13 @@ function main() {
   for (const v of a11yViolations) {
     say('  - ' + v);
   }
+  const landingViolations = auditLanding(REPO);
+  say('landing: ' + (landingViolations.length === 0
+    ? 'PASS（广播订阅者与 @Prop 的 @Watch 重读都带落地闸门，领过号的一次都没漏问归属）'
+    : 'FAILED（' + landingViolations.length + ' 处读数没有闸门）'));
+  for (const v of landingViolations) {
+    say('  - ' + v);
+  }
   prepare();
   if (!overrideTier(say)) {
     say('tests: FAILED（档位覆盖没落地，这一跑的结论不属于任何档位）');
@@ -731,8 +739,8 @@ function main() {
   }
   const testsPassed = run.status === 0;
   say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
-  // 两条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
-  const auditViolations = copyViolations.length + a11yViolations.length;
+  // 三条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
+  const auditViolations = copyViolations.length + a11yViolations.length + landingViolations.length;
   if (testsPassed && auditViolations > 0) {
     say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }

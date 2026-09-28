@@ -410,6 +410,38 @@ X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 
 AH 的一格设备欠账（夜班／跨天窗口在日详情与周历朗读里终点念 24:00，要屏幕与读屏）与 W／X／Z／AA／AB／AC／
 AD／AE／AF／AG 攒下的复验排在同一个阻塞上：AH 收口时 `hdc list targets -v` 再探，两台仍是 `TCP Offline`。
 
+**AI 批次已于 2026-09-29 收线**：代码两笔 `393d77e`＋`bc17e49`（＋本文档一笔），见 §8.21。它收的是"同一个往后算多少天有三个家"：
+AG 把上下界并成 `clampHorizonDays` 之后调用点有七个，我数过一遍——**全部是"用的时候记得夹"，零个是"读的时候夹"**；
+默认天数在 domain（`defaultParams()` 里的裸 120）与 commons（`AppConst.HORIZON_DAYS`，也是 120）各住一份，后者管着两句
+界面话；`hasPartnerScheduleData` 扫单日覆盖用一个裸 `400`。第一条是**真缺陷**：主读取口 `SettingsStoreParams()`（下游 9 个
+调用点）改前只挡 `<= 0`，而 `SettingsStore.assignParam` 只挡 NaN——备份/换机带回 5000 时，周历那句"这一周算不算在视界内"
+会摆出引擎从没展开过的周，而空白在共同时间页读作"不空闲"。收界从此发生在刚离开存储的那一刻（feature 的
+`horizonFromStore`），默认值的家搬到 domain 的 `HORIZON_DEFAULT_DAYS`，`400` 改 `HORIZON_MAX_DAYS - 1`。
+〔后半笔是因为我写文档时的一句话被 grep 证伪〕前半笔我写"读取口收界"时顺口说了一句"`SettingsStoreParams()` 是全仓唯一的
+参数读取口"，抄进文档前按 `SettingsStore.getParams()` 校对，发现**口子有两个**：`ProfileSettingsService.loadMyRhythm` 绕过
+它直接读存储，把 5000 原样回填进「我的 · 作息」的天数框，而同一页的 `horizonError` 只放行 7–366——想改起床时间也保存不了。
+这一条有用户可见读数，所以它单独一笔：先写用例跑到红（`expected 366 but got 5000`），再让回填也念 `horizonFromStore`，
+并把 H4「直接调 `SettingsStore.getParams()` 的文件只许是白名单里那两个口子」并进 `horizon`——我这次错的不是代码，
+是**只数读者不数口子**，判据就把这件事变成可数的。
+〔离线三格：两格新增、一格真红→绿〕`252 → 254 → 255`。前两格测新函数／新常量，改前编译不过，没有红→绿可证，
+牙齿靠手拆分支证：把 `horizonFromStore` 的 `<= 0` 分支写成 `if (false)`，用例当场 `expected 120 but got 1`——
+"收成 1 天"这个形状正是我不肯交给 `clampHorizonDays` 的理由，量出来了。第三格打在改前就存在的 `loadMyRhythm` 上，
+是**本批唯一一条离线红→绿**。静态口径条数**仍是七条**（H3／H4 都并进 `horizon`：读 `AppConst.HORIZON_DAYS` 即违规、
+口子只许在白名单里），`run.mjs` 的 PASS 行多报两个水位（commons 那份旧默认值的读者数，现 0；离开存储的口子数，现 2）。
+四次探针（H3 读者、H3 存活判定、`horizonFromStore` 分支、H4 白名单）都逐字节还原并 `diff` 确认。
+〔证据的边界〕`ScheduleUseCase.ets` 在离线面是 STUB（`run.mjs` 里那份 `SettingsStoreParams()` 直接返回 `defaultParams()`），
+所以**主读取口收界这一处没有行为证据**，只有三档出包的 ArkTS 编译证明；`hasPartnerScheduleData` 同理。
+`ProfileSettingsService` 在离线面上，所以设置页回填那一格是真跑出来的行为。`CoTimeView`／
+`CycleEditor` 在 `entry/src/main/ets`，连类型都不过离线 tsc。
+〔留给用户裁定的第三条，不由清理批次替谁决定〕`AppConst.HORIZON_DAYS`（`commons/src/main/ets/constant/AppConst.ets:6`）
+从本批起**零读者**：删掉它，还是留着当 commons 侧的一个常量，我不定——那个文件在"永不提交"清单上，是作者自己的东西。
+`horizon-audit` 的 H3 因此**只拦读者、不拦定义**，这个取舍写在文件头。前两条待裁定（`ScheduleOverviewQueryService`
+的第四份合流、要不要给 `commons → domain` 加依赖边）承 AH，仍在原处等。
+AI 新增的一格设备欠账（视界被备份带回成越界值时，周历不再出现引擎没算过的"视界内"空白周；班表编辑器那句
+"自动展开未来 120 天"与共同时间副标题的兜底读数仍与引擎同源；「我的 · 作息」回填成 366 之后改别的字段能保存成功——
+这一半离线已经跑出行为，屏幕上要补的是它下游那次真写入与重算）与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH 攒下的复验
+排在同一个阻塞上：AI 收口时 `hdc list targets -v` 再探，`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`。
+
 ---
 
 ## 8. 追加区（后续批次的改动继续写在这里）
@@ -426,6 +458,7 @@ AD／AE／AF／AG 攒下的复验排在同一个阻塞上：AH 收口时 `hdc li
 - 2026-09-29 批次 AF（同一条合流的第三份抄写并回引擎）：D-56 见 §8.18，代码一笔提交 `d43faae`（`buildAvailability` 只留一次 `expandCycle` 调用 + 四格离线用例，`238 → 242`）；§8.18 与 §7 的收口段随本文档这一笔入库。这一批也没有新增静态口径——判据已写好，等第四份抄写并掉再进 `run.mjs`，理由记在 §8.18。
 - 2026-09-29 批次 AG（视界天数上限并成一处）：D-57 见 §8.19，代码＋门禁一笔提交 `2076961`（`domain` 的 `HORIZON_MAX_DAYS` + `clampHorizonDays` + 五个算天数的入口接上 + feature 的 `HORIZON_MAX` 改派生 + `MeView` 提示念常量 + 第六个静态口径 `horizon-audit.mjs` + 五格离线用例，`242 → 247`，其中只有一格改前是真红的）；§8.19 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**六条**，`docs/validation/performance-budget.md` §2 那处指针同笔更正（`HORIZON_MAX` 已不再自己写死数值）。
 - 2026-09-29 批次 AH（区间终点的念法并成一处）：D-58 见 §8.20，代码＋门禁一笔提交 `47be3eb`（`DateLabel.edgeDay`／`edgeTime` 做唯一的判定家 + 拆掉那三份抄写（`DateLabel.endLabel`、`DateLabel.stamp`、`WindowDetailSheet` 的私有 `edgeDay` 与 `'24:00'` 三元）+ 七个没接的终点调用点接上（含 `busyLabel`）+ 第七个静态口径 `endread-audit.mjs` + 五格离线用例，`247 → 252`，其中只有一格改前是真红的）；§8.20 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**七条**，这一笔还修掉一个真缺陷：`horizon-audit` 与新写的 `endread-audit` 的**行尾豁免标记原先都不生效**（判定用的 `code` 已把 `//…` 剥掉，再拿它找标记等于没这条口子），两处都改成先看整行原文，探针过程记在 §8.20。
+- 2026-09-29 批次 AI（视界天数收回三个家）：D-59 见 §8.21，代码＋门禁两笔提交——前半 `393d77e`（domain 的 `HORIZON_DEFAULT_DAYS` + feature 的 `horizonFromStore` 接到 `SettingsStoreParams()` + `hasPartnerScheduleData` 的裸 `400` 改 `HORIZON_MAX_DAYS - 1` + `horizon-audit` 加 H3 与"默认值有家"的存活判定 + 两格离线用例，`252 → 254`）；后半 `bc17e49`（**写文档时 grep 校对才发现读取口不止一个**：`ProfileSettingsService.loadMyRhythm` 直接调 `SettingsStore.getParams()` 把 5000 原样回填进设置页输入框，而同一页的校验不认它——先写用例跑到红 `expected 366 but got 5000`，再修，`254 → 255`；并把 H4「口子只许在白名单里」并进 `horizon`）；§8.21 与 §7 的收口段随本文档这一笔入库。口径条数**仍是七条**（H3／H4 都归在 `horizon` 里面），`run.mjs` 的 PASS 行多报两个水位：commons 那份旧默认值的读者数（现 0）、离开存储的口子数（现 2）。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1678,5 +1711,157 @@ H1 `DateLabel.hm(` 的实参切词后不许出现整词 `end`／`End`（驼峰�
 在改前就正确的窗口卡作对照。这一格离线证不了，`entry/src/main/ets` 不在离线面上；AH 收口时 `hdc list targets -v`
 再探，`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，与 W／X／Z／AA／AB／AC／AD／AE／AF／AG 攒下的
 复验排在同一个阻塞上。
+
+---
+
+### 8.21 批次 AI·D-59：视界天数收回三个家——读取口不收界／默认值抄两份／扫描窗口裸 400（代码两笔 `393d77e`＋`bc17e49`）
+
+〔这一格从哪来〕AG 收口后那一次"同一条规则写了不止一份"的盘点的第四条，也不是用户报的症状。这一族的数法很具体：
+AG 立起 `clampHorizonDays` 之后我数过调用点——**七个**，逐个看完的结论是**全部发生在"用的时候"，零个发生在"读的时候"**。
+一道只在消费侧设的闸，等于要求每个新读者都记得设闸；而"往后算多少天"这个数今天有三个家：读取口（不收界——
+下面会看到"读取口有几个"这件事我当时也没数对）、domain 的出厂默认（裸 `120`）、commons 的 `AppConst.HORIZON_DAYS`
+（又一份 `120`，管着两句界面话）。
+第四个家藏在 `hasPartnerScheduleData` 里：一个裸 `400`。
+
+〔家一 · 主读取口不收界——本批第一条真症状〕`SettingsStoreParams()`（`feature/src/main/ets/usecase/ScheduleUseCase.ets`）
+是引擎参数的主读取口，改前整段是：
+
+```
+const p = SettingsStore.getParams();
+if (p.horizonDays <= 0) { p.horizonDays = AppConst.HORIZON_DAYS; }
+```
+
+它挡得住"从没设过"，挡不住"设了一个引擎算不出来的数"。上游 `SettingsStore.getParams()`
+（`data/src/main/ets/settings/SettingsStore.ets:94`）是 `defaultParams()` ＋ 逐键 `assignParam`，而 `assignParam` 只挡 NaN，
+**不挡取值范围**；Preferences 里那份 JSON 可能是系统备份/换机迁移从别的版本带回来的，那两个数都不受设置页校验管。
+它的下游调用点我 grep 过是 **9 处**（去掉定义行逐个列过：`CommonTimeQueryService:385`、`ScheduleOverviewQueryService:102/128/232`、
+`ScheduleUseCase:171/378/663/707`、`WeekScheduleView:191`）。最能说明问题的是周历：`:191` 拿到参数、`:192` 存进
+`@State horizonDays`，`:287` 那句 `epochDay >= today && epochDay < today + this.horizonDays`（"这一天/这一周算不算在视界内"）
+与 `:525` 那句周日越界判断**从来没过那道闸**——它信的就是这个读取口。而引擎侧（AG）会夹到 366。
+于是"视界 = 5000"这一份配置下：界面把第 40 周、第 60 周摆成视界内，引擎在 366 天就停止展开，用户看到的是一片
+引擎从没算过的周；而**空白在共同时间页读作"不空闲"，不是"没算"**——这一句是这条缺陷的严重性所在，它不是难看，是说反。
+
+〔改法：把闸挪到刚离开存储的那一刻〕新增 `feature/src/main/ets/model/RhythmRules.ets` 的 `horizonFromStore(days)`，
+主读取口调用它一次（`p.horizonDays = horizonFromStore(p.horizonDays)`），九个下游读者不再各自想起来。
+放在 feature 而不是 domain，是因为它的两条腿一条要 `clampHorizonDays`／`HORIZON_DEFAULT_DAYS`（domain），
+一条是给"从存储读回"这个 data 侧动作用的口径（feature 是唯一的接线层），domain 不该知道 Preferences 的存在。
+`getParams()` 每次调用都新建一份 `defaultParams()`（`:96`），所以就地把 `horizonDays` 改写不会污染别的读者。
+
+〔第二个口子是写文档时 grep 出来的——本批唯一一条红→绿，所以它单独一笔 `bc17e49`〕上面那句"`SettingsStoreParams()`
+是全仓唯一的参数读取口"是我写完前半笔、正把它抄进本文档时的判断，**它错了**。判据很简单：收界既然发生在"刚离开
+存储的那一刻"，那么它的覆盖面就等于**离开存储的口子有几处**——而我从没数过口子，只数了那个口子下面的读者。
+按 `SettingsStore.getParams()` grep 主源码，除 `ScheduleUseCase:769` 外还有 `ProfileSettingsService` 的两处
+（`:113` 的 `loadMyRhythm`、`:139` 的 `saveMyRhythm`）。第二处是真缺陷，不是写法洁癖：`loadMyRhythm` 把
+Preferences 里那串字面量原样回填进「我的 · 作息」的天数输入框，而**同一页**的 `horizonError` 只放行 7–366。
+于是备份/换机带回 5000 之后，那一屏显示 5000、并拒绝自己显示的这个数——用户只想改起床时间也保存不了，
+除非先动手去改那个自己从没填过的天数。这一条有用户可见读数（一个保存不了的按钮），所以它值得单独一笔。
+〔先写用例跑到红，再修〕`RhythmRulesTest.the_settings_page_prefills_the_number_the_engine_will_expand`：离线桩的
+`SettingsStore` 是一整张内存表，`setParams`/`getParams` 走 JSON 真往返，所以能先把 5000 种进去再读回填——
+改前跑到 `FAIL … expected 366 but got 5000`、`254 passed / 1 failed`。修法是让回填也念 `horizonFromStore(p.horizonDays)`，
+即"回填的是引擎真正会展开的那个界，不是存储里那串字"。写侧不必再补一道闸：输入框既然回填的是收过的数，
+保存时把它原样写回去，越界值就在这一次保存里被顺带修正——`saveMyRhythm:139` 那次读取不需要改动。
+〔顺手立 H4，防止我下次又只数读者〕`horizon` 口径里加一条白名单判据，见下面 H4 那段。
+
+〔0 与负数为什么不交给 `clampHorizonDays`〕那道闸的下界是 **1 天**（`Math.max(1, …)`——引擎只要能展开一天就算合法），
+把"没填/坏值"收成 1 天，等于替用户把视界改成"只看明天"，那是一次**静默改配置**。`horizonFromStore` 因此分两半：
+`<= 0` 回默认，其余过闸。这不是纸上理由：探针把分支写成 `if (false)` 之后，离线用例当场报
+`expected 120 but got 1`——"收成 1 天"的形状被量出来了。
+〔已知形状，写死在这里防止下一批顺手改〕1–6 天**照原样返回**。引擎算得出来，界面就念得出来；
+设置页的 `horizonError` 不接受 3，那是"从这里写出去"那条路的约定（下限 7 是本页的用法约定，不是引擎的），
+读取口不静默换成默认。这条取舍在 `RhythmRulesTest` 里以 `horizonFromStore(3) === 3` 明写，不靠注释。
+
+〔同一句式的另一半不在本批动〕`ScheduleUseCase:127` 的 `listOverrides(startEpochDay, startEpochDay + params.horizonDays - 1, owner)`
+**不需要**再补一次夹界：它的 `params` 正是从那个读取口出来的，源头收过界之后这里必然在 `[1, 366]` 内。
+夹两次反而会造出"两个闸的下界不一样"那种新分家——这也是本批把闸放在读取口的同一个理由。
+
+〔家二 · 默认值抄了两份〕改前 `AppConst.HORIZON_DAYS`（`commons/src/main/ets/constant/AppConst.ets:6`，`120`）有 **3 个读者**
+（按 `393d77e~1` grep 的结果）：`CycleEditor:251` 那句「保存后自动展开未来 120 天」、`CoTimeView:287` 副标题在参数没读出来时的兜底、
+`ScheduleUseCase:767` 那句 `<= 0` 兜底。而 `defaultParams()` 里另写了一份裸 `horizonDays: 120`。两份**同值不同源**：
+改 domain 的人没有理由去改 commons，于是界面那句"自动展开未来 120 天"会替引擎承诺一个它已经不用的数——
+这正是 §8.19 里"校验放行 500、引擎只算 366"那个分家族的另一头。默认值是引擎的属性，所以家搬到
+`domain/src/main/ets/model/Types.ets` 的 `HORIZON_DEFAULT_DAYS`，`defaultParams()` 改用它，两处界面读数改念它，
+`SettingsStoreParams` 的兜底改走 `horizonFromStore`。commons 那份**定义留着、零读者**——
+`AppConst.ets` 在"永不提交"清单上，删不删是作者的事，见 §7 的第三条待裁定。
+
+〔家三 · 裸 400〕`hasPartnerScheduleData` 扫单日覆盖用的是 `listOverrides(startEpochDay, startEpochDay + 400, OWNER_PARTNER)`。
+`ScheduleRepo.listOverrides` 走 `pred.between('epoch_day', fromDay, toDay)`（`:180`），**两端都含**，所以那是 **401 天**，
+比引擎能展开的最远视界（366 天）还多 35 天。视界外的覆盖今天根本算不出来，却能让界面说"TA 有班表数据"——
+"有没有"不能承诺得比"算不算得出"更远。改成 `startEpochDay + HORIZON_MAX_DAYS - 1`，跨度正好 366 天。
+这一处没有用户可见读数，它属于"一个没人解释的数"那一族，跟 AG 的 366、AH 的 1440 同源。
+
+〔H3 进 `horizon` 静态口径，**条数仍是七条**〕`tools/test/horizon-audit.mjs` 从两条判据变四条：H1 裸 `366` 只许在定义处、
+H2 面向用户的字符串里不许抄上限字面值、**H3 读 `AppConst.HORIZON_DAYS` 即违规**、H4 见下一段。
+H3 **只拦读者、不拦定义**（那个文件是作者自己的，删不删由他定），这一点与判据一样写进文件头，免得下一批把它读成"该删"。
+同批加一条存活判定：`HORIZON_DEFAULT_DAYS` 的字面量定义读不到时报违规——否则 H3 说的"默认值有家"是空的。
+这条判定**放在扫描循环里**（`rel === HOME` 时顺手认），不是循环外再 `readFileSync` 一次：那个文件真缺失时，
+口径应当报"判不了"，而不是抛一个 `ENOENT` 把整条门禁掀翻。`run.mjs` 的 PASS 行随之多报一个水位
+（`commons 那份旧默认值的读者 N 处`），判不了的情形也补进文件头：H3 认写法不认改名，也看不见"第三份抄成裸字面量"
+（那是 H2 的活，今天没有第三个读者，等出现了再加，不预先立一条空转的判据）。
+
+〔H4 · 口子要能数出来——本批那条"我以为只有一个"的教训落成判据〕`bc17e49` 加的第四条判据：**直接调
+`SettingsStore.getParams()` 的文件只许是白名单里那两个口子**（`ScheduleUseCase`、`ProfileSettingsService`），
+名单写在 `MOUTHS` 常量里，出现第三个文件即违规。它拦的不是"读参数"这件事，而是**下一批又只数读者、不数口子**——
+收界的覆盖面由口子决定，而口子这件事以前没人记录过，所以我一句"全仓唯一读取口"能写得毫无阻力。
+新增口子的合规路径只有两条：走 `SettingsStoreParams()`，或者自己收界并登记进白名单**并回答"为什么不能并成一个"**，
+这句也写进文件头。它判不了的事同样写在文件头：H4 管"口子有哪几个"，**判不了"某个口子里忘了调 `horizonFromStore`"**——
+那一格要靠读代码，或者靠 `RhythmRulesTest` 那种专门打在回填上的用例；别把 H4 绿当成收界齐了。
+`run.mjs` 的 PASS 行因此再报一个水位（`离开存储的口子 K 个都在白名单里`）。
+
+〔探针四次，都逐字节还原〕这一批的静态判据全是新写的，不试就等于没验：
+① 往 `CycleEditor.ets` 尾部塞一行 `AppConst.HORIZON_DAYS` 读者 → `读者 1 处、越界抄写 1 处`，位置正确；撤 → 回到 `0 处 / 0 处`。
+② 把 `Types.ets` 里那行定义临时注释掉 → `domain/…/Types.ets：读不到 HORIZON_DEFAULT_DAYS 的字面量定义——H3 说的"默认值有家"就不成立`；撤 → 0 处。
+③ 把 `horizonFromStore` 的 `<= 0` 分支改成 `if (false)` 跑离线 → `FAIL the_store_mouth_snaps_only_what_the_engine_cannot_expand
+— expected 120 but got 1`，`253 passed / 1 failed`；撤 → 全绿。
+④ H4 是新立的最容易空转的一条（白名单判据天生容易被写成"永远成立"），所以单独试：往一个**不在名单里**的
+feature 文件塞一行 `SettingsStore.getParams()` → `违规 1 处`（位置正确）且水位从 `口子 2 个` 变 `口子 3 个`；
+撤 → 回到 `2 个 / 0 处`。这一条探针试的是"名单真的在拦"，不是"计数真的会动"。
+四处都在改前 `cp` 到 `.crdtest/probe-backup/`，还原后用 `diff` 确认与备份**逐字节一致**（不是"看起来一样"）。
+
+〔离线三格：两格不带红，一格是真红→绿——先说清〕`252 → 254 → 255`：
+`RhythmRulesTest.the_store_mouth_snaps_only_what_the_engine_cannot_expand`（收界四形：`5000→366`、`90→90`、`7→7`、
+`0/-7→120`、`3→3`）与 `the_default_horizon_has_one_home_for_both_roads`（`defaultParams().horizonDays === HORIZON_DEFAULT_DAYS`、
+`horizonFromStore(默认) === 默认`、默认值自己过得了 `horizonError`、不超过 `HORIZON_MAX_DAYS`）测的是**本批新加的函数与
+新加的常量**，改前转译就不过，所以这两格没有红→绿可证；真正有信息量的红来自探针 ③。
+第三格 `the_settings_page_prefills_the_number_the_engine_will_expand` 是**另一回事**：它打在改前就存在的
+`ProfileSettingsService.loadMyRhythm` 上，改前实跑 `FAIL … expected 366 but got 5000`（`254 passed / 1 failed`），
+修完转绿——这一批有一条离线可证的真实红，不是纯新增。它还顺手证明离线桩的 `SettingsStore` 能种越界值
+（内存表 ＋ JSON 真往返），下一批要打同类回填用例不必再等真机。
+
+〔证据的边界，不模糊〕在离线面上**跑出行为**的：`horizonFromStore` 的数值形状、`HORIZON_DEFAULT_DAYS` 与 `defaultParams()`
+同源、以及「我的 · 作息」的天数回填——`ProfileSettingsService` 就在 `feature/src/main`（不在 `run.mjs` 的跳过名单里），
+所以第三格是真的调用了 `loadMyRhythm()` 并读回字符串，两档（closed／open）各跑一遍。**没跑出行为的**：
+`ScheduleUseCase.ets` 在离线面是 STUB——`run.mjs` 里那份 `SettingsStoreParams()` 直接 `return defaultParams()`（`:165`），
+所以"主读取口真的收界了"这一句**只有 debug/release/ohostest 三档出包的 ArkTS 编译证明**；
+`hasPartnerScheduleData` 的 `400 → HORIZON_MAX_DAYS - 1` 同理（它调的是 `ScheduleRepo`，要 RDB）。
+`CoTimeView`／`CycleEditor` 在 `entry/src/main/ets`，**连类型都不过离线 tsc**。这不是遗漏，是这一批能证的天花板：
+要把主读取口钉住，得先让 `ScheduleUseCase.ets` 上离线面，而它 `import @kit.ArkTS` 的 taskpool——那是另一件事（承 AB 的 `SerialQueue` 那笔）。
+后半笔把 `ProfileSettingsService` 那道口子挪到了"有行为证据"那一侧，正是因为它本来就能上离线面——同一批里两个口子的
+可证程度不同，这一点值得记下来：**能被离线钉住的口子，别把它留在 STUB 后面**。
+
+〔门禁实测·AI 收口（2026-09-29）〕
+
+- `node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0。
+  这一跑打在 `bc17e49` 入库后的字节上（前半笔跑完才出的后半笔，所以重跑了整条，没有只补 offline）。
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`255 passed / 0 failed`**。七条口径全 PASS，
+  其余六格水位与 AH 收口逐位相同（`press:` 32 接 1 豁免、`contrast:` 4 接 1 豁免、`endread:` 裸 `hm` 15／`edgeTime` 10／豁免 0），
+  `horizon:` 这一格换了说法：`clampHorizonDays 相关行 8 处`（7 → 8，多的那处正是 `horizonFromStore` 自己调那道闸）、
+  `commons 那份旧默认值的读者 0 处`、`离开存储的口子 2 个都在白名单里`。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`WARN 269`（基线 269）。
+  这一批从三处 import 名单里摘掉了 `AppConst`，若留下未使用符号就会动基线——两位都没动，说明删干净了。
+- `perf`：exit 0。视界扫描（paired，P50）366d=**92.7ms**、120d=**15.5ms**（整条曲线 60d=3.9／90d=9.6／150d=23.1／180d=30.3／240d=47.0）。
+  对照本批前半笔那一跑的 83.6／15.9，以及 AH 的 89.7／84.3 与 16.3／15.0——**同一指标在 82–93ms 之间来回**，
+  这一跑的 366d 是这条带里偏高的一端，我没有把它读成回归：本批在读取口加的是一次取模比较（每个查询服务每次调用一次），
+  不进引擎逐日展开，真要有影响只会是常数级。但把话说全：这是"我判断它在噪声带内"，不是"我证明了它没动"；
+  要证得动，得同机连续多跑取分布，那是另一件事。`page_projection_96w` 0.092/0.254/0.339、`1000w` 0.829/1.095/2.050 在预算内。
+  §2 的表**仍不回填**（承 AF／AG／AH 的理由）。
+
+〔设备欠账（不勾选）〕新增一格，与本批那条真缺陷同源：**视界被备份/换机带回成越界值时，界面与计算说的是同一个数**——
+要看两点：① 周历不再出现"这一周在视界内却整片空白"的列（空白在共同页读作不空闲，所以这一格必须看屏幕，不能靠读数）；
+② 班表编辑器那句「保存后自动展开未来 120 天」与共同时间副标题的兜底读数，在出厂默认下仍与引擎展开的天数一致。
+「我的 · 作息」回填那道口子已经有离线行为证据，屏幕上要补的是它下游那半句：**回填 366 之后改起床时间能保存成功**
+（离线桩没有真的写 Preferences，也没有 `ScheduleUseCase.onScheduleChanged()` 的重算链）。
+这一格离线证不了（`entry/src/main/ets` 不在离线面上、`ScheduleUseCase` 是 STUB），而且它需要**先造出一份越界的
+Preferences**（备份恢复或手工改值），不是常规路径下能顺手看到的；AI 收口时 `hdc list targets -v` 再探，
+`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，与 W／X／Z／AA／AB／AC／AD／AE／AF／AG／AH 攒下的复验排在同一个阻塞上。
 
 

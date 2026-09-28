@@ -16,6 +16,13 @@ export const WEEK_MODE_SCHEDULE = 'SCHEDULE';
 export const WEEK_MODE_COMMON = 'COMMON';
 
 const LABEL_W = 26;
+/**
+ * 7 枚列的宽度基准只写这一处，列头与网格共用。
+ * 两边还必须把那 7 枚列包在一枚 `Row().layoutWeight(1)` 里：直接跟 `Column().width(LABEL_W)`
+ * 平级时，百分比算的是**整行**（含占位），而网格算的是扣掉占位后剩下的那段——实测列头每列
+ * 149px、色块每列 136px，右端累计多出一个占位的宽（91px），最后一列的头飘到隔壁列上（D-62）。
+ */
+const WEEK_COL_W = '14.28%';
 const DAY_HEADERS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 /** 共同空闲分级门槛（分钟）：≥6h / ≥3h / 其余。 */
 const FREE_HIGH_MIN = 360;
@@ -650,21 +657,25 @@ export struct WeekScheduleView {
   scheduleHead() {
     Row() {
       Column().width(LABEL_W).accessibilityLevel('no')
-      ForEach(this.weekDays(), (ed: number, idx: number) => {
-        Column({ space: 1 }) {
-          Text(DAY_HEADERS[idx])
-            .fontSize(10)
-            .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_tertiary'))
-          Text('' + DateLabel.ymd(ed).d)
-            .fontSize(11).fontWeight(FontWeight.Medium)
-            .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
-        }
-        .width('14.28%')
-        .alignItems(HorizontalAlign.Center)
-        // 星期字 + 日号两枚 Text 读成一句，今天靠颜色额外标出来的部分由文本自己带上
-        .accessibilityGroup(true)
-        .accessibilityText(this.headRead(ed))
-      }, (ed: number, idx: number) => '' + ed + '-' + idx)
+      // 与 scheduleCols 同一个基准：7 枚列铺在扣掉刻度占位的那一段上，逐列对齐下方的网格
+      Row() {
+        ForEach(this.weekDays(), (ed: number, idx: number) => {
+          Column({ space: 1 }) {
+            Text(DAY_HEADERS[idx])
+              .fontSize(10)
+              .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_tertiary'))
+            Text('' + DateLabel.ymd(ed).d)
+              .fontSize(11).fontWeight(FontWeight.Medium)
+              .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
+          }
+          .width(WEEK_COL_W)
+          .alignItems(HorizontalAlign.Center)
+          // 星期字 + 日号两枚 Text 读成一句，今天靠颜色额外标出来的部分由文本自己带上
+          .accessibilityGroup(true)
+          .accessibilityText(this.headRead(ed))
+        }, (ed: number, idx: number) => '' + ed + '-' + idx)
+      }
+      .layoutWeight(1)
     }.width('100%')
   }
 
@@ -734,7 +745,7 @@ export struct WeekScheduleView {
               this.nowMarker()
             }
           }
-          .width('14.28%')
+          .width(WEEK_COL_W)
           .height(this.gridH())
           .clip(true)
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
@@ -758,27 +769,31 @@ export struct WeekScheduleView {
       // 只留一格占位，让 7 列和下方网格逐列对齐；纵轴说明已挪到网格右上（见 axisLine）
       Column().width(LABEL_W).accessibilityLevel('no')
 
-      ForEach(this.weekDays(), (ed: number, idx: number) => {
-        Column({ space: 1 }) {
-          Text(DAY_HEADERS[idx])
-            .fontSize(10)
-            .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textTertiary)
-          Text('' + DateLabel.ymd(ed).d)
-            .fontSize(11).fontWeight(FontWeight.Medium)
-            .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textSecondary)
-          Text(this.isKnown(ed) ? this.dayTotalLabel(ed) : '·')
-            .fontSize(8)
-            .fontColor(this.isKnown(ed) ? DesignTokens.textSecondary : DesignTokens.textHint)
-          Circle()
-            .width(4).height(4)
-            .fill(this.hasTrip(ed) ? tagColor(WindowTag.TRIP) : Color.Transparent)
-        }
-        .width('14.28%')
-        .alignItems(HorizontalAlign.Center)
-        // 四行（星期/日号/总量/旅行标点）合成一句；标点只有颜色，读屏靠 headRead 里的文字
-        .accessibilityGroup(true)
-        .accessibilityText(this.headRead(ed))
-      }, (ed: number, idx: number) => 'ch' + ed + '-' + idx)
+      // 与 commonCols 同一个基准：占位列算在百分比之外，否则头与色块逐列错位（D-62）
+      Row() {
+        ForEach(this.weekDays(), (ed: number, idx: number) => {
+          Column({ space: 1 }) {
+            Text(DAY_HEADERS[idx])
+              .fontSize(10)
+              .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textTertiary)
+            Text('' + DateLabel.ymd(ed).d)
+              .fontSize(11).fontWeight(FontWeight.Medium)
+              .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textSecondary)
+            Text(this.isKnown(ed) ? this.dayTotalLabel(ed) : '·')
+              .fontSize(8)
+              .fontColor(this.isKnown(ed) ? DesignTokens.textSecondary : DesignTokens.textHint)
+            Circle()
+              .width(4).height(4)
+              .fill(this.hasTrip(ed) ? tagColor(WindowTag.TRIP) : Color.Transparent)
+          }
+          .width(WEEK_COL_W)
+          .alignItems(HorizontalAlign.Center)
+          // 四行（星期/日号/总量/旅行标点）合成一句；标点只有颜色，读屏靠 headRead 里的文字
+          .accessibilityGroup(true)
+          .accessibilityText(this.headRead(ed))
+        }, (ed: number, idx: number) => 'ch' + ed + '-' + idx)
+      }
+      .layoutWeight(1)
     }
     .width('100%')
     .alignItems(VerticalAlign.Top)
@@ -901,7 +916,7 @@ export struct WeekScheduleView {
               this.nowMarker()
             }
           }
-          .width('14.28%')
+          .width(WEEK_COL_W)
           .height(this.gridH())
           .clip(true)
           .border({ width: { right: 0.5 }, color: DesignTokens.divider })

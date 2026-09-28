@@ -680,7 +680,7 @@ export struct WeekScheduleView {
                 .accessibilityLevel('no')
             }
 
-            // 日程块
+            // 日程块（键要含 color：改了班次配色而时段与名称没变时，节点是按键复用的，旧色会留在屏上——D-40 同一族）
             ForEach(this.dayItems(ed), (item: WeekBlock) => {
               Column() {
                 Text(item.name)
@@ -697,7 +697,7 @@ export struct WeekScheduleView {
               .clip(true)
               .accessibilityGroup(true)
               .accessibilityText(this.scheduleBlockRead(item, ed))
-            }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name)
+            }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name + item.color)
 
             // 「现在」游标画在色块之上：压在被遮住的班次下面就等于没有（K-4③）
             if (ed === this.nowDay() && this.nowShown()) {
@@ -844,6 +844,7 @@ export struct WeekScheduleView {
             // 泳道只是底色，点列看当日明细、点色块去建计划这两件事不能被它挡住
             .hitTestBehavior(HitTestMode.None)
 
+            // 空闲块：底色与高度都按 end-start 分档，所以键里必须有 end（同 D-40 那一族）
             ForEach(this.dayFreeBlocks(ed), (b: FreeBlock) => {
               Column() {
                 Text(this.blockLabel(b))
@@ -862,7 +863,7 @@ export struct WeekScheduleView {
               .accessibilityGroup(true)
               .accessibilityText(this.freeBlockRead(b, ed))
               .onClick(() => this.onPickWindow(b.winStart, b.winEnd))
-            }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start)
+            }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start + '-' + b.end)
 
             // 「现在」游标：与日程模式同一枚画法，画在所有块之上（K-4③）
             if (ed === this.nowDay() && this.nowShown()) {

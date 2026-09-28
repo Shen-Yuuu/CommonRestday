@@ -666,7 +666,10 @@ export struct CoTimeView {
                 }
               })
             }
-          }, (w: WindowSummary) => w.start + '-' + w.end + '-' + w.channel)
+          }, (w: WindowSummary, idx: number) => w.start + '-' + w.end + '-' + w.channel + '-'
+            // 上屏的字段全进键（D-40 同一族）：标签行吃 displayTags，镜像切角吃 idx，
+            // 「今天／明天／N 天后」吃 todayEpoch——少一个，复用下来的那张就念旧的那一份。
+            + w.displayTags.join('|') + '-' + todayEpochDay() + '-' + idx)
         }
         .width('100%')
         .height('100%')

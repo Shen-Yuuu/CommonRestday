@@ -291,7 +291,7 @@ export struct DayDetailSheet {
               } else {
                 ForEach(this.regularWindows(), (w: WindowSummary) => {
                   this.windowRow(w)
-                }, (w: WindowSummary) => '' + w.start + '-' + w.end + '-' + w.channel)
+                }, (w: WindowSummary) => '' + w.start + '-' + w.end + '-' + w.channel + '-' + w.displayTags.join('|'))
               }
               ForEach(this.tripWindows(), (w: WindowSummary) => {
                 this.tripRow(w)

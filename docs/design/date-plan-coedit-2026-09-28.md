@@ -368,6 +368,21 @@ AE 的四格（涂休息落中性休底＋红点、无模板只涂班仍画班�
 AF 的一格（无模板只涂班的人，共同时间与推给 TA 的快照里那些天仍算忙——并轨前后什么都没变）、
 X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 都是 `Offline`（AF 收口时再验过一次）。
 
+**AG 批次已于 2026-09-29 收线**：代码＋门禁一笔 `2076961`，本文档一笔随后，见 §8.19。它收的是**一个数抄了四份、
+第五处压根没抄**那一族：引擎、快照、设置页闸门、界面提示各写一遍 366，而 `ScheduleUseCase:708` 那处按窗口长度展开的
+天数没有硬上限。上限从此只定义在 `domain` 的 `HORIZON_MAX_DAYS`（配 `clampHorizonDays`），feature 的 `HORIZON_MAX`
+由它派生，界面上的天数念常量，五处算天数的地方共用那一道收口。真红→绿的只有一格（`horizonLabel` 改前把 500 天念成
+「未来 17 个月」而引擎只算 12 个月）——我把改前那两行临时换回去跑过离线确认，其余四格是等价与同源的钉子，改前也绿。
+第六个静态口径 `horizon` 进退出码，与 AF 暂缓那条不同，它**第一晚就绿**，所以有信息量。
+〔对上句的偏离说明〕AG 不碰协议、不碰云、不碰 `CRD1`，不改任何用户可见读数：动的是五个算天数的入口、一个常量的家、
+界面提示的字（改成拼常量）与一条只读静态检查。
+〔证据的边界〕`ScheduleUseCase` 三处在离线编译面之外（offline 用 STUB 顶掉），`MeView` 也不在离线面上——那两处补的
+上限与"提示同源"只有三档出包的类型证明，**没有行为证据**；能在离线上证的四样（引擎、快照、`horizonLabel`、闸门同源）
+都已证，离线用例 `242 → 247`。`perf` 连跑两次：366d 的 P50 比 AF 收口高约 6%，但两次 run 自己的 240d 就差 7%，
+归不到本批头上，所以 §2 那张表不回填。AG 的两格设备欠账（正常路径读数未变；「我的 · 作息」那两处天数提示仍原样显示，
+这一格离线证不了）与 W／X／Z／AA／AB／AC／AD／AE／AF 攒下的复验排在同一个阻塞上：AG 收口时 `hdc list targets -v`
+再探，两台仍是 `TCP Offline`。
+
 ---
 
 ## 8. 追加区（后续批次的改动继续写在这里）
@@ -382,6 +397,7 @@ X 的两条、§11 第 3／6／8 条）仍排在同一个阻塞上：两台 HVD 
 - 2026-09-28 批次 AD（压在用户自选色上的前景跟着底色走）：D-54 见 §8.16，代码一笔提交 `15588cc`（`SwatchInk` + `DesignTokens.foregroundOn` + 八处接线 + `PaintMonth` 的 `neutral` 判据）；门禁（第五个静态口径 `contrast:` ＋ 链机器 `chain-scan.mjs`）与本文档收口一笔提交 `44356bc`；§8.16 与 §7 的收口段随本文档这一笔入库。
 - 2026-09-28 批次 AE（涂「休息」是一条真覆盖）：D-55 见 §8.17，代码一笔提交 `64c3f74`（`PaintMonth` 拆掉自己抄的那份合流 + `DayCell.painted` 位 + `expandCycle` 接住"没有循环模板" + 两条离线用例，`236 → 238`）；§8.17 与 §7 的收口段随本文档这一笔入库。这一批没有新增静态口径，理由记在 §8.17。
 - 2026-09-29 批次 AF（同一条合流的第三份抄写并回引擎）：D-56 见 §8.18，代码一笔提交 `d43faae`（`buildAvailability` 只留一次 `expandCycle` 调用 + 四格离线用例，`238 → 242`）；§8.18 与 §7 的收口段随本文档这一笔入库。这一批也没有新增静态口径——判据已写好，等第四份抄写并掉再进 `run.mjs`，理由记在 §8.18。
+- 2026-09-29 批次 AG（视界天数上限并成一处）：D-57 见 §8.19，代码＋门禁一笔提交 `2076961`（`domain` 的 `HORIZON_MAX_DAYS` + `clampHorizonDays` + 五个算天数的入口接上 + feature 的 `HORIZON_MAX` 改派生 + `MeView` 提示念常量 + 第六个静态口径 `horizon-audit.mjs` + 五格离线用例，`242 → 247`，其中只有一格改前是真红的）；§8.19 与 §7 的收口段随本文档这一笔入库。`run.mjs` 的口径行到这一批是**六条**，`docs/validation/performance-budget.md` §2 那处指针同笔更正（`HORIZON_MAX` 已不再自己写死数值）。
 
 ### 8.1 批次 W·W-a／W-b：加载态并成一条占位语言 ＋ 云降级三态上屏（提交 `eceafa3`）
 
@@ -1445,5 +1461,94 @@ overrides 数组走，而 `listOverrides`（`ScheduleRepo:177-181`）只有 `bet
 从没建过循环模板、只涂过几天班的人，共同时间页与推给 TA 的那份快照里那些天仍算忙、被涂成休息的那天仍不算。
 这一格与 AE 的第②④格同族，同一个设备会话里可以一起验。AF 收口时 `hdc list targets -v` 再探一次：
 `127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，仍排在 AC／AD／AE／Z／AA／AB／§11 第 3／6 条那一个会话里。
+
+### 8.19 批次 AG·D-57：视界天数上限并成一处——放行与展开不再各抄一份 366（代码＋门禁一笔 `2076961`）
+
+〔这一格从哪来〕AF 收口后把"同一条规则写了不止一份"这一族从头再过一遍时命中的，不是用户报的症状，也没有
+某一屏能指给它看。命中的判据很具体：`366` 这个数在主源码里剩下四处（引擎、快照、设置页闸门、界面上的提示
+文字），而**第五处算天数的地方根本没有上限**。
+
+〔改前那四处各说什么〕`CommonFreeEngine:26` 写 `Math.max(1, Math.min(p.horizonDays, 366))`（共同时间按日展开）；
+`SnapshotBuilder:15` 同式（推给 TA 那份包络＝`days × 48` 个 30 分钟槽）；feature 的 `RhythmRules:10`
+`HORIZON_MAX = 366`（设置页放行区间，`horizonError` 的提示语从它派生）；`MeView:1404-1406` 把 `7–366 天`
+连读屏文字又念一遍字面量。四处**今天数值相同，所以没人报错**——分家只需要一个人改其中一处：校验放行 500、
+引擎只算 366、界面上仍写着"可以填到 366"。这一族的风险全部在"改了没同步"里，与 AE／AF 同形。
+
+〔第五处不是风险，是已经在分家〕`ScheduleUseCase:708` 原来是 `Math.min(lastDay - firstDay + 1, params.horizonDays)`：
+一次冲突检测按窗口跨度展开，最宽能铺到存储里那份 `horizonDays`，而**同一次计算里引擎只算到 366**。
+什么情形能拿到一份大于 366 的值？设置页挡住了手输，但 `SettingsStore.assignParam`
+（`data/src/main/ets/settings/SettingsStore.ets:123`）只挡 `NaN`、不挡取值范围，而 Preferences 里那份 JSON
+会跟着系统备份／换机迁移从**别的版本**回来。这条不是假想装置：改前 `horizonLabel(500)` 当场念出「未来 17 个月」，
+而引擎只算到 12 个月——一句不起承诺的读数，本批唯一真红过的一格测的就是它。
+
+〔改法〕上限的家只有一个：`domain/src/main/ets/model/Types.ets:146` 的 `HORIZON_MAX_DAYS` ＋ `:155` 的
+`clampHorizonDays(days)`（收进 `[1, 上限]`）。五处算天数的地方全过这一道（`CommonFreeEngine:26`、
+`SnapshotBuilder:17`、`ScheduleUseCase:257`／`:519`／`:708`）；feature 的 `HORIZON_MAX` 改成从
+`HORIZON_MAX_DAYS` 派生（`RhythmRules.ets:10`），于是校验区间与提示语（`:48-49`）自动跟着同一个数；
+`MeView:1404-1406` 的可见文字和读屏文字念常量。上限为什么停在 366，写进了常量自己的注释里，
+凭的是 `docs/validation/performance-budget.md` §2 的实测视界扫描（开发机下界 120d=13.6ms／366d=72.0ms，
+近似线性）＋ §3 的"列表行数 ≤ 视界天数"，不是"取一整年"这个说法本身。
+
+〔两种"越界"不是一件事，别并成一道〕`SettingsStoreParams()`（`ScheduleUseCase:764-767`）里
+`if (p.horizonDays <= 0) → AppConst.HORIZON_DAYS（120）` 保持原样：它判的是"这条参数从没设过"→取默认，
+`clampHorizonDays` 判的是"设了，但设得太远"→收回上限。把前者换成后者，新装机第一次读参数就得到"只算 1 天"。
+同一段代码里两个下界也各自留着：引擎只要求 ≥1 天，`HORIZON_MIN = 7` 是设置页的用法约定（"只看本周"那一档），
+不是计算规则，不该搬进 domain。
+
+〔不动的一处读取，和它为什么不是同一族〕`ScheduleUseCase:126`
+`listOverrides(start, start + params.horizonDays - 1, owner)` 是**读取范围**而不是展开天数：读宽了由合流那一道
+丢掉（AF 的 `override_outside_horizon_dropped` 钉的就是这条），读窄了才漏班，所以在这里套上限只会把一次读变成两次。
+另记一笔仓库里最后一个凭经验写的天数：`:455` 为代录 TA 的周视图写死 `startEpochDay + 400`。它比
+`HORIZON_MAX_DAYS` 大，今天永不截断，所以不算上限的抄写、本批不碰——但它没有任何常量兜着，
+谁哪天调上限不会有人想起这里。这句是留给下一个人的，不是给自己的免责。
+
+〔第六个静态口径 `horizon`（`tools/test/horizon-audit.mjs`）〕两条判据只判**代码**（注释与 `*` 续行不参与判定）：
+H1 `Math.min(… 366 …)` 只许出现在 `Types.ets`；H2 任何字符串字面量不许再念 `366`（三位短 hex 色值一类跳过），
+确有理由的越界抄写用 `// horizon-ceil-exempt 理由` 点名。脚本不硬编码 366，而是从 `Types.ets` 把常量读出来——
+读不到就记一条违规，不把"我自己没解析成功"当成绿。与 AF 暂缓那条的差别就在这儿：这条加上去**第一晚就绿**
+（`上限 366 天，clampHorizonDays 调用 7 处，越界抄写 0 处`），所以它进退出码有信息量；AF 那条今天还有两处命中，
+红的恰好是我不能改的那个文件。
+
+〔离线五格（`242 → 247`）——先说清哪一格是真红的〕
+**真红→绿只有一格**：`horizon_label_reads_the_ceiling_not_the_stored_number`
+（`entry/src/test/RhythmRulesTest.ets`）。我把 `horizonLabel` 临时换回改前那两行跑了一遍离线，
+得到 `expected 未来 12 个月 but got 未来 17 个月`、`246 passed / 1 failed`，再把并轨版换回来复跑
+`247 passed / 0 failed`，并把 `RhythmRules.ets` 恢复到与入库内容逐字节一致（`git diff` 为空）。
+同一格里的 `horizonLabel(0)` 也只有加了 clamp 才成立（改前念「未来 0 天」）。
+另四格是等价与同源的钉子，改前也绿，说清免得被读成"修好四处"：
+`horizon_days_clamp_at_both_ends` 测的是新函数（改前它不存在，120／366／5000／0／−400 五个入参）；
+`compute_stops_at_the_horizon_ceiling_when_params_dont` 与
+`oversized_horizon_builds_a_ceiling_sized_snapshot` 钉"params 给 5000 也只铺 366 天、窗口不越界、
+最后一天仍算空闲、快照包络正好 `366 × 48` 槽"——这两格在改前就是绿的，因为那两处各抄了同一个 366；
+`the_gate_ceiling_is_the_number_the_engine_expands_to` 钉的是 `HORIZON_MAX === HORIZON_MAX_DAYS`
+且 `horizonError('' + (HORIZON_MAX_DAYS + 1))` 当场拒绝（连"越界一档"的入参都从常量算，不在断言里抄第二个 367），
+也就是"闸门放行的那一个数，就是引擎展开的那一个数"。同一文件里更早那格
+`horizon_bounds_use_the_same_numbers_as_copy` **照旧写死 `'367'` 与 `'7–366'`**，这不是漏改：它钉的是提示语的原文，
+把数字派生进断言就测不出"文案跟着常量走"这件事了；而 H2 只判主源码（`entry/src/test` 不在 `TREES` 里），
+所以用例里的字面量不与口径冲突。
+
+〔证据的边界，不模糊〕`ScheduleUseCase` 那三处（`:257`／`:519`／`:708`）在**离线编译面之外**——offline 用
+`STUB_SCHEDULE_USECASE` 把它顶掉，`entry/src/main/ets/view/MeView.ets` 也不在离线面上。所以第五处补上的那道
+硬上限、以及界面上"提示与校验同源"，只有三档出包的**类型**证明，没有行为证据；对照 AF 那句"改坏会被用例当场接住"，
+这一批的那两处不能这么讲。能在离线上证的（引擎、快照、`horizonLabel`、闸门与引擎同源）都已证。
+
+〔门禁实测·AG 收口（2026-09-29，`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` → `verify: ALL PASS`，exit 0）〕
+
+- `offline[closed]`／`offline[open]`：各 `typecheck=0 errors`、**`247 passed / 0 failed`**（242＋本批五格）。
+  口径行从**五条升到六条**：`copy`／`a11y`／`landing`／`press`／`contrast` 五格水位与 AF 收口逐位相同
+  （`press:` 32 接 1 豁免、`contrast:` 4 接 1 豁免），第六格 `horizon` 如上。`run.mjs` 的头部注释与退出码
+  说明同批改为"六条静态口径"——用例全绿但任一口径越界，仍压回 exit 1。
+- `debug`／`release`：各 `BUILD SUCCESSFUL`，`ArkTS:WARN 289`（基线 289，**未上调**）；`ohostest`：`WARN 269`（基线 269）。
+- `perf`：exit 0，**连跑两次取噪声范围**。视界扫描（paired，P50）第一次 366d=88.8ms、第二次 88.3ms，
+  比 AF 收口的 83.2ms 高约 6%；但同两次 run 的 240d 自己就差 50.3 vs 46.9ms（7%），所以这 6% 归不到本批头上——
+  本批把 `Math.min(...)` 换成一次同层函数调用，没有新增遍历。`page_projection_1000w` 的 max 从 2.856ms 到 1.321ms
+  （相邻两次，同一份代码），那一格是机器噪声不是回归；`96w` 两次 `0.096/0.169/0.299` 与 `0.095/0.158/0.185`。
+  这份文档 §2 的表**不回填**：两档都是开发机下界，且 AF 的表就是同一台机器同一族改动留下的，改写它等于用噪声修规格。
+
+〔设备欠账（不勾选）〕本批不新增用户可见读数，要看的两件事：① 正常路径什么都没变——设置页填 7／366 仍分别念
+「未来 7 天」「未来 12 个月」，填 367 仍被当场拒绝并念出 `7–366` 那个区间；默认 120 天下共同时间页读数与批次 AF 时相同。
+② `MeView:1404-1406` 那两处提示改成了拼常量，要在「我的 · 作息」那一屏亲眼看到 `7–366 天` 仍原样显示、读屏文字一致
+——这一格离线证不了（`entry/src/main/ets` 不在离线面上）。AG 收口时 `hdc list targets -v` 再探：
+`127.0.0.1:5555`／`127.0.0.1:5557` 仍是 `TCP Offline`，仍排在 W／X／Z／AA／AB／AC／AD／AE／AF 那一个会话里。
 
 

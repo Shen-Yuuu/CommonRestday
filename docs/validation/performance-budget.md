@@ -48,7 +48,7 @@ page_projection_1000w         60     0.746     0.961     1.654   在预算内
 ```
 
 视界扫描（稠密配对，P50）：`60d=3.4ms 90d=7.6ms 120d=13.6ms 150d=20.3ms 180d=25.6ms 240d=40.0ms 366d=72.0ms`
-→ 在开发机上约 130 天处穿过 16ms，且成本对视界近似线性。`HORIZON_MAX = 366`（`feature/src/main/ets/model/RhythmRules.ets:5`）是用户可设的合法值，所以**超预算路径今天就能走到**，不是假想情形。
+→ 在开发机上约 130 天处穿过 16ms，且成本对视界近似线性。`HORIZON_MAX = 366`（批次 AG·D-57 起它由 `domain` 的 `HORIZON_MAX_DAYS` 派生，`feature/src/main/ets/model/RhythmRules.ets`，上限的定义与那一道 `clampHorizonDays` 都在 `domain/src/main/ets/model/Types.ets`）是用户可设的合法值，所以**超预算路径今天就能走到**，不是假想情形。
 
 口径边界（必须连着这张表一起读）：
 

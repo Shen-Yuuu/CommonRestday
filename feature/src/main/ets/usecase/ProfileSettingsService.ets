@@ -13,7 +13,7 @@ import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
 import {
   addCleanupReport, clearAllMessageOf, emptyCleanupReport
 } from '../model/PlanFlow';
-import { horizonError, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
+import { horizonError, horizonFromStore, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
 import { decodeSyncState, SYNC_STATE_OK, SyncState } from '../model/CloudSyncRules';
 
 const TAG = 'ProfileSettingsService';
@@ -116,7 +116,10 @@ export class ProfileSettingsService {
     }
     const r: MyRhythm = {
       wakeText: minToHHmm(p.wakeMin), bedText: minToHHmm(p.bedMin), windText: '' + p.windDownMin,
-      horizonText: '' + p.horizonDays, minSlotMin: p.minSlotMin
+      // 回填的是引擎真正会展开的那个界，不是 Preferences 里那串字面量（D-59）：
+      // 备份/换机带回 5000 时，输入框念 5000 而本页的 horizonError 只放行 7–366，
+      // 用户连改起床时间都保存不了，除非先动那个自己从没填过的数。
+      horizonText: '' + horizonFromStore(p.horizonDays), minSlotMin: p.minSlotMin
     };
     return r;
   }

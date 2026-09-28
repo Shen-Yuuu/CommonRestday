@@ -8,7 +8,7 @@
  * "同一份设置，两个读者算出不同的往后多少天"。X1／AE／AF 三轮修的都是这一族（抄写的口径分家），
  * 这一条把它拦在写下来的那一刻。
  *
- * 规则三条，都只认**代码**（注释与字符串字面量不算，AG 的说明本身要提到 366）：
+ * 规则四条，都只认**代码**（注释与字符串字面量不算，AG 的说明本身要提到 366）：
  * - H1：`Math.min(` 里出现裸 `366` 的那一行，只许在 `domain/src/main/ets/model/Types.ets`
  *   （`HORIZON_MAX_DAYS` 的定义处）。别处要收界就调 `clampHorizonDays()`。
  * - H2：**面向用户的字符串**里出现 `HORIZON_MAX_DAYS` 的字面值（界面上的"7–366 天"那一类）。
@@ -18,6 +18,10 @@
  *   而且它管着**给用户看的一句话**（班表编辑器那句"自动展开未来 120 天"）——改 domain 的人
  *   不会想到去改 commons，那句界面话就替引擎承诺了一个它已经不用的数。
  *   `AppConst.HORIZON_DAYS` 的定义本身不算违规（那是用户自己的文件，删不删由他定），这条只拦读者。
+ * - H4：直接调 `SettingsStore.getParams()` 的文件只许是白名单里那两个口子。收界（`horizonFromStore`）
+ *   发生在"刚离开存储的那一刻"，所以它的覆盖面**等于口子的名单**——AI 就是靠这条数出来的：
+ *   以为只有一个读取口，grep 之后发现「我的 · 作息」回填输入框是第二个，而那一处正是改前真红的那格。
+ *   新增口子要么走 `SettingsStoreParams()`，要么自己收界并登记进白名单，并回答"为什么不能并成一个"。
  *
  * 判不了的情形（不猜，也不冒充覆盖）：
  * - 别的数字（布局宽度、别的阈值）撞上车面 `Math.min(` 又恰好等于 366：今天没有，真遇到就在
@@ -29,8 +33,9 @@
  *   今天没有第三个读者，等出现了再加，不预先立一条空转的判据。
  * - 计算侧真正"有没有按这个天数展开"由 `EngineTest` 的 `compute_stops_at_the_horizon_ceiling_…`
  *   与 `SnapshotTest` 的 `oversized_horizon_…` 两格在离线跑，静态口径只负责"别再抄第二份"。
- * - D-59 新加的"读取口收界"（`RhythmRules.horizonFromStore`）由 `RhythmRulesTest` 的四格离线用例
- *   钉住数值行为，静态口径判不了"谁忘了调它"——那一句留给下一个读者。
+ * - D-59 新加的"离开存储就收界"（`RhythmRules.horizonFromStore`）由 `RhythmRulesTest` 的三格离线用例钉住
+ *   数值行为（收界四形、默认值同源、设置页回填）。H4 管的是"口子有哪几个"，**判不了"某个口子里忘了调它"**——
+ *   那一格要靠读代码或靠下面这格新用例，别把 H4 绿当成收界齐了。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -45,6 +50,10 @@ const TREES = ['domain/src/main/ets', 'feature/src/main/ets', 'data/src/main/ets
 const EXEMPT_MARK = 'horizon-ceil-exempt';
 /** 默认天数的旧抄写：D-59 起它没有读者了，出现读者就是违规（H3）。 */
 const OLD_DEFAULT = 'AppConst.HORIZON_DAYS';
+/** 离开存储那一刻的合法口子（H4 的白名单）：新增口子要先回答"视界天数收没收界"。 */
+const MOUTHS = ['feature/src/main/ets/usecase/ScheduleUseCase.ets',
+  'feature/src/main/ets/usecase/ProfileSettingsService.ets'];
+const STORE_READ = 'SettingsStore.getParams()';
 const STRING_LITERALS = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 
 /** 注释（`//` 与块注释的 `*` 续行）不参与判定：AG 的说明里就得写清 366 是多少。 */
@@ -66,15 +75,17 @@ function literalsOf(code) {
 }
 
 /**
- * 扫描主源码，返回 `{ violations, callSites, defaultReads, ceiling }`。
+ * 扫描主源码，返回 `{ violations, callSites, defaultReads, mouths, ceiling }`。
  * `callSites` 是给门禁看的水位：有几个地方在调那一道闸；`defaultReads` 是还在读 commons 那份默认值
- * 的行数（D-59 起应为 0）；`ceiling` 是定义处读到的上限。
+ * 的行数（D-59 起应为 0）；`mouths` 是离开存储的口子数（H4 白名单里实际被走到的那几个）；
+ * `ceiling` 是定义处读到的上限。
  */
 export function auditHorizonCeiling(repo) {
   const violations = [];
   let callSites = 0;
   let defaultReads = 0;
   let defaultHome = false;
+  const mouthSites = new Set();
   let ceiling = -1;
   for (const tree of TREES) {
     for (const rel of listEts(repo, tree)) {
@@ -103,6 +114,15 @@ export function auditHorizonCeiling(repo) {
           violations.push(rel + ':' + (i + 1) + '：这里读了 ' + OLD_DEFAULT + '——视界的默认天数只在 '
             + HOME + ' 的 HORIZON_DEFAULT_DAYS 定义一次，commons 那份是它的第二份抄写（AI·D-59）');
         }
+        // H4：离开存储的口子只许是白名单里那两个
+        if (code.includes(STORE_READ)) {
+          mouthSites.add(rel);
+          if (MOUTHS.indexOf(rel) < 0) {
+            violations.push(rel + ':' + (i + 1) + '：这里绕过白名单直接调 ' + STORE_READ
+              + '——收界（horizonFromStore）发生在"刚离开存储的那一刻"，它的覆盖面就等于口子的名单：'
+              + '新口子要么走 SettingsStoreParams()，要么自己收界并登记进本文件的白名单（AI·D-59）');
+          }
+        }
         // H1：手抄一份上下界
         if (rel !== HOME && /\bMath\.min\s*\([^)]*\b366\b/.test(code)) {
           violations.push(rel + ':' + (i + 1) + '：这里又抄了一遍视界上限——上限只在 ' + HOME
@@ -130,7 +150,8 @@ export function auditHorizonCeiling(repo) {
   if (!defaultHome) {
     violations.push(HOME + '：读不到 HORIZON_DEFAULT_DAYS 的字面量定义——H3 说的"默认值有家"就不成立');
   }
-  return { violations: violations, callSites: callSites, defaultReads: defaultReads, ceiling: ceiling };
+  return { violations: violations, callSites: callSites, defaultReads: defaultReads,
+    mouths: mouthSites.size, ceiling: ceiling };
 }
 
 // 直接跑这个文件时打一份清单，供批次盘点与人工核对用。
@@ -139,7 +160,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === self) {
   const repo = path.resolve(path.dirname(self), '..', '..');
   const r = auditHorizonCeiling(repo);
   console.log('上限 ' + r.ceiling + ' 天（定义在 ' + HOME + '），clampHorizonDays 调用 ' + r.callSites
-    + ' 处，commons 那份默认值的读者 ' + r.defaultReads + ' 处，越界抄写 ' + r.violations.length + ' 处');
+    + ' 处，commons 那份默认值的读者 ' + r.defaultReads + ' 处，离开存储的口子 ' + r.mouths
+    + ' 个（白名单 ' + MOUTHS.length + ' 个），越界抄写 ' + r.violations.length + ' 处');
   for (const v of r.violations) {
     console.log('  ' + v);
   }

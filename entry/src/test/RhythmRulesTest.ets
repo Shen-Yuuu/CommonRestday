@@ -1,9 +1,10 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { defaultParams, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
+import { defaultParams, EngineParams, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } from 'domain';
+import { SettingsStore } from 'data';
 import {
   greetingOf, horizonError, horizonFromStore, horizonLabel, HORIZON_MAX, HORIZON_MIN,
   isCrossMidnight, NIGHT_MODE_LABELS,
-  nightModeHint, nightModeIndex, nightModeOf, rhythmError
+  nightModeHint, nightModeIndex, nightModeOf, ProfileSettingsService, rhythmError
 } from 'feature';
 
 /**
@@ -104,6 +105,24 @@ export default function rhythmRulesTest() {
       // 默认值自己过得了设置页的校验，也不越过引擎的上限
       expect(horizonError('' + HORIZON_DEFAULT_DAYS)).assertEqual('');
       expect(HORIZON_DEFAULT_DAYS <= HORIZON_MAX_DAYS).assertTrue();
+    });
+
+    it('the_settings_page_prefills_the_number_the_engine_will_expand', 0, async () => {
+      // 离开存储的不止 `SettingsStoreParams()` 一处：「我的 · 作息」回填输入框走的是
+      // `ProfileSettingsService.loadMyRhythm()`，它直接调 `SettingsStore.getParams()`。
+      // 备份/换机带回 5000 时输入框念 5000，而同一页的 `horizonError` 只放行 7–366——
+      // 用户连改起床时间都保存不了，除非先动那个自己从没填过的数。
+      const seeded: EngineParams = defaultParams();
+      seeded.horizonDays = 5000;
+      await SettingsStore.setParams(seeded);
+      expect(ProfileSettingsService.loadMyRhythm().horizonText).assertEqual('' + HORIZON_MAX_DAYS);
+      // 合法值照原样回填：这一道收界不改配置，只挡引擎算不出来的那个数
+      const legal: EngineParams = defaultParams();
+      legal.horizonDays = 90;
+      await SettingsStore.setParams(legal);
+      expect(ProfileSettingsService.loadMyRhythm().horizonText).assertEqual('90');
+      // 收尾把参数表擦回出厂值，别把 90 天留给后面跑的用例
+      await SettingsStore.setParams(defaultParams());
     });
 
     it('greeting_has_a_small_hours_bucket_before_noon', 0, () => {

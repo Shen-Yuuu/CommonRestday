@@ -268,20 +268,11 @@ export struct HomeView {
     return DateLabel.ymd(todayEpochDay()).m + '月';
   }
 
-  private noticeTitle(): string {
-    if (this.failed) {
-      return '刷新失败，下面是上次的结果';
-    }
+  /** 过期那一格的标题：读的是上一次计算落在哪天（失败态另有节点，不共用这一句）。 */
+  private staleTitle(): string {
     const h = this.home;
     const day = h == null ? todayEpochDay() : todayEpochDay(h.computedAt);
     return '结果基于 ' + DateLabel.mdw(day) + ' 的计算';
-  }
-
-  private noticeBody(): string {
-    if (this.failed) {
-      return '数据没变，稍后再下拉一次就行';
-    }
-    return '班表可能变了，重新算一次再确认';
   }
 
   private tonightQuestion(): string {
@@ -488,20 +479,30 @@ export struct HomeView {
                   this.skeleton()
                 }
               } else {
-                if (this.failed || this.isStale()) {
+                if (this.failed) {
+                  // 这一串四种说法各挂一颗节点：NoticeBar 的 tone/title/body 是普通成员，父页重渲染
+                  // 不更新它们，只有整颗拆掉重挂才换得了那一句（共同页与「我的」配对卡同一口径）。
                   NoticeBar({
-                    tone: this.failed ? NoticeTone.ERROR : NoticeTone.WARN,
-                    title: this.noticeTitle(),
-                    body: this.noticeBody(),
-                    actionLabel: this.failed ? '重试' : '重新计算',
+                    tone: NoticeTone.ERROR,
+                    title: '刷新失败，下面是上次的结果',
+                    body: '数据没变，稍后再下拉一次就行',
+                    actionLabel: '重试',
+                    onAction: () => {
+                      this.load(true);
+                    }
+                  })
+                } else if (this.isStale()) {
+                  NoticeBar({
+                    tone: NoticeTone.WARN,
+                    title: this.staleTitle(),
+                    body: '班表可能变了，重新算一次再确认',
+                    actionLabel: '重新计算',
                     onAction: () => {
                       this.load(true);
                     }
                   })
                 } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
                   // 三态里唯一会改变这一页读数的坏消息：TA 那一半是本机上的旧一份。
-                  // 两格坏值各挂一颗节点而不是同一颗换颜色——NoticeBar 的 tone/title/body 是普通成员，
-                  // 父节点重建时不更新它们，只有整颗拆掉重挂才换得了那一句（与「我的」配对卡同一口径）。
                   NoticeBar({
                     tone: NoticeTone.ERROR,
                     title: syncStateTitleOf(this.syncState),

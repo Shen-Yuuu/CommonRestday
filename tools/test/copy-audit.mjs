@@ -14,7 +14,9 @@
  * 5. 同一批禁令覆盖**全部随包源码**里出现的绝对化表述（`CLAIM_TREES`）——政策改了而界面上
  *    那句口号没改，用户读到的还是同一句假话（R1 的界面侧）；
  * 6. `clearAllMessageOf` 里不许再出现"稍后重试"，且 `cleanupMessageOf` 必须还有（R2：
- *    清库后重试凭据已随本机记录一起删掉，取消/改期那条路径则留着句柄）。
+ *    清库后重试凭据已随本机记录一起删掉，取消/改期那条路径则留着句柄）；
+ * 7. 一句说法只许由一颗节点念出来：`NoticeBar` / `StatePanel` 的显示字段是**普通成员**，
+ *    父页重渲染不更新它们，所以这些字段里出现三元表达式（同一颗节点换颜色换字）即判违规（D-45）。
  *
  * 违反即由调用方（`tools/test/run.mjs`）非零退出，不参与"绿"的定义就不算检查。
  */
@@ -165,6 +167,76 @@ function describeDiff(label, expected, actual, out) {
     + actual.slice(Math.max(0, i - 8), i + 24) + '…」');
 }
 
+/**
+ * 只负责"一句说法一颗节点"的那一类组件：它们的显示字段是普通成员（不是 @Prop），
+ * 所以值换了也不会重渲染——一个块只能念一种说法。
+ */
+const SENTENCE_NODES = ['NoticeBar', 'StatePanel'];
+/** 上面这些节点里承载"说法"的参数（回调与布局参数不在内）。 */
+const SENTENCE_FIELDS = ['tone', 'kind', 'title', 'body', 'description', 'actionLabel', 'glyph'];
+
+/** 从 `Name({` 起按花括号配平切出实例块：随包源码的字符串里不写花括号，够用了。 */
+function instanceBlocks(src, componentName) {
+  const out = [];
+  const head = new RegExp('\\b' + componentName + '\\(\\s*\\{', 'g');
+  let m = head.exec(src);
+  while (m !== null) {
+    const open = src.indexOf('{', m.index);
+    let depth = 0;
+    let i = open;
+    for (; i < src.length; i += 1) {
+      if (src[i] === '{') {
+        depth += 1;
+      } else if (src[i] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          break;
+        }
+      }
+    }
+    out.push({ line: src.slice(0, open).split('\n').length, text: src.slice(open, i + 1) });
+    head.lastIndex = i + 1;
+    m = head.exec(src);
+  }
+  return out;
+}
+
+/** 剥掉字符串字面量：`glyph: '?'` 里那个问号不是三元。 */
+function stripStrings(s) {
+  return s.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
+}
+
+/**
+ * D-45：把"读失败"和"结果过期"挂在同一颗 NoticeBar 上、靠 `tone: failed ? ERROR : WARN`
+ * 换色换字，是这一族组件最容易被顺手写出来的错——字段是普通成员，父页重渲染不更新它们，
+ * 于是 stale→failed 那次下拉之后，界面上还念着"班表可能变了，重新算一次"，而真相是没读出来。
+ * 判据只有一条：这些参数里不许出现三元。一种说法一颗节点，各挂在自己的 if 上。
+ */
+function auditSentenceNodes(repo, violations) {
+  for (const rel of listSource(repo, 'entry/src/main')) {
+    if (!rel.endsWith('.ets')) {
+      continue;
+    }
+    const src = read(repo, rel);
+    for (const node of SENTENCE_NODES) {
+      for (const block of instanceBlocks(src, node)) {
+        const lines = block.text.split('\n');
+        for (let k = 0; k < lines.length; k++) {
+          const field = lines[k].match(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.*)$/);
+          if (field === null || !SENTENCE_FIELDS.includes(field[1])) {
+            continue;
+          }
+          const value = stripStrings(field[2]);
+          if (value.indexOf('?') >= 0 && value.indexOf(':') > value.indexOf('?')) {
+            violations.push(rel + ':' + (block.line + k) + ' ' + node + ' 的 ' + field[1]
+              + ' 用三元换说法：这一族字段是普通成员，重渲染不更新，一种说法要各挂一颗节点（D-45）');
+          }
+        }
+      }
+    }
+  }
+}
+
 /** @returns 违规说明清单，空数组即通过。 */
 export function auditPrivacyCopy(repo) {
   const violations = [];
@@ -267,5 +339,7 @@ export function auditPrivacyCopy(repo) {
   if (cancel === null || cancel.indexOf('稍后重试') < 0) {
     violations.push('cleanupMessageOf 的「稍后重试」被改掉了：取消/改期仍留着句柄，那句话是可兑现的');
   }
+
+  auditSentenceNodes(repo, violations);
   return violations;
 }

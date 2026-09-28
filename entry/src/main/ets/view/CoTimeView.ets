@@ -1,8 +1,10 @@
 import { MIN_PER_DAY, todayEpochDay } from 'domain';
 import { AppConst, DateLabel, Logger } from 'commons';
+import { PAIRED } from 'data';
 import {
-  CommonTimePageData, CommonTimeQueryService, ExperienceMode, ScheduleUseCase, WindowFilter,
-  WindowFilterKey, WindowSummary, horizonLabel
+  CommonTimePageData, CommonTimeQueryService, ExperienceMode, FeatureFlags, ProfileSettingsService,
+  ScheduleUseCase, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, WindowFilter,
+  WindowFilterKey, WindowSummary, horizonLabel, syncStateNoteOf, syncStateTitleOf, syncTroubleOf
 } from 'feature';
 import { ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options, SegmentButtonV2Items } from '@kit.ArkUI';
 import { NavRoutes } from '../navigation/NavRoutes';
@@ -14,6 +16,7 @@ import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
 import { CapsuleSegment } from '../component/CapsuleSegment';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
+import { SkeletonBar } from '../component/Skeleton';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WindowCard } from '../component/WindowCard';
 import { WEEK_MODE_COMMON, WeekScheduleView } from '../component/WeekScheduleView';
@@ -66,6 +69,9 @@ export struct CoTimeView {
   @State private page: CommonTimePageData | null = null;
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
+  /** 配对状态 + 云同步三态：只为决定要不要挂那一条降级提示，页面不据此改算任何东西。 */
+  @State private pairState: string = '';
+  @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
   @State private segment: string = COTIME_SEG_WINDOW;
   /**
    * 窗口段内的视图：默认列表。长辈模式要的低密度入口就是这个默认值——
@@ -184,6 +190,8 @@ export struct CoTimeView {
         }
         this.page = page;
         this.failed = false;
+        this.pairState = ProfileSettingsService.getPairState();
+        this.syncState = ProfileSettingsService.getCloudSyncState();
         this.refreshing = false;
         return;
       } catch (e) {
@@ -245,6 +253,17 @@ export struct CoTimeView {
   private isStale(): boolean {
     const p = this.page;
     return p != null && p.stale;
+  }
+
+  /**
+   * 云同步那两格坏结论（待重试 / 已降级）要不要挂在这一页（协议 §3.4 末行：UI 只消费这三态）。
+   * 判据、标题、正文都与「我的 · 配对卡」共用同一份函数，不为这一页另写一套说法。
+   * 三条不给出去的条件：未开闸（那一档没有同步通路）、未配对（残留结论讲的是上一段配对的事）、
+   * 以及压根还不知道 TA 的日程（下面那条「还不知道 TA」已经把这件事说完了，同一屏不重复挂）。
+   */
+  private cloudTrouble(): boolean {
+    return FeatureFlags.cloudPairing && this.pairState === PAIRED
+      && this.partnerKnown() && syncTroubleOf(this.syncState);
   }
 
   private subtitle(): string {
@@ -427,6 +446,21 @@ export struct CoTimeView {
                 onAction: () => {
                   this.load(true);
                 }
+              })
+            } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
+              // 这一页的窗口是拿 TA 的那一份算出来的，同步停了就得说清用的是哪一份。
+              // 两格坏值各挂一颗节点：NoticeBar 的 tone/title/body 是普通成员，父节点重建不更新它们，
+              // 只有整颗拆掉重挂才换得了那一句（与「我的」配对卡同一口径）。
+              NoticeBar({
+                tone: NoticeTone.ERROR,
+                title: syncStateTitleOf(this.syncState),
+                body: syncStateNoteOf(this.syncState)
+              })
+            } else if (this.cloudTrouble()) {
+              NoticeBar({
+                tone: NoticeTone.WARN,
+                title: syncStateTitleOf(this.syncState),
+                body: syncStateNoteOf(this.syncState)
               })
             }
             if (!this.partnerKnown() && this.segment === COTIME_SEG_WINDOW) {
@@ -733,22 +767,13 @@ export struct CoTimeView {
   }
 
   @Builder
-  skeletonBar(widthText: string, barHeight: Resource, tint: Resource) {
-    Row()
-      .width(widthText)
-      .height(barHeight)
-      .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(tint)
-  }
-
-  @Builder
   skeleton() {
     Column({ space: DesignTokens.space3 }) {
       EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
         Column({ space: DesignTokens.space3 }) {
-          this.skeletonBar('42%', DesignTokens.space4, DesignTokens.fillWeak)
-          this.skeletonBar('68%', DesignTokens.space3, DesignTokens.fillWeak)
-          this.skeletonBar('30%', DesignTokens.space3, DesignTokens.fillWeak)
+          SkeletonBar({ barWidth: '42%', barHeight: DesignTokens.space4 })
+          SkeletonBar({ barWidth: '68%' })
+          SkeletonBar({ barWidth: '30%' })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
@@ -756,8 +781,8 @@ export struct CoTimeView {
 
       EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
         Column({ space: DesignTokens.space3 }) {
-          this.skeletonBar('38%', DesignTokens.space4, DesignTokens.fillWeak)
-          this.skeletonBar('74%', DesignTokens.space3, DesignTokens.fillWeak)
+          SkeletonBar({ barWidth: '38%', barHeight: DesignTokens.space4 })
+          SkeletonBar({ barWidth: '74%' })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

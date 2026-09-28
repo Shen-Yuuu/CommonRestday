@@ -121,7 +121,7 @@ export function askConfirm(ctx: UIContext, o: ConfirmOptions): void {
     maskColor: DesignTokens.dlgScrim,
     dialogTransition: confirmEnterTransition(reduceMotion),
     maskTransition: TransitionEffect.OPACITY.animation({
-      duration: DesignTokens.motion(reduceMotion, 200),
+      duration: DesignTokens.motion(reduceMotion, DesignTokens.motionGlassEnter),
       curve: Curve.Sharp
     }),
     onDidDisappear: (): void => {

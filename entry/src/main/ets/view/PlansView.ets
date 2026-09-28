@@ -3,6 +3,8 @@ import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult
   isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
 import { DateLabel } from 'commons';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { EditorialCard } from '../component/EditorialCard';
+import { SkeletonBar } from '../component/Skeleton';
 import { SleepBunny } from '../component/StatePanel';
 import { DesignTokens } from '../theme/DesignTokens';
 import { appToast } from '../util/AppToast';
@@ -291,7 +293,7 @@ export struct PlansView {
         List({ space: 12 }) {
           if (this.loading) {
             ListItem() {
-              Text('加载中…').fontSize(14).fontColor($r('app.color.text_tertiary')).margin({ top: 40 })
+              this.skeleton()
             }
           } else if (this.plans.length === 0) {
             // 空态引导（US5：窗口 → 计划的转化出口）
@@ -348,6 +350,47 @@ export struct PlansView {
   private async onRefresh(): Promise<void> {
     await syncOnPull();
     this.refreshing = false;
+  }
+
+  /**
+   * 加载态：与首页/共同页同一套骨架，形状贴着真实计划卡（左边状态条 + 三行）。
+   * 原先这里是一行裸文字「加载中…」，同一个 App 里"正在读"就有了三种长相。
+   */
+  @Builder
+  skeleton() {
+    Column({ space: 12 }) {
+      EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+        Row({ space: 12 }) {
+          Row().width(4).height(58).borderRadius(2).backgroundColor(DesignTokens.fillWeak)
+          Column({ space: DesignTokens.space3 }) {
+            SkeletonBar({ barWidth: '46%', barHeight: DesignTokens.space4 })
+            SkeletonBar({ barWidth: '78%' })
+            SkeletonBar({ barWidth: '30%' })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width('100%')
+      }
+      EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+        Row({ space: 12 }) {
+          Row().width(4).height(58).borderRadius(2).backgroundColor(DesignTokens.fillWeak)
+          Column({ space: DesignTokens.space3 }) {
+            SkeletonBar({ barWidth: '38%', barHeight: DesignTokens.space4 })
+            SkeletonBar({ barWidth: '64%' })
+            SkeletonBar({ barWidth: '22%' })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    // 灰条没有可朗读内容，读屏用户面对的是静默，所以合成一句进度说明。
+    .accessibilityGroup(true)
+    .accessibilityText('正在读取计划')
   }
 
   /**

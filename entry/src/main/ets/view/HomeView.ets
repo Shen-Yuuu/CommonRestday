@@ -1,14 +1,23 @@
 import { MIN_PER_DAY, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
+import { PAIRED } from 'data';
 import {
   AnswerAction,
   AnswerState,
   CommonTimeQueryService,
   ExperienceMode,
+  FeatureFlags,
   greetingOf,
   HomeSummary,
+  ProfileSettingsService,
   QuickAnswer,
   ScheduleUseCase,
+  SYNC_STATE_BLOCKED,
+  SyncState,
+  SYNC_STATE_OK,
+  syncStateNoteOf,
+  syncStateTitleOf,
+  syncTroubleOf,
   WindowSummary
 } from 'feature';
 import { NavRoutes } from '../navigation/NavRoutes';
@@ -18,6 +27,7 @@ import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
+import { SkeletonBar } from '../component/Skeleton';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { ConflictNotice } from '../component/ConflictNotice';
 import { HeroVariant, NextWindowHero } from '../component/NextWindowHero';
@@ -49,6 +59,9 @@ export struct HomeView {
   @State private home: HomeSummary | null = null;
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
+  /** 配对状态 + 云同步三态：只为决定要不要挂那一条降级提示，页面不据此改算任何东西。 */
+  @State private pairState: string = '';
+  @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
   @State private refreshing: boolean = false;
   @State private sheetVisible: boolean = false;
   @State private sheetStart: number = 0;
@@ -97,6 +110,8 @@ export struct HomeView {
         }
         this.home = summary;
         this.failed = false;
+        this.pairState = ProfileSettingsService.getPairState();
+        this.syncState = ProfileSettingsService.getCloudSyncState();
         return;
       } catch (e) {
         if (attempt >= LOAD_ATTEMPTS) {
@@ -137,6 +152,16 @@ export struct HomeView {
   private isStale(): boolean {
     const h = this.home;
     return h != null && h.stale;
+  }
+
+  /**
+   * 云同步那两格坏结论（待重试 / 已降级）要不要在这页挂出来（协议 §3.4 末行：UI 只消费这三态）。
+   * 判据与「我的 · 配对卡」逐字相同，两句用的是同一份 `syncStateTitleOf` / `syncStateNoteOf`，
+   * 不为首页另写一套说法——同一件事在两个页面两种口径，正是最终验收 R1 点过的那类问题。
+   * 未配对不出：偏好里残留的降级结论讲的是上一段配对时的事，挂在单人首页等于编造一个不存在的通路。
+   */
+  private cloudTrouble(): boolean {
+    return FeatureFlags.cloudPairing && this.pairState === PAIRED && syncTroubleOf(this.syncState);
   }
 
   private next(): WindowSummary | null {
@@ -363,32 +388,23 @@ export struct HomeView {
   // ---------- 骨架屏 ----------
 
   @Builder
-  skeletonBar(widthText: string, barHeight: Resource, tint: Resource) {
-    Row()
-      .width(widthText)
-      .height(barHeight)
-      .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(tint)
-  }
-
-  @Builder
   skeleton() {
     Column({ space: DesignTokens.space3 }) {
       EditorialCard({ hero: true, cutTopLeft: true, tappable: false }) {
         Column({ space: DesignTokens.space3 }) {
-          this.skeletonBar('52%', DesignTokens.space3, DesignTokens.heroGlow)
-          this.skeletonBar('70%', DesignTokens.space6, DesignTokens.heroGlow)
-          this.skeletonBar('44%', DesignTokens.space3, DesignTokens.heroGlow)
+          SkeletonBar({ barWidth: '52%', barHeight: DesignTokens.space3, tint: DesignTokens.heroGlow })
+          SkeletonBar({ barWidth: '70%', barHeight: DesignTokens.space6, tint: DesignTokens.heroGlow })
+          SkeletonBar({ barWidth: '44%', barHeight: DesignTokens.space3, tint: DesignTokens.heroGlow })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
       }
       EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
         Column({ space: DesignTokens.space4 }) {
-          this.skeletonBar('38%', DesignTokens.space4, DesignTokens.fillWeak)
-          this.skeletonBar('86%', DesignTokens.space3, DesignTokens.fillWeak)
-          this.skeletonBar('72%', DesignTokens.space3, DesignTokens.fillWeak)
-          this.skeletonBar('60%', DesignTokens.space3, DesignTokens.fillWeak)
+          SkeletonBar({ barWidth: '38%' })
+          SkeletonBar({ barWidth: '86%' })
+          SkeletonBar({ barWidth: '72%' })
+          SkeletonBar({ barWidth: '60%' })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
@@ -484,6 +500,21 @@ export struct HomeView {
                     onAction: () => {
                       this.load(true);
                     }
+                  })
+                } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
+                  // 三态里唯一会改变这一页读数的坏消息：TA 那一半是本机上的旧一份。
+                  // 两格坏值各挂一颗节点而不是同一颗换颜色——NoticeBar 的 tone/title/body 是普通成员，
+                  // 父节点重建时不更新它们，只有整颗拆掉重挂才换得了那一句（与「我的」配对卡同一口径）。
+                  NoticeBar({
+                    tone: NoticeTone.ERROR,
+                    title: syncStateTitleOf(this.syncState),
+                    body: syncStateNoteOf(this.syncState)
+                  })
+                } else if (this.cloudTrouble()) {
+                  NoticeBar({
+                    tone: NoticeTone.WARN,
+                    title: syncStateTitleOf(this.syncState),
+                    body: syncStateNoteOf(this.syncState)
                   })
                 }
 

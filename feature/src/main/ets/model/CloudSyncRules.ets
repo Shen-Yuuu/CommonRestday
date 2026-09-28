@@ -80,6 +80,16 @@ export function outcomeOfFailure(retryable: boolean): string {
   return retryable ? SYNC_STATE_RETRY : SYNC_STATE_BLOCKED;
 }
 
+/**
+ * 这台设备要不要在页面上挂那一句坏消息：三态里只剩两格坏值才算。
+ * 三处读它的页面（首页、共同时间、「我的」配对卡）判据必须一模一样——
+ * 同一件事在两个页面两种说法，正是最终验收 R1 点过的那类问题。
+ * 开关（`FeatureFlags.cloudPairing`）与"这一页要不要让位给别的提示"留给各页自己判断。
+ */
+export function syncTroubleOf(s: SyncState): boolean {
+  return syncStateNoteOf(s) !== '';
+}
+
 /** 提示条标题：三态各有各的名字，不只靠颜色区分。已同步与从未试过回空串。 */
 export function syncStateTitleOf(s: SyncState): string {
   if (s.outcome === SYNC_STATE_RETRY) {

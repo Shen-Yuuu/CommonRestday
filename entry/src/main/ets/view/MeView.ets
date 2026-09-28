@@ -3,7 +3,7 @@ import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'da
 import {
   FeatureFlags, InviteResult, isCrossMidnight, MyRhythm, PairChannels, PairingShareGateway,
   PairOpResult, PartnerInput, ProfileSettingsService, ScanOutcome, ScanResult, SettingsResult,
-  SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, syncStateNoteOf, syncStateTitleOf
+  SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, syncStateNoteOf, syncStateTitleOf, syncTroubleOf
 } from 'feature';
 import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
 import { DesignTokens } from '../theme/DesignTokens';
@@ -286,11 +286,12 @@ export struct MeView {
   /**
    * 云同步现在是不是坏消息（待重试 / 已停止）。「已同步」与从未试过都不算。
    * 两处读它：身份卡那一行与配对卡里的提示条——同一件事不能在页上两种说法。
+   * 判据本身在 `syncTroubleOf`，首页与共同时间页用的是同一条，这里只加本页的两道闸。
    * 关闭态一律不出：那一档压根没有同步通路，`pairedNote()` 已经说了"云端未开通"，
    * 而偏好里残留的降级结论讲的是上一版开通时的事，挂出来只会让页上同时存在两种说法。
    */
   syncTrouble(): boolean {
-    return FeatureFlags.cloudPairing && syncStateNoteOf(this.syncState) !== '';
+    return FeatureFlags.cloudPairing && syncTroubleOf(this.syncState);
   }
 
   /**

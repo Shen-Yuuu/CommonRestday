@@ -27,6 +27,13 @@ interface ParamStatArg {
   label: string;
 }
 
+/** 卡内小标题的入参：`action` 由父页状态算出来（编辑态要收起"编辑"这颗），必须跟着换（D-46 第二形）。 */
+interface CardHeadArg {
+  title: string;
+  action: string;
+  onAction: () => void;
+}
+
 /**
  * 我的页：四段收纳——伴侣与同步、我的日程、作息、数据与隐私。
  * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
@@ -636,16 +643,16 @@ export struct MeView {
 
   /** 卡内小标题：衬线标题 + 可选的右侧操作文字（编辑/收起等）。 */
   @Builder
-  cardHead(title: string, action: string, onAction: () => void) {
+  cardHead(row: CardHeadArg) {
     Row() {
-      Text(title)
+      Text(row.title)
         .fontSize(DesignTokens.fontBody)
         .fontFamily(DesignTokens.fontRound)
         .fontWeight(FontWeight.Medium)
         .fontColor(DesignTokens.textPrimary)
       Blank()
-      if (action !== '') {
-        Text(action)
+      if (row.action !== '') {
+        Text(row.action)
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.primary)
           .textAlign(TextAlign.End)
@@ -653,8 +660,8 @@ export struct MeView {
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           // 卡片标题右侧的"编辑/收起"是纯文字按钮：焦点与朗读名都要自己给
           .focusable(true)
-          .accessibilityText(action + '：' + title)
-          .onClick(onAction)
+          .accessibilityText(row.action + '：' + row.title)
+          .onClick(row.onAction)
       }
     }
     .width('100%')
@@ -1220,8 +1227,7 @@ export struct MeView {
   scheduleCard() {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
       Column({ space: DesignTokens.space2 }) {
-        this.cardHead('我的日程', '', () => {
-        })
+        this.cardHead({ title: '我的日程', action: '', onAction: () => {} })
 
         this.navRow($r('sys.symbol.calendar'), '班表与班次',
           '循环模板、单日改班、课程、上下班时间与通勤', false, () => {
@@ -1238,7 +1244,7 @@ export struct MeView {
   rhythmCard() {
     EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
       Column({ space: DesignTokens.space3 }) {
-        this.cardHead('作息', this.myEditing ? '' : '编辑', () => this.startEditMyParams())
+        this.cardHead({ title: '作息', action: this.myEditing ? '' : '编辑', onAction: () => this.startEditMyParams() })
 
         if (this.myEditing) {
           // 与 partnerBlock 同一口径：单行钉死宽度在 2 倍字号下会横向溢出，三对各自成组后换行
@@ -1432,8 +1438,7 @@ export struct MeView {
   dataCard() {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
       Column({ space: DesignTokens.space2 }) {
-        this.cardHead('数据与隐私', '', () => {
-        })
+        this.cardHead({ title: '数据与隐私', action: '', onAction: () => {} })
 
         this.navRow($r('sys.symbol.checkmark_shield'), '隐私政策', '权限用途与数据去向', false, () => {
           this.policyOpen = true;

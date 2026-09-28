@@ -1,6 +1,7 @@
 import { MIN_PER_DAY } from 'domain';
 import { DateLabel } from 'commons';
 import { ExperienceMode } from 'feature';
+import { AnimatorResult } from '@kit.ArkUI';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from './EditorialCard';
 
@@ -26,22 +27,58 @@ export struct NextWindowHero {
   /** 分类摘要（如"旅行窗口 · 完整同休日"），由查询服务给出，页面不再映射标签。 */
   @Prop winSubtitle: string = '';
   onTapHero: () => void = () => {};
-  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
+  @StorageProp('crd_reduce_motion') @Watch('onReduceMotionChanged') reduceMotion: boolean = false;
   @State private beat: number = 1;
+  /** 心跳的驱动器：animateTo 挂上的无限循环停不掉，只有 animator 能被"中途打开减少动效"指挥。 */
+  private beatAnim: AnimatorResult | undefined = undefined;
 
-  /** 心跳起来一次就交给框架循环；开启"减少动效"时压根不挂上。 */
+  /**
+   * 原型 .hb 那颗白心是全 App 唯一的常驻动效，所以它必须能被当场收住：
+   * 系统"减少动效"是用户随时在设置里拨的，而 AccessibilityPolicy 的监听会实时写进 AppStorage，
+   * 用 animateTo({ iterations: -1 }) 起的心跳一旦起来就没有取消入口，只能等节点销毁。
+   */
   private startBeat(): void {
-    if (this.reduceMotion) {
+    if (this.reduceMotion || this.beatAnim !== undefined) {
       return;
     }
-    this.getUIContext().animateTo({
+    const anim = this.getUIContext().createAnimator({
       duration: DesignTokens.beatMs,
+      easing: 'ease-in-out',
+      delay: 0,
+      fill: 'forwards',
       iterations: -1,
-      curve: Curve.EaseInOut,
-      playMode: PlayMode.Alternate
-    }, () => {
-      this.beat = DesignTokens.beatScale;
+      direction: 'alternate',
+      begin: 1,
+      end: DesignTokens.beatScale
     });
+    anim.onFrame = (value: number) => {
+      this.beat = value;
+    };
+    this.beatAnim = anim;
+    anim.play();
+  }
+
+  /** 收心跳并把尺寸归回 1：减少动效打开时心要停在原大小，不是停在某一帧上。 */
+  private stopBeat(): void {
+    const anim = this.beatAnim;
+    this.beatAnim = undefined;
+    if (anim !== undefined) {
+      anim.cancel();
+    }
+    this.beat = 1;
+  }
+
+  onReduceMotionChanged(): void {
+    if (this.reduceMotion) {
+      this.stopBeat();
+    } else {
+      this.startBeat();
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.stopBeat();
   }
 
   /** 距今天数口语化：0=就在今天，1=明天，其余报天数（D-17 定稿：不写「就在明天」）。 */
@@ -123,6 +160,8 @@ export struct NextWindowHero {
               .alignSelf(ItemAlign.Center)
               .scale({ x: this.beat, y: this.beat })
               .onAppear(() => this.startBeat())
+              // 换成 NEED_PARTNER／NO_WINDOW 时这颗心不在了，驱动器也别留在后台一帧帧写 beat
+              .onDisAppear(() => this.stopBeat())
               .accessibilityLevel('no')
             Text(DateLabel.duration(this.winDuration))
               .fontSize(DesignTokens.fontDisplay)

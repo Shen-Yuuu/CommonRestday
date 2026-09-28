@@ -1,5 +1,5 @@
 /**
- * 并发读数落地闸门的离线静态审计（差异文档 D-51 的防回潮判据）。
+ * 并发读数落地与提交重入的离线静态审计（差异文档 D-51／D-52 的防回潮判据）。
  *
  * 为什么需要一条断言而不是一次人工修：一次读数从发起到写状态之间隔着 await，而 RDB 与云读数
  * **返回顺序没有保证**。读数触发点从来不止一个（重算广播、下拉刷新、父页 @Prop 变化、翻页/切侧
@@ -7,7 +7,7 @@
  * 更坏的是它的 catch 分支——旧读数抛错会把新读数的成功念成"没读到"。批次 Z 修的是"节点不重绘"，
  * 这一条修的是"落地顺序反过来"，两者都是同一种用户可见症状（改了不跟着变），但机制不同。
  *
- * 规则三条：
+ * 规则四条：R1–R3 管读数落地，R4 管提交重入（同一次连点落两行）。
  * - R1：**订阅 `recomputeCount` 的文件必须带闸门**（引用 `LatestLanding` 且 begin / isCurrent 都在），
  *   不在表里就得进豁免表，豁免要写理由。新增一个订阅者却忘了闸门 → 门禁直接红。
  * - R2：**begin 的次数不许多于 isCurrent 的次数**（按文件计），即每次领号都要至少问一次归属；
@@ -15,6 +15,11 @@
  * - R3：**`@Prop` 上的 `@Watch` 目标若会跨 await 重读（含一层被调方法），该文件必须带闸门**；
  *   R1 只看广播订阅者，而"父页改入参 → 本页重读"是同一个族的另一半（`DayShiftSheet` 的 owner/epochDay、
  *   `WindowDetailSheet` 的窗口起止都藏在这里）。确实重叠不了的进 EXEMPT_WATCH，理由要写"为什么走不通"。
+ * - R4：**提交类函数若每次点击都现生成主键（`generateRandomUUID(`）又跨 await 调写命令，首行必须有忙碌闩**
+ *   （`if (this.<flag>)` 早退，且函数体里看得见 `this.<flag> = true`）。理由：repo 层全是
+ *   `INSERT OR REPLACE`，幂等只在**同主键**上成立——id 每次点击现生成，两次点击就是两个主键、两行数据，
+ *   课程列表与班次调色板会出现同名重复项，用户只能一条条删。闩的形状按仓内既有先例
+ *   （`WindowDetailSheet.submitPlan`／`DayShiftSheet.write`），不新造机制。
  *
  * 判不了的情形（不猜，也不冒充覆盖）：
  * - 没有被任何 watcher 触发的读数（例如只在 `aboutToAppear` 读一次的路由页）——单发无重叠，不需要闸门；
@@ -23,6 +28,14 @@
  * - 跨 await 之后**只写界面态、不写读数**的收尾（五页 `onRefresh` 的 `refreshing = false`）：
  *   这一条只管"旧数据盖新数据"，圈早停一秒不是那一族，而且 `Refresh` 的 `$$` 绑定在一次下拉
  *   结束前不会再起第二次——序列本来组不出来，就别为它上闸门（§8.11 的 D-49 教训）。
+ * - R4 判不出"那行 generateRandomUUID 到底可不可达"：它只看函数体形状。所以豁免表的理由是
+ *   **给人复核的**，写的是"这一支为什么走不到"，改天渲染条件一变、那一支活了，就得回来把这一格删掉上闩。
+ * - R4 也看不见**固定主键但写入非事务**的那一族：`CycleEditor.save` 的 id 恒为 'main'（所以没有
+ *   generateRandomUUID），但 `ScheduleRepo.saveTemplate` 是"先 delete 再 insert"两条独立 SQL，
+ *   两次点击会排成 delete→delete→insert→insert，后一次 insert 撞刚建好的那一行，命令层回
+ *   WRITE_FAILED——已经落库的保存被念成"保存失败"。这一格是人工盘点补上的（批次 AB），
+ *   要判它得能看见 repo 的 SQL 形状，而 R4 的扫描面只有 UI 侧；下一个人复核时按"写入是否由
+ *   两条以上非事务 SQL 组成"这一条自查，别指望这条规则替你逮。
  *
  * 违反即由 `tools/test/run.mjs` 判 `landing: FAILED` 并非零退出——不参与"绿"的定义就不算检查。
  */
@@ -60,6 +73,25 @@ const EXEMPT_WATCH = {
     'resetDraft → arrangePastOwnRhythm 自带比序号更严的丢弃条件：落地前比对 timeTouched 与窗口起止逐字'
     + '相等（见该文件 arrangePastOwnRhythm 的 if）。宽屏 inline 详情栏点另一张卡片时 winStart/winEnd 会变，'
     + '旧那次的参数对不上就整批丢掉；同窗口重复点不触发 @Watch（值没变）'
+};
+/** R4：写命令入口的调用形状。 */
+const WRITE_CALL = /ScheduleCommandService\.(?:save|import|paint|set|clear|remove)\w*\(|PlanUseCase\.createPlan\(/;
+/** R4：现生成主键的标记——它一出现在提交函数里，这条写入就不幂等。 */
+const NEW_ID = 'generateRandomUUID(';
+/** R4：闩的形状——首行 `if (this.<flag>` 早退（仓内先例：WindowDetailSheet.submitPlan、DayShiftSheet.write）。 */
+const SUBMIT_GUARD = /^[ \t\r\n]*(?:(?:\/\/|\/\*|\*)[^\n]*\n)*[ \t\r\n]*if[ \t]*\([ \t]*!?[ \t]*this\.([A-Za-z_]\w*)/;
+/**
+ * R4 的豁免表，键是 `文件#方法`。这一族不是"组不出序列"，而是"那行生成主键的代码走不到"，
+ * 所以理由必须写清是哪个渲染条件挡住了它——条件一变就要回来重判。
+ */
+const EXEMPT_SUBMIT = {
+  'entry/src/main/ets/pages/ScheduleEditor.ets#save':
+    'id 不是这里现生成的：newOne() 在点「+ 新增」时就生成好 UUID 并存进 editing，保存只是同一主键上的第二次 '
+    + 'upsert；这一行的 else 分支（this.editing == null）走不到，因为整块编辑器包在 if (this.editing != null) 里'
+    + '（同文件 :259）。渲染条件若改成允许 editing 为空也能保存，这一格就得删掉并上闩',
+  'entry/src/main/ets/pages/OcrCourse.ets#saveParsed':
+    '与 CourseImport.saveParsed 同形（每行课程现生成 UUID），确实缺闩；但课程照片识别按用户 2026-09-28 的裁定'
+    + '「先不做」，这一处只记账不动代码。重启该功能时第一件事就是把它接上闩并删掉这一格'
 };
 
 function listEts(repo, relDir) {
@@ -140,6 +172,37 @@ function rereadsAsync(src, name) {
   return false;
 }
 
+/**
+ * R4 用：列出文件里所有成员方法的定义与函数体（缩进两格才是 struct 成员， builder 里的匿名闭包不算）。
+ * 花括号配平取不到就跳过这一个方法——和 methodBody 同一口径：宁可漏报，不靠猜。
+ */
+function memberMethods(src) {
+  const out = [];
+  const re = /^[ \t]{2}(?:(?:private|async|static|public)[ \t]+)*([A-Za-z_]\w*)[ \t]*\([^\n]*?\)[ \t]*(?::[^\n{]+)?[ \t]*\{/gm;
+  for (const m of src.matchAll(re)) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    for (let p = open; p < src.length; p++) {
+      if (src[p] === '{') {
+        depth++;
+      } else if (src[p] === '}') {
+        depth--;
+        if (depth === 0) {
+          out.push({ name: m[1], body: src.slice(open, p + 1) });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** 这个提交函数有没有首行闩：`if (this.<flag>` 早退，且体内看得见 `this.<flag> = true`。 */
+function latched(body) {
+  const g = SUBMIT_GUARD.exec(body.replace(/^\{/, ''));
+  return g !== null && body.includes('this.' + g[1] + ' = true');
+}
+
 export function auditLanding(repo) {
   const violations = [];
   const files = [];
@@ -148,6 +211,18 @@ export function auditLanding(repo) {
   }
   for (const rel of files) {
     const src = fs.readFileSync(path.join(repo, rel), 'utf8');
+    const methods = memberMethods(src);
+    // R4：现生成主键 + 跨 await 写库 = 这条写入不幂等，连点两次落两行，必须有闩
+    for (const m of methods) {
+      if (!m.body.includes(NEW_ID) || !WRITE_CALL.test(m.body) || !ASYNC_READ.test(m.body)) {
+        continue;
+      }
+      if (latched(m.body) || EXEMPT_SUBMIT[rel + '#' + m.name] !== undefined) {
+        continue;
+      }
+      violations.push(rel + '#' + m.name + '：提交函数每次点击都现生成主键、又跨 await 调写命令，'
+        + '首行却没有忙碌闩——repo 层是 INSERT OR REPLACE，幂等只在同主键上成立，连点两下就是两行');
+    }
     const subscribed = src.includes(SUBSCRIBES);
     const begin = count(src, '.begin()');
     const check = count(src, 'isCurrent(');
@@ -180,6 +255,19 @@ export function auditLanding(repo) {
   for (const rel of Object.keys(EXEMPT).concat(Object.keys(EXEMPT_WATCH))) {
     if (!fs.existsSync(path.join(repo, rel))) {
       violations.push('豁免表指向的文件不存在：' + rel + '（改名或删掉了就把这一格一起删）');
+    }
+  }
+  for (const key of Object.keys(EXEMPT_SUBMIT)) {
+    const hash = key.indexOf('#');
+    const rel = hash < 0 ? key : key.slice(0, hash);
+    const name = hash < 0 ? '' : key.slice(hash + 1);
+    if (!fs.existsSync(path.join(repo, rel))) {
+      violations.push('R4 豁免表指向的文件不存在：' + rel + '（改名或删掉了就把这一格一起删）');
+      continue;
+    }
+    if (name !== '' && !memberMethods(fs.readFileSync(path.join(repo, rel), 'utf8'))
+      .some((m) => m.name === name)) {
+      violations.push('R4 豁免表指向的方法不存在：' + key + '（方法改名或删掉了就把这一格一起删）');
     }
   }
   return violations;

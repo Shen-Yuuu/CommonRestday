@@ -48,6 +48,11 @@ struct CourseImport {
    * 列表会把刚删掉的那门课又念回来。
    */
   private landing: LatestLanding = new LatestLanding();
+  /**
+   * 提交闩（D-52）：这两条写入每次点击都现生成 UUID，而 repo 是 INSERT OR REPLACE——
+   * 不同主键就是不同行，连点两次「保存通过项」会把同一批课程落进去两遍。
+   */
+  @State private submitting: boolean = false;
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
@@ -136,13 +141,18 @@ struct CourseImport {
   }
 
   async saveParsed(): Promise<void> {
+    if (this.submitting) {
+      return;
+    }
     const list: Course[] = [];
     for (let i = 0; i < this.parsed.length; i++) {
       if (this.parsed[i].ok) {
         list.push(toCourse(this.parsed[i], util.generateRandomUUID()));
       }
     }
+    this.submitting = true;
     const r = await ScheduleCommandService.importCourses(list, this.owner);
+    this.submitting = false;
     if (r.changed) {
       this.parsed = [];
       this.pasteText = '';
@@ -159,6 +169,9 @@ struct CourseImport {
   }
 
   async saveManual(): Promise<void> {
+    if (this.submitting) {
+      return;
+    }
     if (this.manualName === '') {
       appToast('请填写课程名');
       return;
@@ -176,7 +189,9 @@ struct CourseImport {
       parity: 0,
       place: ''
     };
+    this.submitting = true;
     const r = await ScheduleCommandService.saveCourse(c, this.owner);
+    this.submitting = false;
     if (r.changed) {
       this.manualName = '';
       this.reload();
@@ -297,6 +312,7 @@ struct CourseImport {
               Button('保存通过项').backgroundColor($r('app.color.brand_pink')).height(36).borderRadius(18)
                 .fontWeight(FontWeight.Bold)
                 .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
+                .enabled(!this.submitting)
                 .onClick(() => this.saveParsed())
             }
             ForEach(this.parsed, (p: ParsedCourseLine) => {
@@ -373,6 +389,7 @@ struct CourseImport {
             Button('添加课程').width('100%').height(40).borderRadius(20).backgroundColor($r('app.color.brand_pink'))
               .fontWeight(FontWeight.Bold)
               .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
+              .enabled(!this.submitting)
               .onClick(() => this.saveManual())
           }
           .alignItems(HorizontalAlign.Start)

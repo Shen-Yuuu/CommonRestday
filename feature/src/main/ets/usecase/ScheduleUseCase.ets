@@ -17,6 +17,7 @@ import {
   SYNC_CODE_LOCAL, SYNC_STATE_OK
 } from '../model/CloudSyncRules';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
+import { SerialQueue } from '../model/SerialQueue';
 import { AppConst, Logger } from 'commons';
 
 /** 学期配置。 */
@@ -71,6 +72,9 @@ export const CLOCK_TICK_KEY = 'crdClockTick';
 
 /** 合并同步窗口（协议 §7）：同一窗口内的多次触发只推送一次最新版本。 */
 const SYNC_MERGE_WINDOW_MS = 5000;
+
+/** 重算独占队列（D-52）：八处入口共用一条 FIFO，一次只让一段重算读写缓存表。 */
+const RECOMPUTE_QUEUE = new SerialQueue();
 
 /** 班表用例层：仓库 → 领域引擎 的装配与编排。 */
 export class ScheduleUseCase {
@@ -146,8 +150,23 @@ export class ScheduleUseCase {
     return my;
   }
 
-  /** 重算并落缓存；有伴侣数据时装配伴侣忙区间，无伴侣时 partner 为空（"我的空闲"语义）。 */
-  static async recompute(startEpochDay: number): Promise<CommonFreeResult> {
+  /**
+   * 重算并落缓存；有伴侣数据时装配伴侣忙区间，无伴侣时 partner 为空（"我的空闲"语义）。
+   *
+   * 排进独占队列（D-52）：这一段是"读输入 → 引擎 → 写回缓存表"，而入口有八处，两次重算必然能重叠。
+   * 先起的那次读的是后一次写入**提交之前**的表，晚落地时 `replaceWindows` 的
+   * `DELETE ... WHERE computed_at < ?` 删不掉更新的一代，于是两代结果并存于同一张表——
+   * 症状是"已经改掉的班还在"，而且脏在库里，页面再读也读不回来，只能等下一次重算自愈。
+   * 队列只排顺序不排并发数：一次只让一段在跑，新一代的时间戳更新，它的 delete 自然扫掉所有旧行。
+   */
+  static recompute(startEpochDay: number): Promise<CommonFreeResult> {
+    return RECOMPUTE_QUEUE.run((): Promise<CommonFreeResult> => {
+      return ScheduleUseCase.recomputeLocked(startEpochDay);
+    });
+  }
+
+  /** 重算的关键段：只在队列里跑，别直连调用（直连就绕过了上面那一段的理由）。 */
+  private static async recomputeLocked(startEpochDay: number): Promise<CommonFreeResult> {
     const params = SettingsStoreParams();
     const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
     const partnerBusy = await ScheduleUseCase.buildPartnerBusy(startEpochDay, params);

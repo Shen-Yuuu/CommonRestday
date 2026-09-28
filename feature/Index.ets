@@ -32,6 +32,7 @@ export {
   NIGHT_MODE_LABELS, nightModeOf, nightModeIndex, nightModeHint
 } from './src/main/ets/model/RhythmRules';
 export { PlanKindOption, OTHER_PLAN_KIND_KEY, PLAN_KINDS, planKindLabel } from './src/main/ets/model/PlanKinds';
+export { SerialQueue } from './src/main/ets/model/SerialQueue';
 export {
   SyncState, SYNC_STATE_OK, SYNC_STATE_RETRY, SYNC_STATE_BLOCKED, SYNC_CODE_LOCAL,
   encodeSyncState, decodeSyncState,

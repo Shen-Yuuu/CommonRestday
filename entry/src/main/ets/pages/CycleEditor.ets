@@ -29,6 +29,12 @@ struct CycleEditor {
   @State seq: string[] = [];
   @State anchor: number = todayEpochDay();
   @State hasTemplate: boolean = false;
+  /**
+   * 提交闩（D-52）。这里的模板主键是固定的 `'main'`，但 `saveTemplate` 是"先删后插"两条独立的 SQL：
+   * 连点两下会排成 delete→delete→insert→insert，后一次 insert 撞上前一次刚建好的那一行，
+   * 于是命令层回 `WRITE_FAILED`——一次其实已经落库的保存被念成"保存失败"。
+   */
+  @State private submitting: boolean = false;
   // 锚点日期 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才落锚
   @State anchorSheetVisible: boolean = false;
   @State anchorPick: Date = new Date();
@@ -75,6 +81,9 @@ struct CycleEditor {
   }
 
   async save(): Promise<void> {
+    if (this.submitting) {
+      return;
+    }
     if (this.seq.length === 0) {
       appToast('请至少加入一天班次');
       return;
@@ -83,7 +92,9 @@ struct CycleEditor {
       id: 'main', name: this.owner === OWNER_ME ? '我的循环' : '伴侣循环',
       seq: this.seq.slice(), anchorEpochDay: this.anchor
     };
+    this.submitting = true;
     const r = await ScheduleCommandService.saveTemplate(tpl, this.owner);
+    this.submitting = false;
     if (r.changed) {
       this.hasTemplate = true;
     }
@@ -231,6 +242,7 @@ struct CycleEditor {
             .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink'))
             .fontWeight(FontWeight.Bold)
             .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
+            .enabled(!this.submitting)
             .onClick(() => this.save())
 
           Text('保存后自动展开未来 ' + AppConst.HORIZON_DAYS + ' 天；临时换班点周历里的某一天。')

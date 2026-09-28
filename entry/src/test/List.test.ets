@@ -10,6 +10,7 @@ import planKindsTest from './PlanKindsTest';
 import cloudSyncRulesTest from './CloudSyncRulesTest';
 import profileSettingsGuardTest from './ProfileSettingsGuardTest';
 import dateLabelTest from './DateLabelTest';
+import serialQueueTest from './SerialQueueTest';
 
 export default function testsuite() {
   localUnitTest();
@@ -24,4 +25,5 @@ export default function testsuite() {
   cloudSyncRulesTest();
   profileSettingsGuardTest();
   dateLabelTest();
+  serialQueueTest();
 }

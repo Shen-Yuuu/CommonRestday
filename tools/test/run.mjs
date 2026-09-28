@@ -622,6 +622,7 @@ function prepare() {
     + "export * from './feature/main/ets/model/PlanKinds';\n"
     + "export * from './feature/main/ets/model/PlanFlow';\n"
     + "export * from './feature/main/ets/model/CloudSyncRules';\n"
+    + "export * from './feature/main/ets/model/SerialQueue';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
     + "export * from './feature/main/ets/usecase/CardSummaryService';\n"
@@ -699,8 +700,8 @@ function main() {
   }
   const landingViolations = auditLanding(REPO);
   say('landing: ' + (landingViolations.length === 0
-    ? 'PASS（广播订阅者与 @Prop 的 @Watch 重读都带落地闸门，领过号的一次都没漏问归属）'
-    : 'FAILED（' + landingViolations.length + ' 处读数没有闸门）'));
+    ? 'PASS（读数落地闸门齐、领过号都问过归属、现生成主键的提交都上了闩）'
+    : 'FAILED（' + landingViolations.length + ' 处读数闸门／提交闩不达标）'));
   for (const v of landingViolations) {
     say('  - ' + v);
   }

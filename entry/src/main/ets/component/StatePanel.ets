@@ -1,12 +1,11 @@
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
-/** 状态面板种类：加载中 / 空结果 / 可恢复错误 / 降级可用。 */
+/** 状态面板种类：加载中 / 空结果 / 可恢复错误。 */
 export enum StatePanelKind {
   LOADING = 'LOADING',
   EMPTY = 'EMPTY',
-  ERROR = 'ERROR',
-  DEGRADED = 'DEGRADED'
+  ERROR = 'ERROR'
 }
 
 /** ResourceStr 既可能是字符串也可能是资源引用，只有空字符串算“没有文案”。 */
@@ -41,9 +40,11 @@ export struct SleepBunny {
 }
 
 /**
- * 统一状态面板：加载、空、错误、降级四种页面级状态共用一个位置与排版。
+ * 统一状态面板：加载、空、错误三种页面级状态共用一个位置与排版。
  * 状态不只靠颜色区分——每种状态有独立符号，且标题/说明始终给出文字；
  * 动作按钮是胶囊主按钮，热区不小于 44vp，支持键盘焦点环与按压反馈。
+ * 「降级可用」没有做成一档：页面级只有一块区域可用时说的是整页，而真正需要
+ * 一行内提示的地方（云同步三态）走 NoticeBar，见配对协议 §8 第 8 条。
  */
 @Component
 export struct StatePanel {
@@ -59,13 +60,7 @@ export struct StatePanel {
   @State private hasActionFocus: boolean = false;
 
   private markGlyph(): string {
-    if (this.kind === StatePanelKind.ERROR) {
-      return '!';
-    }
-    if (this.kind === StatePanelKind.DEGRADED) {
-      return '↻';
-    }
-    return '○';
+    return this.kind === StatePanelKind.ERROR ? '!' : '○';
   }
 
   private markFg(): Resource {

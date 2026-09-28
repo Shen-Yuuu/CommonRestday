@@ -203,7 +203,12 @@ export class DesignTokens {
   static readonly heroShadowRadius: number = 32;
   static readonly heroShadowOffsetY: number = 16;
 
-  /** 入场位移（vp）与列表错峰步进（ms）。 */
+  /**
+   * 入场位移（vp）：EditorialCard / ConflictNotice 的淡入起点，接在 reduce-motion 开关下。
+   * staggerStep 是原型 .screen-enter 的错峰步进（55/100/145ms），**故意没有接上页面**：
+   * 错峰只在整页首次挂载时看得见，而 dumpLayout 与截图都拍不到时间轴，
+   * 无法验收就无法断言它没有把首屏拖慢——等有了逐帧取证的手段再接。
+   */
   static readonly enterOffset: number = 14;
   static readonly staggerStep: number = 45;
 
@@ -286,12 +291,12 @@ export class DesignTokens {
     return reduceMotion ? 0 : ms;
   }
 
-  /** 开启减少动效时位移归零（只保留透明度也不做，见 motion）。 */
+  /** 开启减少动效时位移归零（只保留透明度也不做，见 motion）。当前零调用点：位移一律写在 transition 里。 */
   static offset(reduceMotion: boolean, vp: number): number {
     return reduceMotion ? 0 : vp;
   }
 
-  /** 列表错峰延迟：减少动效时不错峰（Task 5.2 规则，须与 offset 同时关闭）。 */
+  /** 列表错峰延迟：减少动效时不错峰（Task 5.2 规则，须与 offset 同时关闭）。当前零调用点，理由见 staggerStep。 */
   static stagger(reduceMotion: boolean, index: number): number {
     return reduceMotion ? 0 : DesignTokens.staggerStep * index;
   }

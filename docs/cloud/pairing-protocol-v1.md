@@ -545,7 +545,7 @@ U4–U6（云侧源码、包络修复与探针复验）= `978b24b`…`8f9183c`�
 | 5 | 端点名 | `snapshot.put` / `snapshot.get`（§4.7–4.8） | **已落地** |
 | 6 | 端点集合 | 8 个方法 | **已落地**：`pairing` 6 + `snapshot` 2 |
 | 7 | 邀请码 | 云端生成并下发（§4.1） | **已落地**，端侧 `generateInviteCode()` 已删 |
-| 8 | 错误码 | §3.4 语义码表 + 三态 UI 收敛 | **已落地**（U3b-3）。端侧收敛在 `CloudApiError.semantic` + `retryable`；三态在 `feature/model/CloudSyncRules.ets`（纯函数：判定 + 措辞），持久态 `SettingsStore.cloud_sync_state`，推/拉两侧记账在 `ScheduleUseCase`，上屏在「我的 · 伴侣与同步」配对卡的 `NoticeBar` + 身份卡那一行。**两处偏离原计划，都写在代码注释里**：① 用 `NoticeBar` 而不是 `StatePanelKind.DEGRADED`——StatePanel 是整页空/错态的面板，配对卡里要的是一行内提示，`DEGRADED` 那一态因此仍是零调用点；② **不给"立即重试"这颗按钮**——§3.3 明写端侧没有退避重试，而手动重试不在 §7 的触发时机里，给了等于让用户自己按一次就烧一次免费档的按天配额；复检靠下一次真实保存/进共同时间自然带起 |
+| 8 | 错误码 | §3.4 语义码表 + 三态 UI 收敛 | **已落地**（U3b-3）。端侧收敛在 `CloudApiError.semantic` + `retryable`；三态在 `feature/model/CloudSyncRules.ets`（纯函数：判定 + 措辞），持久态 `SettingsStore.cloud_sync_state`，推/拉两侧记账在 `ScheduleUseCase`，上屏在「我的 · 伴侣与同步」配对卡的 `NoticeBar` + 身份卡那一行。**两处偏离原计划，都写在代码注释里**：① 用 `NoticeBar` 而不是 `StatePanelKind.DEGRADED`——StatePanel 是整页空/错态的面板，配对卡里要的是一行内提示，`DEGRADED` 那一态因此一直是零调用点，批次 W 封口时连同它的 `↻` 符号一并删掉——留一个永远上不了屏的状态，等于给后来人一个"它在工作"的假象；② **不给"立即重试"这颗按钮**——§3.3 明写端侧没有退避重试，而手动重试不在 §7 的触发时机里，给了等于让用户自己按一次就烧一次免费档的按天配额；复检靠下一次真实保存/进共同时间自然带起 |
 | 9 | 触发同步 | 触发集合 + 5 秒合并窗口（§7） | **已落地**，按 §7 修正后的口径（推有合并窗口，拉是按需） |
 | 10 | `FeatureFlags.cloudPairing` | 门禁全过前保持 `false` | **已开闸（2026-09-27 批次 U·U3b）**：同批落地 `ohos.permission.INTERNET`（`reason: $string:internet_perm_reason`）、隐私政策 v1.1 全文 + 首启摘要 + 提审权限用途说明、以及 `docs/release/rollout-and-rollback.md` §3.3 三条同批条件的核对。**仍未同批的是备案**（上架前置，与档位无关）。回退 = 常量改回 `false` + 删掉 `INTERNET` + 政策回到 v1.0 口径，三者一起（§5） |
 

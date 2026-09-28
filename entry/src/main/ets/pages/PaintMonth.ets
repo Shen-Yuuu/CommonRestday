@@ -15,10 +15,13 @@ import { LatestLanding } from '../util/LatestLanding';
 class DayCell {
   day: number;
   epochDay: number;
-  /** 循环模板展开出的班次 id；'' 表示循环层为休。 */
+  /** 循环模板展开出的班次 id；'' 表示循环层为休。清除覆盖后回到这一层。 */
   baseId: string;
-  /** 手动覆盖班次 id；null 表示无覆盖。 */
-  overId: string | null;
+  /**
+   * 这天有没有被手动涂过（右下角红点的判据）。不能用"覆盖班次 id 非空"代替：
+   * `shiftTypeId=null` 是一条真覆盖，意思是"这天强制休息"。
+   */
+  painted: boolean;
   color: string;
   label: string;
   /**
@@ -27,12 +30,12 @@ class DayCell {
    */
   neutral: boolean;
 
-  constructor(day: number, epochDay: number, baseId: string, overId: string | null,
+  constructor(day: number, epochDay: number, baseId: string, painted: boolean,
     color: string, label: string, neutral: boolean) {
     this.day = day;
     this.epochDay = epochDay;
     this.baseId = baseId;
-    this.overId = overId;
+    this.painted = painted;
     this.color = color;
     this.label = label;
     this.neutral = neutral;
@@ -62,6 +65,7 @@ struct PaintMonth {
   @State brushId: string = '';
   @State types: ShiftType[] = [];
   @State template: CycleTemplate | null = null;
+  /** epochDay → 覆盖班次 id。"这天有没有覆盖"看**键在不在**（`has`）：值为 null 是一条真覆盖，意为强制休息。 */
   private overMap: Map<number, string | null> = new Map();
   /**
    * 并发读数闸门（D-51）：翻月是同步改 year/month 再起读数，表头跟着新月份走，
@@ -116,24 +120,31 @@ struct PaintMonth {
     for (let i = 0; i < ovs.length; i++) {
       this.overMap.set(ovs[i].epochDay, ovs[i].shiftTypeId);
     }
-    const insts = this.template != null ? expandCycle(this.template, [], start, dim) : [];
+    // 没有循环模板也要走同一条合流：覆盖层是独立的一层，不能被"模板为空"一起吃掉。
+    const tpl: CycleTemplate = this.template != null ? this.template
+      : { id: '', name: '', seq: [], anchorEpochDay: start };
+    const insts = expandCycle(tpl, [], start, dim);
     const baseMap = new Map<number, string>();
     for (let i = 0; i < insts.length; i++) {
       baseMap.set(insts[i].epochDay, insts[i].typeId);
     }
+    // 生效层直接问引擎的合流（覆盖 > 模板），不在页面里再抄一遍：抄出来的那一份把"存了 null 覆盖"
+    // 读成了"没有覆盖"，于是给工作日涂休息只让红点消失、格子仍是模板那个班（D-55）。
+    // 这份结果里没有这天就是"休"——循环层本来排休与被涂成休息是同一种画法。
+    const effInsts = expandCycle(tpl, ovs, start, dim);
+    const effMap = new Map<number, string>();
+    for (let i = 0; i < effInsts.length; i++) {
+      effMap.set(effInsts[i].epochDay, effInsts[i].typeId);
+    }
     const cells: DayCell[] = [];
     for (let d = 1; d <= dim; d++) {
       const ed = start + d - 1;
-      const hasOver = this.overMap.has(ed);
-      let over: string | null = null;
-      if (hasOver) {
-        const raw = this.overMap.get(ed);
-        over = raw === undefined ? null : raw;
-      }
       const baseRaw = baseMap.get(ed);
       const base = baseRaw === undefined ? '' : baseRaw;
-      const eff = over !== null ? over : base;
-      cells.push(new DayCell(d, ed, base, over, this.colorOf(eff), this.labelOf(eff), this.neutralBg(eff)));
+      const effRaw = effMap.get(ed);
+      const eff = effRaw === undefined ? null : effRaw;
+      cells.push(new DayCell(d, ed, base, this.overMap.has(ed), this.colorOf(eff), this.labelOf(eff),
+        this.neutralBg(eff)));
     }
     this.cells = cells;
   }
@@ -240,11 +251,11 @@ struct PaintMonth {
       return;
     }
     const cell = this.cells[idx];
-    const eff = over !== null ? over : cell.baseId;
-    cell.overId = over;
-    cell.color = this.colorOf(eff);
-    cell.label = this.labelOf(eff);
-    cell.neutral = this.neutralBg(eff);
+    // 覆盖层就是这一格现在画什么：over 为 null 是"强制休息"，不回落 baseId（与 expandCycle 同一条合流）。
+    cell.painted = true;
+    cell.color = this.colorOf(over);
+    cell.label = this.labelOf(over);
+    cell.neutral = this.neutralBg(over);
   }
 
   /** 移除覆盖层，回到循环层效果。 */
@@ -255,7 +266,7 @@ struct PaintMonth {
       return;
     }
     const cell = this.cells[idx];
-    cell.overId = null;
+    cell.painted = false;
     cell.color = this.colorOf(cell.baseId);
     cell.label = this.labelOf(cell.baseId);
     cell.neutral = this.neutralBg(cell.baseId);
@@ -483,7 +494,7 @@ struct DayCellView {
         Text(this.cell.label).fontSize(9)
           .fontColor(this.ink())
       }
-      if (this.cell.overId !== null) {
+      if (this.cell.painted) {
         Circle().width(4).height(4).fill($r('app.color.danger_red'))
       }
     }

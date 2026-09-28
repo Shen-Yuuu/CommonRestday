@@ -3,13 +3,13 @@ import { CycleTemplate, MIN_PER_DAY, ScheduleOverride, ShiftInstance } from '../
 /**
  * 循环展开：模板序列 + 单日覆盖 → 未来若干天的班次实例。
  * 覆盖优先级：override（换班/清空）> 模板。
+ * 两条口径要一起成立，涂过班的那几天才不会被画成休：
+ * ① 覆盖的"有没有"看**键在不在**——`shiftTypeId=null` 是一条真覆盖，意为"这天强制休息"；
+ * ② 模板推不出班（`seq` 为空）只是**循环层**缺位，不提前返回，否则覆盖层跟着一起没了。
  */
 export function expandCycle(tpl: CycleTemplate, overrides: ScheduleOverride[],
   startEpochDay: number, days: number): ShiftInstance[] {
   const res: ShiftInstance[] = [];
-  if (tpl.seq.length === 0) {
-    return res;
-  }
   const ovMap = new Map<number, string | null>();
   for (let i = 0; i < overrides.length; i++) {
     ovMap.set(overrides[i].epochDay, overrides[i].shiftTypeId);
@@ -22,6 +22,9 @@ export function expandCycle(tpl: CycleTemplate, overrides: ScheduleOverride[],
       if (v != null) {
         res.push(mkInstance(d, v));
       }
+      continue;
+    }
+    if (len === 0) {
       continue;
     }
     const idx = ((d - tpl.anchorEpochDay) % len + len) % len;

@@ -42,6 +42,32 @@ export default function cycleExpanderTest() {
       expect(r[2].typeId).assertEqual('A'); // 103 被清空跳过，102 正常
     });
 
+    /**
+     * D-55 第一条：null 覆盖是"这天强制休息"，不是"没有覆盖"。
+     * 判据只能拿"有覆盖"与"无覆盖"两份展开**相减**——单看展开结果，涂成休息与本来排休长得一样。
+     */
+    it('clear_override_differs_from_no_override', 0, () => {
+      const t = tpl(['A', 'B'], 100);
+      const bare = expandCycle(t, [], 100, 3);
+      const cleared = expandCycle(t, [ov(101, null)], 100, 3);
+      expect(bare.length).assertEqual(3);
+      expect(cleared.length).assertEqual(2);
+      expect(cleared[0].epochDay).assertEqual(100);
+      expect(cleared[1].epochDay).assertEqual(102); // 101 被涂成休息：循环层的 B 不露出来
+    });
+
+    /**
+     * D-55 第二条：循环层缺位（seq 为空 / 没模板）只是推不出班，不许把覆盖层一起吃掉——
+     * 「清空模板」后仍留在库里的涂班天要照原样画。
+     */
+    it('override_survives_empty_seq', 0, () => {
+      const t = tpl([], 100);
+      const r = expandCycle(t, [ov(100, 'X'), ov(101, null)], 100, 3);
+      expect(r.length).assertEqual(1);
+      expect(r[0].epochDay).assertEqual(100);
+      expect(r[0].typeId).assertEqual('X');
+    });
+
     it('cycleShiftAt_matches', 0, () => {
       const t = tpl(['A', 'B'], 100);
       expect(cycleShiftAt(t, 100)).assertEqual('A');

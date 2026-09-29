@@ -218,8 +218,11 @@ export interface PlanRow {
 
 export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number; windDownMin: number; }
 
-/** 云侧待补删凭据（设备侧同名）：只有 pairId + uid，桩也照这个形状存，别多给一个字段。 */
-export interface PendingCloudUnpair { pairId: string; uid: string; }
+/**
+ * 云侧待补删凭据（设备侧同名）：pairId + uid + 有没有被云端终局判掉。桩照这个形状存，
+ * 别多给一个字段——批次 AO·AO3 要断言的正是"dead 那一条还在库里，所以界面才报得出数"。
+ */
+export interface PendingCloudUnpair { pairId: string; uid: string; dead: boolean; }
 
 /** 离线计划表：upsertPlan 存行，后续 update* 就地改字段（设备侧同一段是 SQL UPDATE）。 */
 const planRows = new Map<string, PlanRow>();
@@ -326,8 +329,20 @@ export class SettingsStore {
     const text = settingOf('engine_params', '') as string;
     return text === '' ? defaultParams() : (JSON.parse(text) as EngineParams);
   }
+  /**
+   * 测试注入（批次 AO·AO4）：设备侧 SettingsStore.p() 在 Preferences 尚未 init 时**抛错**，
+   * 于是"初始化竞态"这一格在桩里也得有同形状的失败，否则读口的 try-catch 就是没被测到的死代码。
+   */
+  static shareLevelFailure: Error | null = null;
   static getShareLevel(): number {
+    if (SettingsStore.shareLevelFailure !== null) {
+      throw SettingsStore.shareLevelFailure;
+    }
     return Number(settingOf('share_level', 2));
+  }
+  /** 测试注入：写一个设备侧真会出现的脏值（字符串、0、9），setter 只收 1/2/3 所以绕不过去。 */
+  static async setShareLevelRaw(v: Object): Promise<void> {
+    settingsRows.set('share_level', v);
   }
   static async setShareLevel(level: number): Promise<void> {
     settingsRows.set('share_level', level);
@@ -383,29 +398,60 @@ export class SettingsStore {
     settingsRows.set('last_heartbeat_at', ms);
   }
   /**
-   * 云侧待补删凭据（设备侧同名，含"脏值按没有欠账处理"那一半）：批次 U·U5 的三条用例
-   * 要证的正是清空之后本机还剩不剩得出 pairId + uid，所以桩必须真的把这两个字段存取一遍。
+   * 云侧待补删凭据（设备侧同名，批次 AO 起是一条队列）：桩真的把每条按 JSON 数组存取一遍，
+   * 「欠账→新配对→再清空」与「终局判定只报数不敲门」两类断言才都有落点。
+   * 脏串/非数组/缺字段按"没有这一条"处理，与设备侧同一半口径。
    */
-  static getPendingCloudUnpair(): PendingCloudUnpair | null {
+  static getPendingCloudUnpair(): PendingCloudUnpair[] {
     const text = settingOf('pending_cloud_unpair', '') as string;
     if (text === '') {
-      return null;
+      return [];
     }
+    const out: PendingCloudUnpair[] = [];
     try {
-      const o = JSON.parse(text) as Record<string, Object>;
-      const pairId = String(o['pairId'] ?? '');
-      const uid = String(o['uid'] ?? '');
-      if (pairId === '' || uid === '') {
-        return null;
+      const rows = JSON.parse(text) as Array<Record<string, Object>>;
+      for (let i = 0; i < rows.length; i++) {
+        const o = rows[i];
+        const pairId = o['pairId'] == null ? '' : String(o['pairId']);
+        const uid = o['uid'] == null ? '' : String(o['uid']);
+        if (pairId === '' || uid === '') {
+          continue;
+        }
+        const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: String(o['dead']) === '1' };
+        out.push(rec);
       }
-      const rec: PendingCloudUnpair = { pairId: pairId, uid: uid };
-      return rec;
     } catch (e) {
-      return null;
+      return [];
     }
+    return out;
   }
-  static async setPendingCloudUnpair(pairId: string, uid: string): Promise<void> {
-    settingsRows.set('pending_cloud_unpair', JSON.stringify({ pairId: pairId, uid: uid }));
+  static async addPendingCloudUnpair(pairId: string, uid: string, dead: boolean): Promise<void> {
+    if (pairId === '' || uid === '') {
+      return;
+    }
+    const next = SettingsStore.getPendingCloudUnpair().filter((r: PendingCloudUnpair) => r.pairId !== pairId);
+    const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: dead };
+    next.push(rec);
+    await SettingsStore.savePendingCloudUnpair(next);
+  }
+  static async dropPendingCloudUnpair(pairId: string): Promise<void> {
+    await SettingsStore.savePendingCloudUnpair(
+      SettingsStore.getPendingCloudUnpair().filter((r: PendingCloudUnpair) => r.pairId !== pairId));
+  }
+  static async savePendingCloudUnpair(list: PendingCloudUnpair[]): Promise<void> {
+    if (list.length === 0) {
+      settingsRows.set('pending_cloud_unpair', '');
+      return;
+    }
+    const rows: Array<Record<string, Object>> = [];
+    for (let i = 0; i < list.length; i++) {
+      const o: Record<string, Object> = { pairId: list[i].pairId, uid: list[i].uid, dead: list[i].dead ? 1 : 0 };
+      rows.push(o);
+    }
+    settingsRows.set('pending_cloud_unpair', JSON.stringify(rows));
+  }
+  static countDeadCloudUnpair(): number {
+    return SettingsStore.getPendingCloudUnpair().filter((r: PendingCloudUnpair) => r.dead).length;
   }
   static async clearPendingCloudUnpair(): Promise<void> {
     settingsRows.delete('pending_cloud_unpair');
@@ -491,6 +537,11 @@ export class AgcPairingClient {
    * 撞出来的，离线复现不了，所以这一格只能靠桩注入——批次 U·U5 那三条用例打的就是它。
    */
   static unpairFailure: CloudApiError | null = null;
+  /**
+   * 让 heartbeat 悬住的开关（null = 立刻返回）。批次 AO·AO5 要断言的是"旧会话那一跳的迟到返回值
+   * 不许写下新会话的游标"，而桩若即时 resolve，commitBeat 里那次同一性复核在离线侧永远走不到。
+   */
+  static heartbeatHold: Promise<void> | null = null;
 
   async createPairing(uid: string, publicKey: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
@@ -522,6 +573,9 @@ export class AgcPairingClient {
 
   async heartbeat(uid: string, pairId: string): Promise<number> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    if (AgcPairingClient.heartbeatHold !== null) {
+      await AgcPairingClient.heartbeatHold;
+    }
     return 0;
   }
 }

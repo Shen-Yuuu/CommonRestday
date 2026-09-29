@@ -3,7 +3,7 @@ import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING } from 'data';
 import {
   FeatureFlags, HORIZON_MAX, HORIZON_MIN, InviteResult, isCrossMidnight, MyRhythm,
   PairChannels, PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService,
-  ScanOutcome, ScanResult, SettingsResult, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState,
+  ScanOutcome, ScanResult, SettingsResult, SHARE_LEVEL_UNKNOWN, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState,
   syncStateNoteOf, syncStateTitleOf, syncTroubleOf
 } from 'feature';
 import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
@@ -48,13 +48,18 @@ export struct MeView {
   /** 打开路由（班表页并指定录哪一侧），由 AppNavigator 注入：路由种类只有壳层知道。 */
   onOpenRoute: (name: string, params?: Object) => void = (name: string, params?: Object) => {
   };
-  @State private shareLevel: number = 2;
+  @State private shareLevel: number = SHARE_LEVEL_UNKNOWN;
   @State private pairState: string = PAIR_NONE;
   /**
    * 云同步三态（协议 §3.4 末行）：默认「已同步」= 提示条不出。
    * 只在进这一页时读一次——它是后台推送/拉取失败时写的，没有理由为一条提示条挂监听。
    */
   @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
+  /**
+   * 云上还剩几份加密快照是这台手机**删不掉**的（云端已给终局判定，批次 AO·AO3）。
+   * 它不走 `syncTrouble()` 那道闸：关闭态那道闸故意返回 false，而这笔账多半就是关闭态欠下的。
+   */
+  @State private undeletableCloud: number = 0;
   // 伴侣档案
   @State private partnerExists: boolean = false;
   @State private partnerEditing: boolean = false;
@@ -195,6 +200,7 @@ export struct MeView {
     this.shareLevel = ProfileSettingsService.getShareLevel();
     this.pairState = ProfileSettingsService.getPairState();
     this.syncState = ProfileSettingsService.getCloudSyncState();
+    this.undeletableCloud = ProfileSettingsService.undeletableCloudSnapshots();
     this.pairToken = ProfileSettingsService.getOutboundToken();
     this.channels = PairingShareGateway.channels();
     this.reloadPartner();
@@ -537,6 +543,10 @@ export struct MeView {
       if (this.syncTrouble()) {
         return '已配对 · ' + syncStateTitleOf(this.syncState);
       }
+      // 读数没落地就说"按 L2 加密同步"，是替用户挑了一档他没选过的隐私口径（批次 AO·AO4）
+      if (this.shareLevel === SHARE_LEVEL_UNKNOWN) {
+        return '已配对 · 共享等级暂不可确认';
+      }
       return '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步';
     }
     if (this.partnerExists) {
@@ -558,6 +568,10 @@ export struct MeView {
     return 'TA 看得到你完整的忙碌时段，共同时间算得最准';
   }
 
+  /**
+   * 等级的名字。旧写法是"不是 1 也不是 2 就叫 L3"，于是任何脏值（NaN、0、9）都会被念成
+   * 共享得最多的那一档——那是把读数失败说成隐私暴露最大，正方向错得最狠的一格（批次 AO·AO4）。
+   */
   levelTitle(level: number): string {
     if (level === 1) {
       return 'L1 忙闲状态';
@@ -565,7 +579,10 @@ export struct MeView {
     if (level === 2) {
       return 'L2 班次类型';
     }
-    return 'L3 完整时间';
+    if (level === 3) {
+      return 'L3 完整时间';
+    }
+    return '共享等级暂不可确认';
   }
 
   /** 切换等级：持久化 + 触发重算（等级参与快照生成）。 */
@@ -1179,6 +1196,13 @@ export struct MeView {
       Text('共享等级（配对后 TA 能看到多少）')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
+      if (this.shareLevel === SHARE_LEVEL_UNKNOWN) {
+        // 三行都不勾：勾上任何一档都是把"没读到"说成"用户选的"。这一句说的是事实，不猜等级。
+        Text('还没读到手机上存的共享等级，所以三行都没勾。退出这一页再进来会再读一次；'
+          + '在那之前别按上面任何一档理解 TA 现在能看到什么。')
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(DesignTokens.textHint)
+      }
       ForEach([1, 2, 3], (lv: number) => {
         Row({ space: DesignTokens.space3 }) {
           Radio({ value: '' + lv, group: 'shareLevel' })
@@ -1445,6 +1469,15 @@ export struct MeView {
     EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
       Column({ space: DesignTokens.space2 }) {
         this.cardHead({ title: '数据与隐私', action: '', onAction: () => {} })
+
+        if (this.undeletableCloud > 0) {
+          // 批次 AO·AO3：云端已给终局判定的那几份不再自动重试，于是这件事必须有个可见的落点。
+          // 它不挂在三态提示条上——那一条讲的是"当前这一轮同步得动吗"，而这笔账多半来自上一轮。
+          Text('云上还剩 ' + this.undeletableCloud + ' 份加密快照这台手机删不掉，云端不认这个删除凭据；'
+            + '本机数据不受影响。')
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+        }
 
         this.navRow($r('sys.symbol.checkmark_shield'), '隐私政策', '权限用途与数据去向', false, () => {
           this.policyOpen = true;

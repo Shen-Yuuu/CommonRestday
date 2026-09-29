@@ -9,12 +9,15 @@ import {
 import { Logger } from 'commons';
 import { FeatureFlags } from '../config/FeatureFlags';
 import { ScheduleUseCase } from './ScheduleUseCase';
+import { ShareLevelReader } from './ShareLevelReader';
 import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
 import {
   addCleanupReport, clearAllMessageOf, emptyCleanupReport
 } from '../model/PlanFlow';
 import { horizonError, horizonFromStore, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
-import { decodeSyncState, SYNC_STATE_OK, SyncState } from '../model/CloudSyncRules';
+import {
+  decodeSyncState, shareLevelFromStore, SHARE_LEVEL_UNKNOWN, SYNC_STATE_OK, SyncState
+} from '../model/CloudSyncRules';
 
 const TAG = 'ProfileSettingsService';
 
@@ -62,11 +65,29 @@ interface CloudUnpairOutcome {
   retryLater: boolean;
 }
 
-/** 本机手里那份"该删的云端配对"，以及它是从配对状态来的还是从上次欠账翻出来的。 */
+/** 本机手里那份"该删的云端配对"。`uid` 为空表示要用本机当前 uid 填（活着的 pairId 走这一支）。 */
 interface CloudUnpairTarget {
   pairId: string;
   uid: string;
-  fromPending: boolean;
+}
+
+/**
+ * 一轮云侧删除的账（批次 AO 把它从"一次调用"扩成"一轮"，因为本机可能同时欠着两条：
+ * 上一次清空没删掉的，和这一次正在解绑的）。
+ *
+ * `refusedMessage` 非空 = 解除配对那一档要**中止**（活着的 pairId 没删成，本机一行都不清），
+ * 内容就是要回给用户的那句；清空那一档不看它，因为本机那一侧是用户的即时处置权。
+ *
+ * `kept` 是这一轮**没删掉**的那几笔（连同终局判定为 `dead` 的），交回调用方在清库之后落进偏好：
+ * 清库之前落，它就是第一个被推平的；不落，这台设备就再也没有地方记得云上还有东西。
+ */
+interface CloudSweep {
+  removed: number;
+  waiting: number;
+  dead: number;
+  refusedMessage: string;
+  switchClosed: boolean;
+  kept: PendingCloudUnpair[];
 }
 
 function ok(message: string): SettingsResult {
@@ -80,22 +101,30 @@ function fail(message: string): SettingsResult {
 }
 
 /**
- * 清空结果里"云上还剩一份"的那半句（批次 U·U5）。
+ * 「云上还剩一份」那半句（批次 U·U5 起，批次 AO 扩到一轮账）。
  *
- * 两支话不同是故意的：**只有真的落了重试凭据才敢说"会自动再试"**。这与最终验收 R2 钉住的
- * 是同一条规矩——`clearAllMessageOf` 里之所以不许出现"可稍后重试"，是因为系统日历的投影句柄
- * 随计划行一起没了，那句话兑现不了。云侧这一项现在有了兑现它的东西
- * （`pending_cloud_unpair` + 回前台补删），所以承诺可以说，且只在这一支说；
- * 云端已经给了终局判定（不是成员、档位对不上）的那一支就只报事实，不再留任何承诺。
+ * 三支话不同是故意的，每一支都只说它兑现得了的那部分：
+ * - **还欠着、也还值得再敲**：敢说"下次打开应用会自动再试一次"，因为 `retryPendingCloudUnpair`
+ *   真的挂在回前台链尾。开关关着时那一次不会发（守卫在第一句），所以话里要说清是"开通后"才试——
+ *   不说清就是拿一个当下走不通的路径给用户承诺。
+ * - **云端给了终局判定**（不是成员、参数不合法、版本对不上）：重跑一百次也是同一句，
+ *   所以它退出补删队列、只留着报数，这一支不再留任何承诺。
+ * 这与最终验收 R2 钉住的是同一条规矩——`clearAllMessageOf` 里不许出现"可稍后重试"，
+ * 因为系统日历的投影句柄随计划行一起没了，那句话兑现不了。
  */
-function cloudCleanupNote(cloud: CloudUnpairOutcome | null, keptPending: boolean): string {
-  if (cloud === null || cloud.removed) {
-    return '';
+function cloudCleanupNote(s: CloudSweep): string {
+  const parts: string[] = [];
+  if (s.waiting > 0) {
+    const which = s.waiting === 1 ? '云上那份加密快照' : '云上那 ' + s.waiting + ' 份加密快照';
+    parts.push(s.switchClosed
+      ? which + '还没删掉（云端功能目前没开通），开通后打开应用会自动再试一次'
+      : which + '还没删掉，下次打开应用会自动再试一次');
   }
-  if (keptPending) {
-    return '；云上那份加密快照还没删掉，下次打开应用会自动再试一次';
+  if (s.dead > 0) {
+    const which = s.dead === 1 ? '云上还剩一份加密快照' : '云上还剩 ' + s.dead + ' 份加密快照';
+    parts.push(which + '这台手机删不掉（云端不认这个删除凭据），本机这一侧已经清干净了');
   }
-  return '；云上那份加密快照删不掉（' + cloud.message + '），本机数据已经清干净了';
+  return parts.length === 0 ? '' : '；' + parts.join('；');
 }
 
 /**
@@ -210,16 +239,37 @@ export class ProfileSettingsService {
 
   // ---------- 隐私共享等级 ----------
 
+  /**
+   * 页面读的那一格共享等级：只有"知"与"未知"两种结果，未知不许被折成任何一档（批次 AO·AO4）。
+   *
+   * 旧写法是 `catch → 2`：偏好未初始化时念 L2，而实际存的可能是 L3——把用户的隐私档位念小，
+   * 还让它看上去像是用户自己选的。读数唯一口径在 `ShareLevelReader.read`（引擎那一侧同一句），
+   * 这里只是把它转给视图，页面不再自己兜异常。
+   */
   static getShareLevel(): number {
+    return ShareLevelReader.read();
+  }
+
+  /** 云上还剩几份是这台手机删不掉的（终局判定那一族）：视图据此决定要不要在数据卡里报这一笔。 */
+  static undeletableCloudSnapshots(): number {
     try {
-      return SettingsStore.getShareLevel();
+      return SettingsStore.countDeadCloudUnpair();
     } catch (e) {
-      return 2;
+      return 0;
     }
   }
 
-  /** 等级参与快照生成，切换后连同班表一起重算推送。 */
+  /**
+   * 等级参与快照生成，切换后连同班表一起重算推送。
+   *
+   * 写侧也要认档：只有 1/2/3 进得了库。「未知」是两个读取口都可能出现的一格，
+   * 若让它顺着某个回写路径存下去，就等于替用户选了一个他没选过的隐私档位——
+   * 那种事一旦落库，下一次推快照会真的按它降维，界面上再也看不出破绽。
+   */
   static async setShareLevel(level: number): Promise<SettingsResult> {
+    if (shareLevelFromStore(level) === SHARE_LEVEL_UNKNOWN) {
+      return fail('共享等级没认出来，先不保存');
+    }
     try {
       await SettingsStore.setShareLevel(level);
       await ScheduleUseCase.onScheduleChanged();
@@ -451,7 +501,7 @@ export class ProfileSettingsService {
 
   /**
    * 本机配对痕迹的一次性清理：pairId、对方快照游标、最后一次有效快照信封、云同步三态、
-   * HUKS 协商别名、内存里的确认凭据。
+   * HUKS 协商别名、心跳游标、内存里的确认凭据。
    * 身份别名（`crd-id-<uid>`）留着——它是这台设备的长期身份，下一轮配对还要用同一把公钥。
    *
    * 三态必须跟着清：「已降级」的语义是"排不动推送，直到某次拉成功"，留着它，
@@ -459,6 +509,9 @@ export class ProfileSettingsService {
    *
    * 信封也必须跟着清：HUKS 别名一删，这份密文就永久解不开了——留着它只是让上一轮配对的
    * 字节一直躺在键值文件里，而读侧那道 pairId 比对是兜底，不是留着它的理由。
+   *
+   * 心跳游标同一批清掉（批次 AO）：它是"这个 pair 上周跳过一次没有"的账，
+   * 留着它，下一轮配对最多要空等一周才发出第一跳——而那一周里页面上说的是这一轮的事。
    */
   private static async forgetPair(): Promise<void> {
     ScheduleUseCase.cancelMergedSync();
@@ -469,6 +522,7 @@ export class ProfileSettingsService {
     await SettingsStore.clearPartnerSnapCache();
     await SettingsStore.setCloudSyncState('');
     await SettingsStore.setPairState(PAIR_NONE, '');
+    await SettingsStore.setLastHeartbeatAt(0);
     ProfileSettingsService.outboundToken = '';
   }
 
@@ -496,23 +550,111 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 本机手里那份"要删的云端配对"：pairId 优先，其次才是上一次清空没删掉的欠账。
+   * 本机手里所有"该删而还没删掉"的云端配对：活着的 pairId 排第一，其次是没有终局判定的欠账，
+   * 同一个 pairId 只留一条（欠账那条自带 uid，优先采用——清空会把 `device_uid` 一起推平）。
    *
-   * 两次清空之间用户可能根本没能连上网，第二次清空不该把第一条欠账忘掉——那等于把
-   * 一份还能删的密文判成永久留存，而界面上连提都不再提。
+   * 批次 AO 把"挑一个"改成"列一份"。旧写法在 pairId 非空时把欠账整个遮住，于是
+   * 「清空没删动 → 又配了一次 → 再清空」这一条链会把第一条欠账永久丢掉——那等于把一份还删得动的
+   * 密文判成孤儿行，而界面上连提都不再提一句。
+   * `dead` 不进这一列：云端已经给了终局判定，重跑一百次也是同一句，它只报数不敲门。
    */
-  private static cloudUnpairTarget(): CloudUnpairTarget | null {
-    const pairId = SettingsStore.getPairId();
-    if (pairId !== '') {
-      const carried: CloudUnpairTarget = { pairId: pairId, uid: '', fromPending: false };
-      return carried;
-    }
+  private static cloudUnpairTargets(): CloudUnpairTarget[] {
+    const list: CloudUnpairTarget[] = [];
     const pending = SettingsStore.getPendingCloudUnpair();
-    if (pending === null) {
-      return null;
+    for (let i = 0; i < pending.length; i++) {
+      const p = pending[i];
+      if (!p.dead && p.pairId !== '') {
+        const t: CloudUnpairTarget = { pairId: p.pairId, uid: p.uid };
+        list.push(t);
+      }
     }
-    const target: CloudUnpairTarget = { pairId: pending.pairId, uid: pending.uid, fromPending: true };
-    return target;
+    const livePairId = SettingsStore.getPairId();
+    if (livePairId === '') {
+      return list;
+    }
+    let carried = '';
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].pairId === livePairId) {
+        carried = list[i].uid;
+        list.splice(i, 1);
+        break;
+      }
+    }
+    const live: CloudUnpairTarget = { pairId: livePairId, uid: carried };
+    list.unshift(live);
+    return list;
+  }
+
+  /**
+   * 把 `cloudUnpairTargets()` 那份账逐个敲一遍门，按「删掉了 / 还欠着 / 终局判了」三档记账，
+   * 并把**没删掉的**原样交回调用方落库（`kept`）。
+   *
+   * 关闭态一次云调用都不发（B1 的 `AgcPairingClient.calls === 0` 断言管的就是这一格），但每一笔
+   * 都照记成欠账，`switchClosed` 只用来把话改成"开通后再试"——「开关只关能力，不关数据」。
+   * 旧写法是 `cloudPairing ? target : null`：回退版本下既不发也不记，紧接着 `forgetPair()`／
+   * `clearAllSettings()` 照样把本机 pairId 推平，云上那份密文当场成为谁都对不上号的孤儿行。
+   * 按发布预案回退一档，本来只是关掉能力，实际却把用户的云端数据永久留在那儿——这一格是批次 AO 第一条。
+   *
+   * `failClosed` 只属于解除配对那一档：活着的 pairId 没删成就本机一行都不清，重试的凭据
+   * 就是这一屏本身。「清空我的全部数据」不看它——用户对自己的设备有即时处置权。
+   */
+  private static async sweepCloudUnpair(failClosed: boolean): Promise<CloudSweep> {
+    const kept: PendingCloudUnpair[] = [];
+    const sweep: CloudSweep = { removed: 0, waiting: 0, dead: 0, refusedMessage: '', switchClosed: false, kept: kept };
+    const targets = ProfileSettingsService.cloudUnpairTargets();
+    if (targets.length === 0) {
+      return sweep;
+    }
+    const livePairId = SettingsStore.getPairId();
+    if (!FeatureFlags.cloudPairing) {
+      sweep.switchClosed = true;
+      for (let i = 0; i < targets.length; i++) {
+        const uid = targets[i].uid === '' ? await SettingsStore.getOrCreateUid() : targets[i].uid;
+        const k: PendingCloudUnpair = { pairId: targets[i].pairId, uid: uid, dead: false };
+        kept.push(k);
+      }
+      sweep.waiting = targets.length;
+      return sweep;
+    }
+    for (let i = 0; i < targets.length; i++) {
+      const pairId = targets[i].pairId;
+      const uid = targets[i].uid === '' ? await SettingsStore.getOrCreateUid() : targets[i].uid;
+      const out = await ProfileSettingsService.cloudUnpair(pairId, uid);
+      if (out.removed) {
+        sweep.removed = sweep.removed + 1;
+        continue;
+      }
+      const k: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: !out.retryLater };
+      kept.push(k);
+      if (out.retryLater) {
+        sweep.waiting = sweep.waiting + 1;
+      } else {
+        sweep.dead = sweep.dead + 1;
+      }
+      if (failClosed && pairId === livePairId) {
+        Logger.warn(TAG, 'unpair cloud failed, local marks kept: ' + out.message);
+        sweep.refusedMessage = '云上那份还没删掉，本机配对我留着了：' + out.message;
+        return sweep;
+      }
+    }
+    return sweep;
+  }
+
+  /**
+   * 把这一轮没删掉的欠账落进偏好。**必须在清库之后调用**：`clearAllSettings()` 会把这一格一起推平，
+   * 而它是那场推平里唯一该活下来的东西——没有它，这台设备再也没有地方记得云上还有份密文。
+   *
+   * `deadOnly` 只用于解除配对 fail-closed 那一格：还值得再敲的那一笔，本机这一屏就是凭据，
+   * 不必另存一份会漂的副本；而云端已经判死的那一行，本机留着 pairId 也敲不动它，
+   * 只有落进队列才有人替用户报出「这台手机删不掉」（批次 AO·AO3）。
+   */
+  private static async rememberCloudDebt(s: CloudSweep, deadOnly: boolean): Promise<void> {
+    for (let i = 0; i < s.kept.length; i++) {
+      if (deadOnly && !s.kept[i].dead) {
+        continue;
+      }
+      await SettingsStore.addPendingCloudUnpair(s.kept[i].pairId, s.kept[i].uid, s.kept[i].dead);
+    }
   }
 
   /**
@@ -528,25 +670,27 @@ export class ProfileSettingsService {
    * 现在失败原样回给用户，配对标记留在原地，于是**重试的凭据就是这一屏本身**：
    * 同一颗按钮、同一条提示，网络通了再点一次就补上。
    * 真要连不上云端也还有出路——「清空我的全部数据」这条会把待补删凭据落进偏好（见 `clearAllData`）。
+   *
+   * **[批次 AO·AO1] 关闭态走另一条：本机照清，欠账照记。** 上面那条 fail-closed 的前提是"这一屏
+   * 就是凭据"，而关闭态没有这一屏可留（用户撤不掉的是入口，不是数据）。于是这里让 `forgetPair()`
+   * 照常清本机，但把那笔 pairId + uid 记进待补删队列，话也说清楚是"云上那份还没删掉、开通后再试"——
+   * 回退版本不该顺手把云端数据判成孤儿。
    */
   static async unpair(): Promise<SettingsResult> {
     try {
-      const target = FeatureFlags.cloudPairing ? ProfileSettingsService.cloudUnpairTarget() : null;
-      if (target !== null) {
-        const uid = target.fromPending ? target.uid : await SettingsStore.getOrCreateUid();
-        const out = await ProfileSettingsService.cloudUnpair(target.pairId, uid);
-        if (!out.removed) {
-          Logger.warn(TAG, 'unpair cloud failed, local marks kept: ' + out.message);
-          return fail('云上那份还没删掉，本机配对我留着了：' + out.message);
-        }
+      const sweep = await ProfileSettingsService.sweepCloudUnpair(true);
+      if (sweep.refusedMessage !== '') {
+        await ProfileSettingsService.rememberCloudDebt(sweep, true);
+        return fail(sweep.refusedMessage);
       }
       await ProfileSettingsService.forgetPair();
+      await ProfileSettingsService.rememberCloudDebt(sweep, false);
+      ScheduleUseCase.onScheduleChanged().catch(() => {
+      });
+      return ok((sweep.switchClosed ? '本机配对已解除' : '已解除配对') + cloudCleanupNote(sweep));
     } catch (e) {
       return fail('操作失败：' + (e as Error).message);
     }
-    ScheduleUseCase.onScheduleChanged().catch(() => {
-    });
-    return ok('已解除配对');
   }
 
   /**
@@ -614,10 +758,24 @@ export class ProfileSettingsService {
   private static beat(pairId: string, now: number): void {
     SettingsStore.getOrCreateUid()
       .then((uid: string) => new AgcPairingClient().heartbeat(uid, pairId))
-      .then(() => SettingsStore.setLastHeartbeatAt(now))
+      .then(() => ProfileSettingsService.commitBeat(pairId, now))
       .catch((e: Error) => {
         Logger.warn(TAG, 'heartbeat degraded: ' + e.message);
       });
+  }
+
+  /**
+   * 落心跳游标之前的**同一性复核**：这一趟 await 期间用户可能已经解除配对，甚至又配上了另一个人。
+   * 旧写法无条件写 `now`，于是旧会话那一次往返的返回值会把新会话的游标推到一周之后——
+   * 新配对最多空等一周才发出第一跳，而这段时间页面上说的全是这一轮的事。
+   * `forgetPair()` 已经把游标归零，所以这里丢掉的只是"迟到的一跳"，不会留下半条旧账。
+   */
+  private static async commitBeat(pairId: string, now: number): Promise<void> {
+    if (pairId === '' || SettingsStore.getPairId() !== pairId) {
+      Logger.warn(TAG, 'heartbeat result dropped: that pair is no longer the current one');
+      return;
+    }
+    await SettingsStore.setLastHeartbeatAt(now);
   }
 
   // ---------- 清空数据 ----------
@@ -638,8 +796,11 @@ export class ProfileSettingsService {
    *    这一条与 `unpair` 的 fail-closed 相反，因为 `unpair` 没有"必须删干净本机"的压力）；
    * 2. **删不掉的要留下凭据**——只留 `pairId` + 本机 `uid`（`pairing.unpair` 认的就是会话行里
    *    那两列成员，密钥材料对删除毫无用处），写在 `clearAllSettings()` 之后，否则它自己就是第一个被推平的；
+   *    队列可以有几条：上一次清空没删动的，这一次同样要带走，不许被新的一条顶掉（批次 AO·AO2）。
    * 3. **要如实报，不承诺做不到的**——`retryable = false` 的判定（不是成员、参数不合法、版本对不上）
-   *    重跑也是同一句，所以那种欠账不入库、只在结果里说清楚；能补删的那句才说"下次打开会自动再试"。
+   *    重跑也是同一句，所以它标记成 `dead` 退出补删队列，但**仍留在偏好里报数**：那行密文还在云上，
+   *    一句 warn 用户看不见（批次 AO·AO3 的读侧就是 `undeletableCloudSnapshots()`）。
+   *    只有能补删的那一笔，话里才说"下次打开会自动再试"。
    */
   static async clearAllData(): Promise<SettingsResult> {
     const report = emptyCleanupReport();
@@ -656,65 +817,60 @@ export class ProfileSettingsService {
     }
     try {
       const privacyWas = SettingsStore.isPrivacyAccepted();
-      // 云端那两行要在本机身份还在的时候删：pairId 与 uid 一推平，就再没有别的地方记得它们了
-      const target = FeatureFlags.cloudPairing ? ProfileSettingsService.cloudUnpairTarget() : null;
-      let cloud: CloudUnpairOutcome | null = null;
-      let keepPairId = '';
-      let keepUid = '';
-      if (target !== null) {
-        // 待补删那条自带 uid：清空会把 `device_uid` 一起推平，换新 uid 去敲门就认不出成员了
-        const uid = target.fromPending ? target.uid : await SettingsStore.getOrCreateUid();
-        cloud = await ProfileSettingsService.cloudUnpair(target.pairId, uid);
-        if (!cloud.removed && cloud.retryLater) {
-          keepPairId = target.pairId;
-          keepUid = uid;
-        }
-      }
+      // 云端那几行要在本机身份还在的时候删：pairId 与 uid 一推平，就再没有别的地方记得它们了
+      const sweep = await ProfileSettingsService.sweepCloudUnpair(false);
       // 协商密钥要跟着一起毁：pairId 随 Preferences 清掉之后，HUKS 里那把别名就成了没人认领的钥匙
       await PairKeyStore.dropPairKey(SettingsStore.getPairId());
       await ScheduleRepo.clearAllData();
       await SettingsStore.clearAllSettings();
-      if (keepPairId !== '') {
-        await SettingsStore.setPendingCloudUnpair(keepPairId, keepUid);
-      }
+      await ProfileSettingsService.rememberCloudDebt(sweep, false);
       if (privacyWas) {
         await SettingsStore.acceptPrivacy();
       }
       await ScheduleUseCase.onScheduleChanged();
-      return ok(clearAllMessageOf(report, calendarPurged) + cloudCleanupNote(cloud, keepPairId !== ''));
+      return ok(clearAllMessageOf(report, calendarPurged) + cloudCleanupNote(sweep));
     } catch (e) {
       return fail('清空失败：' + (e as Error).message);
     }
   }
 
   /**
-   * 上一次「清空全部数据」没删掉的云侧快照，在这里补删。
+   * 上一次「清空全部数据」或关闭态解除配对没删掉的云侧快照，在这里补删。
    *
    * 挂在回前台的初始化链尾、与心跳同一排，是因为本机已经没有别的入口记得这件事了：
-   * 配对标记、pairId、对方快照全随清空推平，只剩偏好里那两个字段，而 §3.3/§7 又禁后台常驻。
+   * 配对标记、pairId、对方快照全随清空推平，只剩偏好里那一串凭据，而 §3.3/§7 又禁后台常驻。
    * 于是"下一次打开应用"就是它唯一的机会——与系统侧投影的 `sweepPendingProjections` 同一形状。
    *
    * 不建重试计数也不排闹钟：这条链的触发频率就是用户的启动频率，本身已经被"人还在用这个应用"
-   * 限住了；而云端一旦给了终局判定（`retryLater = false`）就把凭据删掉，不会一直白敲门。
+   * 限住了；而云端一旦给了终局判定（`retryLater = false`）就把它标记成 `dead` 退出补删队列，
+   * 不会一直白敲门——但**不删记录**：那行密文还在云上，删了记录就等于把知情也一起删掉（批次 AO·AO3）。
+   * `dead` 的读侧是 `undeletableCloudSnapshots()`，落点是「我的 · 数据与隐私」那一条。
    */
   static async retryPendingCloudUnpair(): Promise<void> {
     if (ProfileSettingsService.cloudBlocked()) {
       return;
     }
-    let pending: PendingCloudUnpair | null = null;
+    let pending: PendingCloudUnpair[] = [];
     try {
       pending = SettingsStore.getPendingCloudUnpair();
     } catch (e) {
       // Preferences 尚未初始化：这一趟不补删，下一次回前台还有机会
       return;
     }
-    if (pending === null) {
-      return;
+    for (let i = 0; i < pending.length; i++) {
+      const p = pending[i];
+      if (p.dead) {
+        continue;
+      }
+      const cloud = await ProfileSettingsService.cloudUnpair(p.pairId, p.uid);
+      if (cloud.removed) {
+        await SettingsStore.dropPendingCloudUnpair(p.pairId);
+      } else if (!cloud.retryLater) {
+        await SettingsStore.addPendingCloudUnpair(p.pairId, p.uid, true);
+      }
+      // 还欠着且值得再敲的那一笔：原样留在队列里，下一次回前台再试
+      Logger.warn(TAG, 'pending cloud unpair ' + (cloud.removed ? 'removed'
+        : (cloud.retryLater ? 'kept for the next launch' : 'refused for good')));
     }
-    const cloud = await ProfileSettingsService.cloudUnpair(pending.pairId, pending.uid);
-    if (cloud.removed || !cloud.retryLater) {
-      await SettingsStore.clearPendingCloudUnpair();
-    }
-    Logger.warn(TAG, 'pending cloud unpair: ' + (cloud.removed ? 'removed' : cloud.message));
   }
 }

@@ -14,10 +14,11 @@ import {
 import { FeatureFlags } from '../config/FeatureFlags';
 import {
   decodeSyncState, encodeSyncState, outcomeOfFailure, pushBlockedToday,
-  SYNC_CODE_LOCAL, SYNC_STATE_OK
+  SYNC_CODE_LOCAL, SYNC_STATE_OK, SHARE_LEVEL_UNKNOWN
 } from '../model/CloudSyncRules';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { SerialQueue } from '../model/SerialQueue';
+import { ShareLevelReader } from './ShareLevelReader';
 import { horizonFromStore } from '../model/RhythmRules';
 import { Logger } from 'commons';
 
@@ -377,7 +378,14 @@ export class ScheduleUseCase {
       const uid = await SettingsStore.getOrCreateUid();
       const params = SettingsStoreParams();
       const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
-      const shareLevel = SettingsStore.getShareLevel();
+      // 档位是「未知」时**一次都不推**：快照是全量重写，拿一个猜出来的档位覆盖过去，
+      // 对方看到的那一份就被一次"本机其实没确认过"的降维顶掉了，而这正是 L1/L2 档位承诺的反面。
+      // 这一趟静默放弃，等用户下次保存或在「我的」里重新选档；界面上那一行会念「暂不可确认」。
+      const shareLevel = ShareLevelReader.read();
+      if (shareLevel === SHARE_LEVEL_UNKNOWN) {
+        Logger.warn('ScheduleUseCase', 'snapshot push skipped: share level unreadable');
+        return false;
+      }
       const version = await SettingsStore.nextSnapshotVersion();
       const data = SnapshotBuilder.build(my, params, startEpochDay, shareLevel, version);
       // 密文在 HUKS 内产出，端上任何一处都不曾持有密钥；AAD 绑住"这条快照属于这个配对+这个 uid+这个版本"

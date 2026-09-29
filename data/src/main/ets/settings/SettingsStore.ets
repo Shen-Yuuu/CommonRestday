@@ -54,9 +54,17 @@ export interface PartnerProfile {
  * 删除**不需要任何密钥材料**。别的一概不存——HUKS 别名、对方快照、任何明文忙碌时段
  * 都不属于"把云上那行删掉"这件事，把它们留在一次「清空我的全部数据」之后就是漏披露。
  */
+/**
+ * 一次没删干净的云侧配对（协议 §4.5：删除要的凭据就是这两列成员，密钥材料对删除毫无用处）。
+ *
+ * `dead` 为真表示云端已经给了**终局判定**（不是那个会话的成员、参数不合法、版本对不上）——
+ * 再敲一百次门也是同一句，于是它退出补删队列，只留着向用户如实报「云上还剩一份」。
+ * 这一位是批次 AO 加的：终局之前只在日志里留了一行，用户看不见自己还剩这么个东西。
+ */
 export interface PendingCloudUnpair {
   pairId: string;
   uid: string;
+  dead: boolean;
 }
 
 export class SettingsStore {
@@ -297,43 +305,105 @@ export class SettingsStore {
   }
 
   /**
-   * 待补删的云侧配对（`pairId` + 本机 `uid`）；没有欠账时返回 null。
+   * 读全部待补删的云侧配对。批次 AO 起它是一条**队列**而不是单格：
+   * 「上次没删掉 → 又配了一次 → 再清空」时两条都得记住，旧那条不该因为新的插队就被推平。
    *
-   * 脏值（缺任一字段、解析炸了）一律按"没有欠账"处理，而不是按"有一条但读不出来"：
-   * 读不出来的那条本来就补删不了，留着只会让每次回前台白敲一次云。
+   * 脏串、非数组、缺字段一律按「那一条没有欠账」处理，与 `decodeSyncState` 同一取向：
+   * 宁可这条提示不出来，也不要一次偏好写坏就在页面上挂假警报。
    */
-  static getPendingCloudUnpair(): PendingCloudUnpair | null {
+  static getPendingCloudUnpair(): PendingCloudUnpair[] {
     const text = SettingsStore.p().getSync(KEY_PENDING_CLOUD_UNPAIR, '') as string;
     if (text === '') {
-      return null;
+      return [];
     }
+    const out: PendingCloudUnpair[] = [];
     try {
-      const o = JSON.parse(text) as Record<string, Object>;
-      const pairId = o['pairId'] == null ? '' : String(o['pairId']);
-      const uid = o['uid'] == null ? '' : String(o['uid']);
-      if (pairId === '' || uid === '') {
-        return null;
+      const rows = JSON.parse(text) as Array<Record<string, Object>>;
+      for (let i = 0; i < rows.length; i++) {
+        const o = rows[i];
+        const pairId = o['pairId'] == null ? '' : String(o['pairId']);
+        const uid = o['uid'] == null ? '' : String(o['uid']);
+        if (pairId === '' || uid === '') {
+          continue;
+        }
+        const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: String(o['dead']) === '1' };
+        out.push(rec);
       }
-      const rec: PendingCloudUnpair = { pairId: pairId, uid: uid };
-      return rec;
     } catch (e) {
       Logger.warn(TAG, 'pending cloud unpair parse failed');
-      return null;
+      return [];
     }
+    return out;
   }
 
   /**
-   * 写待补删凭据。调用方必须排在 `clearAllSettings()` **之后**：清空动作是把整张表推平，
+   * 记一条待补删的云侧配对（同一个 pairId 只留一条，重复登记按最后一次的说法覆盖）。
+   *
+   * 调用方必须排在 `clearAllSettings()` **之后**：清空动作是把整张表推平，
    * 而这条记录存在的意义正是"本机已经没有别的地方记得这次删除了"。
+   * `uid` 必须是**推平前**读到的那一个——云端认的是成员表里那个旧 uid，换新 uid 永远撞 FORBIDDEN。
    */
-  static async setPendingCloudUnpair(pairId: string, uid: string): Promise<void> {
-    await SettingsStore.p().put(KEY_PENDING_CLOUD_UNPAIR, JSON.stringify({ pairId: pairId, uid: uid }));
+  static async addPendingCloudUnpair(pairId: string, uid: string, dead: boolean): Promise<void> {
+    if (pairId === '' || uid === '') {
+      return;
+    }
+    const list = SettingsStore.getPendingCloudUnpair();
+    const next: PendingCloudUnpair[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].pairId !== pairId) {
+        next.push(list[i]);
+      }
+    }
+    const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: dead };
+    next.push(rec);
+    await SettingsStore.savePendingCloudUnpair(next);
+  }
+
+  /** 补删成了（或已被终局判定那条顶替）之后，把这一条从队列里拿掉。 */
+  static async dropPendingCloudUnpair(pairId: string): Promise<void> {
+    const list = SettingsStore.getPendingCloudUnpair();
+    const next: PendingCloudUnpair[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].pairId !== pairId) {
+        next.push(list[i]);
+      }
+    }
+    await SettingsStore.savePendingCloudUnpair(next);
+  }
+
+  /**
+   * 整份队列存成一个串（空队列存空串）：这几条永远一起变，分成几格就把"只写了一半"做出来了。
+   *
+   * `dead` 存 **1/0 而不是布尔**：`JSON.stringify(true)` 出来是 `true`，而读侧 `String(v) === '1'`
+   * 认的是这个数；用布尔写就用布尔读，两边各认一种字面量，就是"登记了却读不出"的那一格。
+   */
+  static async savePendingCloudUnpair(list: PendingCloudUnpair[]): Promise<void> {
+    const rows: Array<Record<string, Object>> = [];
+    for (let i = 0; i < list.length; i++) {
+      const o: Record<string, Object> = {
+        'pairId': list[i].pairId, 'uid': list[i].uid, 'dead': list[i].dead ? 1 : 0
+      };
+      rows.push(o);
+    }
+    await SettingsStore.p().put(KEY_PENDING_CLOUD_UNPAIR, list.length === 0 ? '' : JSON.stringify(rows));
     await SettingsStore.p().flush();
   }
 
   static async clearPendingCloudUnpair(): Promise<void> {
     await SettingsStore.p().delete(KEY_PENDING_CLOUD_UNPAIR);
     await SettingsStore.p().flush();
+  }
+
+  /** 云上还剩几份是这台手机**删不掉**的（终局判定那一族）：只用于向用户如实报数。 */
+  static countDeadCloudUnpair(): number {
+    const list = SettingsStore.getPendingCloudUnpair();
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].dead) {
+        n = n + 1;
+      }
+    }
+    return n;
   }
 
   // ---------- 日切重算 ----------

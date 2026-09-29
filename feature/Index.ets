@@ -36,6 +36,7 @@ export { PlanKindOption, OTHER_PLAN_KIND_KEY, PLAN_KINDS, planKindLabel } from '
 export { SerialQueue } from './src/main/ets/model/SerialQueue';
 export {
   SyncState, SYNC_STATE_OK, SYNC_STATE_RETRY, SYNC_STATE_BLOCKED, SYNC_CODE_LOCAL,
+  SHARE_LEVEL_UNKNOWN, shareLevelFromStore,
   encodeSyncState, decodeSyncState,
   pushBlockedToday, outcomeOfFailure, syncStateTitleOf, syncStateNoteOf, syncTroubleOf
 } from './src/main/ets/model/CloudSyncRules';

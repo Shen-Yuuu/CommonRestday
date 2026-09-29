@@ -641,6 +641,23 @@ export class ProfileSettingsService {
   }
 
   /**
+   * 本机队列里云端已经判死的那几笔。
+   *
+   * `cloudUnpairTargets()` 故意不认它们（重跑一百次也是同一句），但"不敲门"和"忘掉"是两件事：
+   * 那行密文还在云上，而它是「清空我的全部数据」之后唯一还留着这件事的地方。批次 AP·Task 2。
+   */
+  private static deadCloudDebts(): PendingCloudUnpair[] {
+    const pending = SettingsStore.getPendingCloudUnpair();
+    const out: PendingCloudUnpair[] = [];
+    for (let i = 0; i < pending.length; i++) {
+      if (pending[i].dead) {
+        out.push(pending[i]);
+      }
+    }
+    return out;
+  }
+
+  /**
    * 把这一轮没删掉的欠账落进偏好。**必须在清库之后调用**：`clearAllSettings()` 会把这一格一起推平，
    * 而它是那场推平里唯一该活下来的东西——没有它，这台设备再也没有地方记得云上还有份密文。
    *
@@ -817,6 +834,8 @@ export class ProfileSettingsService {
     }
     try {
       const privacyWas = SettingsStore.isPrivacyAccepted();
+      // 上一轮被判死的那几笔先单独抄一份：补删链不认它们，而下面那场推平会把它们一起带走
+      const carried = ProfileSettingsService.deadCloudDebts();
       // 云端那几行要在本机身份还在的时候删：pairId 与 uid 一推平，就再没有别的地方记得它们了
       const sweep = await ProfileSettingsService.sweepCloudUnpair(false);
       // 协商密钥要跟着一起毁：pairId 随 Preferences 清掉之后，HUKS 里那把别名就成了没人认领的钥匙
@@ -824,6 +843,12 @@ export class ProfileSettingsService {
       await ScheduleRepo.clearAllData();
       await SettingsStore.clearAllSettings();
       await ProfileSettingsService.rememberCloudDebt(sweep, false);
+      // 旧账回位，并把它并进报数：那句「还剩 N 份这台手机删不掉」数的是云上真实剩下的份数，
+      // 不看这一轮（`addPendingCloudUnpair` 按 pairId 归并，所以连着清空几次也不会把它记成两笔）
+      for (let i = 0; i < carried.length; i++) {
+        await SettingsStore.addPendingCloudUnpair(carried[i].pairId, carried[i].uid, true);
+        sweep.dead = sweep.dead + 1;
+      }
       if (privacyWas) {
         await SettingsStore.acceptPrivacy();
       }

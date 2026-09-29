@@ -884,6 +884,81 @@ export default function profileSettingsGuardTest() {
     });
 
     /**
+     * 终局欠账活不过下一次清空（批次 AP·Task 2）。
+     *
+     * `cloudUnpairTargets()` 是**故意**跳过 `dead` 的——云端已经判死的那一笔再敲一百次也是同一句，
+     * 它只报数不敲门。但「跳过」不等于「忘掉」：`clearAllData()` 随后那句 `clearAllSettings()`
+     * 把整格欠账推平，而回写只交得出这一轮的 `kept`。于是上一轮那笔删不掉的密文，
+     * 在第二次「清空我的全部数据」之后连知情都没了——界面上那句「还剩 N 份这台手机删不掉」
+     * 当场归零，而云上那一行一个字都没少。
+     *
+     * 三格形状分别钉：混合账（dead + 还值得敲）、同一笔账被连敲两次不许复制、
+     * 以及**只有 dead 账且本机没配对**那一形（`targets` 为空会走早退，最容易整格丢）。
+     */
+    it('a_terminal_debt_survives_the_next_wipe', 0, async () => {
+      await emptyPlanTable();
+      PlanCapabilities.bind(new CleanCalendar(), new OkReminder());
+      AgcPairingClient.calls = 0;
+      AgcPairingClient.unpairCalls = [];
+      AgcPairingClient.unpairFailure = null;
+      await SettingsStore.savePairId('');
+      await SettingsStore.setPairState(PAIR_NONE, '');
+      // 上一轮留下的两笔：一笔云端已判死，一笔只是网络没删动
+      await SettingsStore.setPendingCloudUnpairRaw(
+        '[{"pairId":"cannot-delete","uid":"uid-a","dead":1},{"pairId":"retry-later","uid":"uid-b","dead":0}]');
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+
+      const wiped = await ProfileSettingsService.clearAllData();
+      AgcPairingClient.unpairFailure = null;
+      expect(wiped.ok).assertTrue();
+
+      const debt = SettingsStore.getPendingCloudUnpair();
+      expect(debt.length).assertEqual(2);
+      const doomed = debtOf(debt, 'cannot-delete');
+      expect(doomed == null ? '' : doomed.uid).assertEqual('uid-a');
+      expect(doomed == null ? false : doomed.dead).assertTrue();
+      const owing = debtOf(debt, 'retry-later');
+      expect(owing == null ? '' : owing.uid).assertEqual('uid-b');
+      expect(owing == null ? true : owing.dead).assertFalse();
+      // 判死那一笔一个字都不许敲：免费档的按天配额是整个项目共享的
+      expect(AgcPairingClient.unpairCalls.indexOf('cannot-delete|uid-a') < 0).assertTrue();
+      // 报数与那句实话都不许把已经判死的那一笔漏掉
+      expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(1);
+      expect(wiped.message.indexOf('云上还剩一份加密快照') >= 0).assertTrue();
+
+      if (!CLOUD_ON) {
+        expect(AgcPairingClient.calls).assertEqual(0);
+        expect(wiped.message.indexOf('（云端功能目前没开通）') >= 0).assertTrue();
+        await SettingsStore.clearPendingCloudUnpair();
+        return;
+      }
+      expect(AgcPairingClient.calls).assertEqual(1);
+
+      // 再清空一次：同一笔 dead 既不消失也不许被记成两笔
+      AgcPairingClient.calls = 0;
+      AgcPairingClient.unpairFailure = new CloudApiError(CLOUD_NETWORK, true, 'no signal');
+      await ProfileSettingsService.clearAllData();
+      AgcPairingClient.unpairFailure = null;
+      const again = SettingsStore.getPendingCloudUnpair();
+      expect(again.length).assertEqual(2);
+      expect(debtOf(again, 'cannot-delete') == null ? false : debtOf(again, 'cannot-delete').dead).assertTrue();
+      expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(1);
+
+      // 只有 dead 账、本机没配对：这一形 targets 为空，补删链一句都不敲，欠账却整格不能没
+      await SettingsStore.setPendingCloudUnpairRaw('[{"pairId":"cannot-delete","uid":"uid-a","dead":1}]');
+      AgcPairingClient.calls = 0;
+      const onlyDead = await ProfileSettingsService.clearAllData();
+      expect(onlyDead.ok).assertTrue();
+      expect(AgcPairingClient.calls).assertEqual(0);
+      expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(1);
+      expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(1);
+      expect(onlyDead.message.indexOf('云上还剩一份加密快照') >= 0).assertTrue();
+
+      await SettingsStore.clearPendingCloudUnpair();
+      AgcPairingClient.unpairCalls = [];
+    });
+
+    /**
      * 共享等级的"假读数"（批次 AO·AO4）。
      *
      * 旧写法有三处各自的猜法：引擎直取（未初始化时是 NaN）、「我的」页 `catch → 2`、页面初值写死 2，

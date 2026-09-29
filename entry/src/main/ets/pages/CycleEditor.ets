@@ -1,8 +1,8 @@
 import { LengthMetrics, router } from '@kit.ArkUI';
-import { HORIZON_DEFAULT_DAYS, OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
+import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import { ScheduleCommandService, ScheduleUseCase } from 'feature';
+import { cycleExpandHint, ScheduleCommandService, SettingsStoreParams, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
@@ -34,6 +34,13 @@ struct CycleEditor {
    * 于是命令层回 `WRITE_FAILED`——一次其实已经落库的保存被念成"保存失败"。
    */
   @State private submitting: boolean = false;
+  /**
+   * 保存之后引擎真正会铺开多少天（D-63）。这一句以前抄出厂默认（先是 commons 的
+   * `AppConst.HORIZON_DAYS`，D-59 之后是 domain 的 `HORIZON_DEFAULT_DAYS`），于是用户把
+   * 「往后算的天数」改成 30 之后，保存按钮底下仍然承诺 120 天。读数走 `SettingsStoreParams()`
+   * ——它是 H4 白名单里那个"刚离开存储就收界"的口子，念出来的天数不会超过引擎真正会展开的上限。
+   */
+  @State private horizonDays: number = SettingsStoreParams().horizonDays;
   // 锚点日期 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才落锚
   @State anchorSheetVisible: boolean = false;
   @State anchorPick: Date = new Date();
@@ -248,7 +255,7 @@ struct CycleEditor {
             .enabled(!this.submitting)
             .onClick(() => this.save())
 
-          Text('保存后自动展开未来 ' + HORIZON_DEFAULT_DAYS + ' 天；临时换班点周历里的某一天。')
+          Text(cycleExpandHint(this.horizonDays))
             .fontSize(11).fontColor($r('app.color.text_hint'))
         }
         .padding(12).width('100%')

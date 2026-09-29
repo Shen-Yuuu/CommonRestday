@@ -1,5 +1,5 @@
-import { OWNER_ME, PairLink, PairOffer } from 'domain';
-import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'data';
+import { HORIZON_DEFAULT_DAYS, OWNER_ME, PairLink, PairOffer } from 'domain';
+import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING } from 'data';
 import {
   FeatureFlags, HORIZON_MAX, HORIZON_MIN, InviteResult, isCrossMidnight, MyRhythm,
   PairChannels, PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService,
@@ -82,7 +82,9 @@ export struct MeView {
   @State private myWake: string = '07:00';
   @State private myBed: string = '22:30';
   @State private myWind: string = '20';
-  @State private myHorizon: string = '120';
+  // 回填前的占位值：loadMyRhythm() 落地之前输入框念的是出厂默认，所以这个数必须跟着 domain 的
+  // 那一家走，不能自己抄一份 '120'（D-63：这一份是默认天数的第三份抄写）。
+  @State private myHorizon: string = '' + HORIZON_DEFAULT_DAYS;
   @State private myMinSlot: number = 120;
   @State private clearing: boolean = false;
   /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */

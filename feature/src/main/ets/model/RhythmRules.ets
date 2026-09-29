@@ -89,6 +89,19 @@ export function horizonLabel(horizonDays: number): string {
 }
 
 /**
+ * 班表编辑器「保存后自动展开未来 N 天」那一句（D-63）。
+ *
+ * N 必须是**引擎这一次真正会铺开的天数**，不是出厂默认值。D-59 之前这一句抄 commons 的
+ * `AppConst.HORIZON_DAYS`，D-59 把它换成 domain 的 `HORIZON_DEFAULT_DAYS` 让静态门禁绿了，
+ * 而界面仍然在用户把天数改成 30 之后继续承诺 120 天——错数字只是换了个来源抄。
+ * 所以这句话从页面挪到这里：读者传进来的应当是 `SettingsStoreParams().horizonDays`，
+ * 而这里再收一次界，念出来的承诺不会超过引擎真正会展开的那个上限。
+ */
+export function cycleExpandHint(horizonDays: number): string {
+  return '保存后自动展开未来 ' + clampHorizonDays(horizonDays) + ' 天；临时换班点周历里的某一天。';
+}
+
+/**
  * 夜班判定三档的下拉文字（D-33）。**顺序即 domain 的 nightMode 值**：
  * 0=自动识别、1=强制夜班、2=不触发夜班恢复，所以下标可以原值往返。
  * 原来只给两档，库里值为 2 的班次进编辑页被折成「自动识别」，下一次保存静默改写成 0。

@@ -29,7 +29,7 @@ export {
 } from './src/main/ets/usecase/ProfileSettingsService';
 export {
   HORIZON_MIN, HORIZON_MAX, rhythmError, horizonError, horizonFromStore, horizonLabel,
-  isCrossMidnight, greetingOf,
+  cycleExpandHint, isCrossMidnight, greetingOf,
   NIGHT_MODE_LABELS, nightModeOf, nightModeIndex, nightModeHint
 } from './src/main/ets/model/RhythmRules';
 export { PlanKindOption, OTHER_PLAN_KIND_KEY, PLAN_KINDS, planKindLabel } from './src/main/ets/model/PlanKinds';

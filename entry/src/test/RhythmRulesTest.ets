@@ -3,7 +3,7 @@ import { defaultParams, EngineParams, HORIZON_DEFAULT_DAYS, HORIZON_MAX_DAYS } f
 import { SettingsStore } from 'data';
 import {
   greetingOf, horizonError, horizonFromStore, horizonLabel, HORIZON_MAX, HORIZON_MIN,
-  isCrossMidnight, NIGHT_MODE_LABELS,
+  cycleExpandHint, isCrossMidnight, NIGHT_MODE_LABELS,
   nightModeHint, nightModeIndex, nightModeOf, ProfileSettingsService, rhythmError
 } from 'feature';
 
@@ -105,6 +105,21 @@ export default function rhythmRulesTest() {
       // 默认值自己过得了设置页的校验，也不越过引擎的上限
       expect(horizonError('' + HORIZON_DEFAULT_DAYS)).assertEqual('');
       expect(HORIZON_DEFAULT_DAYS <= HORIZON_MAX_DAYS).assertTrue();
+    });
+
+    it('the_cycle_hint_promises_the_days_the_engine_will_expand', 0, () => {
+      // D-63：班表编辑器保存按钮底下那句"自动展开未来 N 天"以前抄的是出厂默认（先是 commons 的
+      // AppConst.HORIZON_DAYS，D-59 之后换成 domain 的 HORIZON_DEFAULT_DAYS，门禁绿了而错数字没变）。
+      // 句子挪到 feature 之后，N 由调用方传实设视界进来——这一格钉的是"传什么念什么"。
+      expect(cycleExpandHint(30))
+        .assertEqual('保存后自动展开未来 30 天；临时换班点周历里的某一天。');
+      // 没改过设置的用户看到的仍是出厂默认那一格（并轨不能把默认态改念成别的数）
+      expect(cycleExpandHint(defaultParams().horizonDays).indexOf('' + HORIZON_DEFAULT_DAYS) >= 0).assertTrue();
+      // 承诺不能大过引擎真正会展开的天数：调用方走 SettingsStoreParams() 时已经收过界，
+      // 这里再挡一次，防的是有人拿 Preferences 的原值直接拼这句话。
+      expect(cycleExpandHint(HORIZON_MAX_DAYS + 200).indexOf('' + HORIZON_MAX_DAYS) >= 0).assertTrue();
+      // 也不会念成"0 天"：那是一句谁都兑现不了、也不该出现在界面上的承诺
+      expect(cycleExpandHint(0).indexOf('0 天') < 0).assertTrue();
     });
 
     it('the_settings_page_prefills_the_number_the_engine_will_expand', 0, async () => {

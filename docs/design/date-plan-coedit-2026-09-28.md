@@ -2930,3 +2930,128 @@ AI 越界回填要不要动沙箱文件、L3 要不要回滚 L2、`myWake/myBed/
 **新增待点名两条**：①要不要现在起一台可丢弃实例，把 AO 那五格破坏性验收走掉（这是唯一能把本节欠账变成
 打勾的动作）；②W1a 要不要动 `CRD1` 的行类型——它不动云、不动配额，但那条"旧包忽略未知行"的兜底
 至今只有离线级证据，设备上是零帧。W1b／W2 按用户指令**已暂缓，不再排自主批次**。
+
+### 8.30 批次 AP·Task1–3：旧格式那笔欠账、第二次清空、以及确认框里那三个数
+（2026-09-29·代码＋门禁＋文档＝本笔）
+
+用户交来的两份计划是**一前一后**的关系：第一份（`docs/superpowers/plans/2026-09-29-ao-debt-compatibility.md`）
+是"修复合入"，第二份（`…/2026-09-29-ao-device-acceptance.md`）是"修复合入**之后**再核对"的五格破坏性验收。
+本批走完第一份的三条 Task，每条各一次「失败用例→最小修复→完整门禁」；
+第二份**一行没做，也不打勾**——〔事实〕它的第一句前置是"需要一台可丢弃的 API 26 实例"，
+而 `hdc list targets -v` 此刻只有一行 `127.0.0.1:5555  TCP  Connected`，那正是两台有珍贵数据的配对机之一，
+按用户裁定不清、不卸载、不动。
+
+〔三笔提交·各自的文件〕
+
+| 提交 | 文件 | 这一批改的东西 |
+|---|---|---|
+| `9105c5c` Task 1 | `domain/src/main/ets/pair/CloudDebtCodec.ets` | **新文件 92 行**：`PendingCloudUnpair` 搬来此处；`decodeCloudDebts`（`:41-71`，数组与单对象两种历史形状都认，脏值回空队列）、`encodeCloudDebts`（`:80-92`，只产数组形状，空队列写空串） |
+| | `domain/Index.ets`、`data/Index.ets` | 出口搬家：类型与编解码改由 domain 出口 |
+| | `data/src/main/ets/settings/SettingsStore.ets` | 本地那份手写解码/编码**删掉**，读写改成委托 codec（`:295-309`、`:345-348`） |
+| | `tools/test/run.mjs` | 桩里**另一份逐字相同的手写解码**同样删掉，改成 `import { decodeCloudDebts, encodeCloudDebts } from './domainIndex'`（`:207`、`:407`、`:423`）；补 `setPendingCloudUnpairRaw` 与 `AgcPairingClient.unpairCalls` 两枚桩侧探针（`:436`、`:529`） |
+| | `feature/…/ProfileSettingsService.ets`、`entry/src/test/ProfileSettingsGuardTest.ets` | 前者只换 import 来源；后者新增用例 `a_legacy_single_object_debt_still_reads_after_the_upgrade`（`:826`） |
+| `028d90a` Task 2 | `feature/…/ProfileSettingsService.ets` | 新私有读侧 `deadCloudDebts()`（`:666`）；`clearAllData()` 在 `clearAllSettings()` **之前**抄一份、之后原样回位并把计数并进同一句实话（`:855`） |
+| | `entry/src/test/ProfileSettingsGuardTest.ets` | 用例 `a_terminal_debt_survives_the_next_wipe`（`:898`）：混合账／连清两次不许记成两笔／只剩 dead 且本机没配对那一形 |
+| `d9967bb` Task 3 | `feature/…/ProfileSettingsService.ets` | 新增 `cloudSnapshotsAtRisk()`（`:271`）——直接复用 `cloudUnpairTargets()`（`:578`），不在第二处数一遍 |
+| | `entry/src/main/ets/view/MeView.ets` | 新增 `cloudWipeClause(keepsLocalOnFail)`（`:414`），`askUnpair`（`:440`）与 `askClearAll` 的文案改成按真实队列生成；`doUnpair` 成败两支各重读一次欠账（`:456`） |
+| | `entry/src/test/ProfileSettingsGuardTest.ets` | 用例 `the_confirm_count_excludes_the_row_that_can_never_be_deleted`（`:971`） |
+| 本笔第四格 | `entry/src/ohosTest/ets/test/UpgradeMigrationTest.ets` | 设备侧真实 Preferences 那一格（＋72／−7，见下） |
+
+三笔合起来 **+409 −97**，加设备侧那一格是 **+481 −104**；离线用例数 267 → **270**（每条 Task 各一条）。
+
+〔Task 1·为什么是"并成一个实现"而不是"两处各补一个分支"〕
+〔事实〕被删掉的那份生产解码长这样：`const rows = JSON.parse(text) as Array<Record<string, Object>>`，
+然后 `for (let i = 0; i < rows.length; i++)`。旧包写的是**单个对象**，`JSON.parse` 出来是个对象，
+`.length` 是 `undefined`，于是循环**一次都不跑**，函数正常返回空数组——不抛、不 warn、界面上什么也没有。
+〔判断〕这一形比抛异常更坏：抛了至少留一条 hilog。修法有两条，在 data 里补一个 `Array.isArray` 分支最小，
+但 `tools/test/run.mjs` 的桩里躺着**逐字相同的第二份**（本轮核对过，两份循环体一字不差），
+补分支就得补两处，而"离线绿"能证明的只有桩那一份。所以方向反过来：把编解码搬进 `domain`
+（唯一没有 `@kit` 依赖、又能同时被设备侧与离线转译层编进去的层），data 与桩各只剩一次调用。
+**并轨方向是仓库里已走通三次的**（D-57 `clampHorizonDays`、D-61 `clipSpan`、D-58 区间终点的念法）。
+
+〔Task 1 的另一半·设备侧那一格〕计划里那句「若离线只能读桩，额外加一条设备侧真实 Preferences 用例」
+在搬运之后其实**已不再成立**——离线用例读的就是生产那一份实现。但仍然补了：
+`UpgradeMigrationTest.ets` 新用例 `cloud_debt_history_shapes_read_from_real_preferences`，
+把三种历史形状（旧包的单对象／夹一条缺 uid 坏行的数组／半截 JSON）直接种进沙箱里那份 `crd_settings`，
+由 `SettingsStore.getPendingCloudUnpair()` 读回，再走一遍生产写侧确认落盘的是数组形状，`finally` 还原现场原值。
+顺带把已有的 `seedLegacyPairKey`／`readLegacyPairKey` 改成委托新加的 `seedRawPreference`／`readRawPreference`
+——"种／读一块真实 Preferences"也不该有第二份实现。
+〔事实·这一格只到编译级〕用例**没有执行**：本批只跑了 `ohostest` 出包（`BUILD SUCCESSFUL`），
+`hdc` 上那台 5555 不是可丢弃实例。所以它记在下面的欠账里，不在打勾那一列。
+
+〔Task 2·"跳过"不等于"忘掉"〕〔事实〕`cloudUnpairTargets()` 故意只列"还值得再敲门"的那些行，
+`dead` 那一族被挡在门外——这是 AO3 的设计（再敲一百次也是同一句）。但 AO 那一批建好读侧之后漏了一格：
+`clearAllData()` 中间那句 `clearAllSettings()` 把**整格欠账推平**（含 `dead` 那几条），
+而随后 `rememberCloudDebt(sweep, false)` 只交得出这一轮的 `sweep.kept`。于是上一轮被判死的那一笔，
+在第二次「清空我的全部数据」之后连计数都没了：界面上那句「云上还剩 N 份加密快照…这台手机删不掉」当场归零，
+而云上那一行一个字都没少。修法是**在推平之前抄一份**，清完原样回位，并 `sweep.dead += carried.length`。
+〔判断〕那句实话要报的是"做完这一步云上还剩几份"，不是"这一轮新增几份"，所以旧账并进同一个数；
+重复清空不许记成两笔，这一条靠 `addPendingCloudUnpair` 已有的 pairId 判重，不另加一层去重。
+
+〔Task 3·三个数不能混成一个〕两句二次确认过去只看一个布尔
+（`cloudPairing && pairState !== PAIR_NONE`），为真就念「云上那份加密快照会一起删掉（要联网）」。
+〔判断〕同一句话在三种现场下可以是三种错：账上有两笔还删得动的（**少报**）、云端功能没开通却照念"会一起删掉"
+（**假报**）、把已经判死的那一笔一并说成"下次联网会自动再试"（**当场兑不了的承诺**）。
+现在三段各管各：还删得动的 `cloudSnapshotsAtRisk()`、开关关着所以这趟一份都不碰（同一个数换一种说法）、
+删不掉的 `undeletableCloudSnapshots()`——后一族**不在**前一个数里，两个数混成一个就等于把"删不掉"说成"会自动再试"。
+`keepsLocalOnFail` 不是文案开关而是两条路径真实的分岔：解除配对是 fail-closed（云端删不动就不清本机标记，
+重试的凭据就是这一屏本身），清空数据则本机一定清得掉、只把欠账留给下一次。
+`doUnpair()` 成败两支各补一次重读——fail-closed 那一路刚刚记进去的账，不能停在动手之前的数字上。
+
+〔自查·第一遍门禁是我自己写红的〕Task 1 的第一遍 `offline[closed]` **FAIL**：`267 passed / 1 failed`，
+定位方式是把两档拆开单跑（`CRD_TIER=closed node tools/test/run.mjs`）。
+〔事实〕红的不是生产代码，是我刚写的那条断言：同一个用例前半段已经调过一次 `addPendingCloudUnpair`，
+那一句把原始偏好**重写成了数组形状**（后半段还专门断言 `indexOf('[') === 0`），
+而我又在关闭档那一支断言"原始键仍以 `{` 开头"——同一条链上两个互不成立的断言。
+〔判断〕错的不只是断言，是**断言选错了对象**：关闭态要守的契约是"不发请求、也不许把任何一笔欠账当成已销账"，
+不是"沙箱里那串文本长得像不像旧的"。改成断前者（`calls === 0` ＋ 队列仍 2 条 ＋ 旧那笔的 uid 与 `dead` 原样）
+后重跑即 268／268 绿；生产代码一行没为它改。
+
+〔工具事实·用例数根本不在门禁判据里〕〔事实〕`tools/verify.mjs:82-101` 的 `offlineStep()` 只看两件事：
+`r.status === 0`，以及日志里有本档的生效标记（`tier: CRD_TIER=<t> → 编译副本 cloudPairing=<bool>`）；
+那串 `(\d+) passed, (\d+) failed` 正则**只用于打印**，`tools/verify-baseline.json` 的两个键是
+`_note` 与 `arktsWarn`——没有测试数量这一项。
+〔判断〕这条与本批无关但要登记：**少跑几条用例门禁不会红**——267→270 是我手工核的，不是门禁保的。
+它与 §8.29 那条「离线全绿不代表能出包」是同一类缝：一条缺 ArkTS 语言规则，一条缺数量基线。
+本批不补，因为补法有两种且各有代价（钉死数字会在每批加用例时误红；钉"不许减少"就要区分改名与删除），
+这属于用户裁定的范围。
+
+〔工具事实·`Array.isArray` 在 ArkTS 下能编过〕搬运那一步唯一的外部风险是 `decodeCloudDebts` 用了
+`Array.isArray(parsed)`——仓库此前没有先例。〔事实〕本批 debug／release／ohostest 三档各出包四次，
+全部 `BUILD SUCCESSFUL` 且 WARN 与基线逐字相同。这一条从"待验证的风险"移成"实测事实"，
+以后 `@kit` 无关的数组判定可以照用。
+
+〔工具事实·WARN 基线一条没动，含 ohostest 那一档的归因〕本批四次完整门禁 debug/release 一直 289、
+ohostest 一直 269。新文件 `CloudDebtCodec.ets` 不碰任何系统 API，所以三档 0 命中；
+设备侧那一格本来最可能顶高 ohostest——基线 `_note` 里就有一笔「`UpgradeMigrationTest.ets` 多出的 2 条
+是新加的 `readLegacyPairKey()`（getPreferences ＋ getSync 各一条）」。这次把 5 次 Preferences 调用
+**搬家而不是加份**（`getPreferences`/`put`/`flush` 与 `getPreferences`/`getSync` 原样进
+`seedRawPreference`/`readRawPreference`，新用例只调这两个函数），所以 ohostest 停在 269 是设计结果。
+〔判断〕这一条值得留着：下一次再往 ohosTest 里加 Preferences 直调，先想起这个数。
+
+〔门禁实测〕`node tools/verify.mjs --steps=offline,debug,release,ohostest,perf` 本批跑了**四次**（三笔提交各一次
+＋设备侧那一格一次），四次 **ALL PASS** exit 0：offline 两档 `typecheck=0 errors`，用例数随提交
+267 → 268 → 269 → **270**（末次含设备侧改动，仍 270——`entry/src/ohosTest` 不参与离线转译），
+两档都带着那九条静态口径审计（copy／a11y／landing／press／contrast／horizon／endread／span／clip）零违规；
+三档 `ArkTS:WARN 289／289／269` 与基线逐字相同；perf 两条投影
+`96w 80 次 p50 0.088／p95 0.241／max 0.289`、`1000w 60 次 0.819／1.618／5.232` 均在预算内，
+视界扫描 paired P50 `60d=4.6 90d=9.7 120d=20.0 150d=31.8 180d=39.7 240d=59.5 366d=114.5` ms。
+〔判断〕perf 那一行照旧只是门禁既有读数，不是 AO 那笔"双带子"复测。
+
+〔欠账·不打勾〕四格：
+①`MeView` 那两句新确认文案**零设备帧**。〔事实〕`entry/src/main` 不参与离线转译，所以被钉住的只有它读的
+两个 service 出口（`cloudSnapshotsAtRisk`／`undeletableCloudSnapshots`），"这句话在屏幕上到底长什么样、
+两笔账同时在场时用哪个连接号、`askClearAll` 那句换行还在不在"没有断言也没有截图。
+②设备侧那一格只到编译级（上面已述）。
+③AO 那五格破坏性验收（云删失败时本机凭据不变／成功解绑后会话与两行快照消失／清空失败后回前台补删／
+HUKS 清数据生命周期／第三台拒绝）**一条没做**，全部排在"可丢弃实例"这一格前置上。
+④第二份计划要求的"设备画面与 AGC 行变化配对留证"同样零帧。
+
+〔队列变化〕第一份计划的三条 Task **代码半边结案**（三笔提交＋四次全绿门禁），其设备半边并入②③④。
+**新增待点名两条**：①要不要起一台可丢弃的 API 26 实例——它同时挡住第二份计划四格、本批②③④，
+以及 §8.29 末那五格，这是唯一能把它们变成打勾的动作；②要不要就在现有 5555 上跑一次 `ohosTest` 全量
+（它会读写那台机真实的 `crd_settings` 与 8 张 RDB 表；用例自带 `finally` 还原，但"还原"的可信度取决于
+中途有没有被 kill，而配对状态与对方快照是珍贵数据）——**这一条必须用户裁定，自主队列不自行开这个闸**。
+其余照旧：`24:00` 往返断链、跨零点窗口行不念日期、本机代录 vs 云端配对措辞状态机、
+AI 越界回填要不要动沙箱文件、L3 要不要回滚 L2、`myWake/myBed/myWind` 那一族默认值抄写；
+W1a 仍待点名，W1b／W2 按用户指令暂缓。

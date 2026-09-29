@@ -2,7 +2,8 @@ import { describe, expect, it, beforeAll, afterAll } from '@ohos/hypium';
 import { abilityDelegatorRegistry } from '@kit.TestKit';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { CycleTemplate, MIN_PER_DAY, OWNER_ME, OWNER_PARTNER, ShiftType, todayEpochDay } from 'domain';
+import { CycleTemplate, MIN_PER_DAY, OWNER_ME, OWNER_PARTNER, PendingCloudUnpair, ShiftType,
+  todayEpochDay } from 'domain';
 import {
   Db, MigrationRunner, PAIRED, PAIR_NONE, SCHEMA_VERSION, SCHEMA_VERSION_KEY,
   ScheduleRepo, SettingsStore, PlanRow
@@ -24,7 +25,9 @@ import { CalendarState } from 'feature';
  * - 结构版本比本包高：整包不写库，也不把别人的版本号改小；
  * - 班表三表的主键确实是 (owner, id)：同一个 id 在"我"和 TA 两侧各自成立、互不覆写（批次 K-5）；
  * - 恢复后配对：清 key、清 pairId、状态回 NONE 这三步在真机 Preferences 上确实落得住
- *   （密钥残留由测试直接经 Preferences 种下——阶段 6R.2 已删掉生产写入口，见 seedLegacyPairKey）。
+ *   （密钥残留由测试直接经 Preferences 种下——阶段 6R.2 已删掉生产写入口，见 seedLegacyPairKey）；
+ * - 待补删欠账的三种历史形状（单对象／数组／脏串）种进沙箱里那份 crd_settings 后，由生产读路径
+ *   原样读回（批次 AP·Task 1 的设备侧半边——离线那一格读的是内存替身，证明不了真机）。
  *
  * 两处刻意不在自动化里做：
  * - 备份框架真正跑一次"备份 → 恢复到另一台设备"要两台机器（或本机备份到 PC 再恢复），
@@ -97,6 +100,23 @@ async function restoreTemplate(owner: string, saved: CycleTemplate | null): Prom
 const PREFS_STORE = 'crd_settings';
 /** 旧原型把"邀请码 SHA-256"当长期密钥写进来的那个键。 */
 const LEGACY_PAIR_KEY = 'pair_key';
+/** 「待补删的云侧配对」那一格（批次 AP·Task 1 要兼容的旧形状种在这里）。 */
+const DEBT_KEY = 'pending_cloud_unpair';
+
+/**
+ * 直接经真实 Preferences 种/读一格文本：`getPreferences` 按 (context, 名) 返回同一个实例，
+ * 所以这里写进去的值，生产侧 `SettingsStore` 的读路径看得见——不是内存替身，是沙箱里那份。
+ */
+async function seedRawPreference(key: string, value: string): Promise<void> {
+  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
+  await prefs.put(key, value);
+  await prefs.flush();
+}
+
+async function readRawPreference(key: string): Promise<string> {
+  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
+  return prefs.getSync(key, '') as string;
+}
 
 /**
  * 把长期密钥残留"种"进沙箱：阶段 6R.2 删掉了生产写入口（`savePairKey` + `deriveKeyHex`），
@@ -105,9 +125,7 @@ const LEGACY_PAIR_KEY = 'pair_key';
  * 断言的仍是那条真实落盘的清理链路——而不是把密钥断言删掉来迁就"没有写入口"。
  */
 async function seedLegacyPairKey(value: string): Promise<void> {
-  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
-  await prefs.put(LEGACY_PAIR_KEY, value);
-  await prefs.flush();
+  await seedRawPreference(LEGACY_PAIR_KEY, value);
 }
 
 /**
@@ -116,8 +134,7 @@ async function seedLegacyPairKey(value: string): Promise<void> {
  * 改由测试自己经 Preferences 读。读的仍是上面 seed 写进去的那块存储，没有换成内存替身。
  */
 async function readLegacyPairKey(): Promise<string> {
-  const prefs: preferences.Preferences = await preferences.getPreferences(appCtx(), PREFS_STORE);
-  return prefs.getSync(LEGACY_PAIR_KEY, '') as string;
+  return readRawPreference(LEGACY_PAIR_KEY);
 }
 
 /**
@@ -302,6 +319,54 @@ export default function upgradeMigrationTest() {
         if (hadKey !== '') {
           await seedLegacyPairKey(hadKey);
         }
+      }
+    });
+
+    /**
+     * 待补删欠账的设备侧兼容验收（批次 AP·Task 1 的另一半）。
+     *
+     * 离线那一格（`entry/src/test/ProfileSettingsGuardTest.ets`）已经钉住"解码只剩 domain 一处实现"，
+     * 但它读的是 `tools/test/run.mjs` 里的内存替身——桩绿证明不了沙箱里那份真文件绿。所以这里把
+     * 三种历史形状直接种进 `crd_settings`，再让生产读路径 `SettingsStore.getPendingCloudUnpair()`
+     * 去读：单对象（批次 U·U5 那一版写的，直接升上来的设备就卡在这一形）、数组（本包写的，
+     * 其中夹一条缺 uid 的坏行）、脏串（半截写入或手工改过）。
+     * 缺 `dead` 那一位时必须读成 false：旧包压根没有这一位，把它读成"已判死"会让一笔还删得动的账
+     * 从此不再被补删链敲门——比读没了更坏，因为连"下次联网会自动再试"都不再成立。
+     * 结尾那一步顺手证明写侧只产数组形状：新账不许再往旧形状写，否则这条兼容链永远剪不断。
+     */
+    it('cloud_debt_history_shapes_read_from_real_preferences', 0, async () => {
+      const had: string = await readRawPreference(DEBT_KEY);
+      try {
+        await seedRawPreference(DEBT_KEY, '{"pairId":"legacy-row","uid":"uid-legacy"}');
+        const legacy: PendingCloudUnpair[] = SettingsStore.getPendingCloudUnpair();
+        expect(legacy.length).assertEqual(1);
+        expect(legacy[0].pairId).assertEqual('legacy-row');
+        expect(legacy[0].uid).assertEqual('uid-legacy');
+        expect(legacy[0].dead).assertFalse();
+
+        await seedRawPreference(DEBT_KEY,
+          '[{"pairId":"kept","uid":"uid-a","dead":0},'
+          + '{"pairId":"terminal","uid":"uid-b","dead":1},{"pairId":"no-uid"}]');
+        const many: PendingCloudUnpair[] = SettingsStore.getPendingCloudUnpair();
+        expect(many.length).assertEqual(2);
+        expect(many[0].pairId).assertEqual('kept');
+        expect(many[0].dead).assertFalse();
+        expect(many[1].pairId).assertEqual('terminal');
+        expect(many[1].uid).assertEqual('uid-b');
+        expect(many[1].dead).assertTrue();
+
+        await seedRawPreference(DEBT_KEY, '[{"pairId":"half-written"');
+        expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(0);
+
+        const next: PendingCloudUnpair = { pairId: 'written-back', uid: 'uid-c', dead: true };
+        await SettingsStore.savePendingCloudUnpair([next]);
+        expect((await readRawPreference(DEBT_KEY)).startsWith('[')).assertTrue();
+        const back: PendingCloudUnpair[] = SettingsStore.getPendingCloudUnpair();
+        expect(back.length).assertEqual(1);
+        expect(back[0].pairId).assertEqual('written-back');
+        expect(back[0].dead).assertTrue();
+      } finally {
+        await seedRawPreference(DEBT_KEY, had);
       }
     });
 

@@ -204,6 +204,7 @@ export class RecomputeExecutor {
 /** 设备侧门面（SettingsStore/ScheduleRepo）的类型壳：用例只驱动纯装配，能过类型即可。 */
 const STUB_DATA = `
 import { Course, defaultParams, EngineParams, ScheduleOverride, ShiftType, Window } from './main/ets/model/Types';
+import { PendingCloudUnpair, decodeCloudDebts, encodeCloudDebts } from './domainIndex';
 
 export const PAIRED = 'PAIRED';
 export const PAIR_NONE = 'NONE';
@@ -219,10 +220,10 @@ export interface PlanRow {
 export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number; windDownMin: number; }
 
 /**
- * 云侧待补删凭据（设备侧同名）：pairId + uid + 有没有被云端终局判掉。桩照这个形状存，
- * 别多给一个字段——批次 AO·AO3 要断言的正是"dead 那一条还在库里，所以界面才报得出数"。
+ * 云侧待补删凭据的形状与编解码都来自 domain 的 CloudDebtCodec（设备侧 import 的是同一个实现）：
+ * 桩只替换那一格 Preferences 的存储，不许自己再解析一遍——批次 AP·Task 1 要证的正是
+ * "旧包那一格单对象在升级后还读得回"，桩里另写一份解码，绿了也证明不了真机读得回。
  */
-export interface PendingCloudUnpair { pairId: string; uid: string; dead: boolean; }
 
 /** 离线计划表：upsertPlan 存行，后续 update* 就地改字段（设备侧同一段是 SQL UPDATE）。 */
 const planRows = new Map<string, PlanRow>();
@@ -398,32 +399,12 @@ export class SettingsStore {
     settingsRows.set('last_heartbeat_at', ms);
   }
   /**
-   * 云侧待补删凭据（设备侧同名，批次 AO 起是一条队列）：桩真的把每条按 JSON 数组存取一遍，
-   * 「欠账→新配对→再清空」与「终局判定只报数不敲门」两类断言才都有落点。
-   * 脏串/非数组/缺字段按"没有这一条"处理，与设备侧同一半口径。
+   * 云侧待补删凭据（设备侧同名，批次 AO 起是一条队列）：解码走的是 domain 那一份实现，
+   * 桩这里只是把同一串原文换放进内存表。「欠账→新配对→再清空」与「终局判定只报数不敲门」
+   * 两类断言因此都落在真代码上，而不是桩自证。
    */
   static getPendingCloudUnpair(): PendingCloudUnpair[] {
-    const text = settingOf('pending_cloud_unpair', '') as string;
-    if (text === '') {
-      return [];
-    }
-    const out: PendingCloudUnpair[] = [];
-    try {
-      const rows = JSON.parse(text) as Array<Record<string, Object>>;
-      for (let i = 0; i < rows.length; i++) {
-        const o = rows[i];
-        const pairId = o['pairId'] == null ? '' : String(o['pairId']);
-        const uid = o['uid'] == null ? '' : String(o['uid']);
-        if (pairId === '' || uid === '') {
-          continue;
-        }
-        const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: String(o['dead']) === '1' };
-        out.push(rec);
-      }
-    } catch (e) {
-      return [];
-    }
-    return out;
+    return decodeCloudDebts(settingOf('pending_cloud_unpair', '') as string);
   }
   static async addPendingCloudUnpair(pairId: string, uid: string, dead: boolean): Promise<void> {
     if (pairId === '' || uid === '') {
@@ -439,22 +420,25 @@ export class SettingsStore {
       SettingsStore.getPendingCloudUnpair().filter((r: PendingCloudUnpair) => r.pairId !== pairId));
   }
   static async savePendingCloudUnpair(list: PendingCloudUnpair[]): Promise<void> {
-    if (list.length === 0) {
-      settingsRows.set('pending_cloud_unpair', '');
-      return;
-    }
-    const rows: Array<Record<string, Object>> = [];
-    for (let i = 0; i < list.length; i++) {
-      const o: Record<string, Object> = { pairId: list[i].pairId, uid: list[i].uid, dead: list[i].dead ? 1 : 0 };
-      rows.push(o);
-    }
-    settingsRows.set('pending_cloud_unpair', JSON.stringify(rows));
+    settingsRows.set('pending_cloud_unpair', encodeCloudDebts(list));
   }
   static countDeadCloudUnpair(): number {
     return SettingsStore.getPendingCloudUnpair().filter((r: PendingCloudUnpair) => r.dead).length;
   }
   static async clearPendingCloudUnpair(): Promise<void> {
     settingsRows.delete('pending_cloud_unpair');
+  }
+  /**
+   * 测试注入（批次 AP·Task 1）：旧包（批次 U·U5）在这一格存的是**单对象**而不是数组，
+   * 而现写的 setter 只会写数组，所以"从那一版升上来还读不读得回这笔账"只能由测试
+   * 把原文直接种进存储里——种的是设备侧真出现过的那串字节，不是测试专用的中间形状。
+   */
+  static async setPendingCloudUnpairRaw(text: string): Promise<void> {
+    settingsRows.set('pending_cloud_unpair', text);
+  }
+  /** 同一格的原文：断言"写出去的是数组形状"时读它，不另开一份内存副本。 */
+  static pendingCloudUnpairRaw(): string {
+    return settingOf('pending_cloud_unpair', '') as string;
   }
   static async getOrCreateUid(): Promise<string> {
     const existing = settingOf('device_uid', '') as string;
@@ -538,6 +522,12 @@ export class AgcPairingClient {
    */
   static unpairFailure: CloudApiError | null = null;
   /**
+   * 每次 unpair 的 pairId 与 uid（批次 AP·Task 1）：补删用的 uid 必须是**那一轮**留在会话行里的
+   * 那一个，本机新生成的 uid 不是成员，敲门永远撞 FORBIDDEN。只数 calls 证明不了带的谁，
+   * 于是这一格把两列原样记下来，让"旧欠账的 uid 逐字没变"能在离线侧对出来。
+   */
+  static unpairCalls: string[] = [];
+  /**
    * 让 heartbeat 悬住的开关（null = 立刻返回）。批次 AO·AO5 要断言的是"旧会话那一跳的迟到返回值
    * 不许写下新会话的游标"，而桩若即时 resolve，commitBeat 里那次同一性复核在离线侧永远走不到。
    */
@@ -565,6 +555,7 @@ export class AgcPairingClient {
 
   async unpair(pairId: string, uid: string, requestId: string): Promise<number> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
+    AgcPairingClient.unpairCalls.push(pairId + '|' + uid);
     if (AgcPairingClient.unpairFailure !== null) {
       throw AgcPairingClient.unpairFailure;
     }

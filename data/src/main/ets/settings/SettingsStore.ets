@@ -1,7 +1,8 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
-import { defaultParams, EngineParams, ScheduleOverride } from 'domain';
+import { defaultParams, EngineParams, PendingCloudUnpair, ScheduleOverride,
+  decodeCloudDebts, encodeCloudDebts } from 'domain';
 import { Logger } from 'commons';
 
 /**
@@ -45,26 +46,6 @@ export interface PartnerProfile {
   wakeMin: number;
   bedMin: number;
   windDownMin: number;
-}
-
-/**
- * 云侧那两行快照没删掉时留下的重试凭据（协议 §4.5 批次 U·U5）。
- *
- * 只有两个字段，而且是故意的：`pairing.unpair` 认的是会话行里的 `creatorUid`/`joinerUid`，
- * 删除**不需要任何密钥材料**。别的一概不存——HUKS 别名、对方快照、任何明文忙碌时段
- * 都不属于"把云上那行删掉"这件事，把它们留在一次「清空我的全部数据」之后就是漏披露。
- */
-/**
- * 一次没删干净的云侧配对（协议 §4.5：删除要的凭据就是这两列成员，密钥材料对删除毫无用处）。
- *
- * `dead` 为真表示云端已经给了**终局判定**（不是那个会话的成员、参数不合法、版本对不上）——
- * 再敲一百次门也是同一句，于是它退出补删队列，只留着向用户如实报「云上还剩一份」。
- * 这一位是批次 AO 加的：终局之前只在日志里留了一行，用户看不见自己还剩这么个东西。
- */
-export interface PendingCloudUnpair {
-  pairId: string;
-  uid: string;
-  dead: boolean;
 }
 
 export class SettingsStore {
@@ -308,30 +289,14 @@ export class SettingsStore {
    * 读全部待补删的云侧配对。批次 AO 起它是一条**队列**而不是单格：
    * 「上次没删掉 → 又配了一次 → 再清空」时两条都得记住，旧那条不该因为新的插队就被推平。
    *
-   * 脏串、非数组、缺字段一律按「那一条没有欠账」处理，与 `decodeSyncState` 同一取向：
-   * 宁可这条提示不出来，也不要一次偏好写坏就在页面上挂假警报。
+   * 解码本身在 domain 的 `decodeCloudDebts`，这里只负责那一格偏好——因为它得同时被
+   * 真机和离线转译层编进去：批次 U·U5 存的是单对象，只认数组的读法会让升级把旧账读成零。
    */
   static getPendingCloudUnpair(): PendingCloudUnpair[] {
     const text = SettingsStore.p().getSync(KEY_PENDING_CLOUD_UNPAIR, '') as string;
-    if (text === '') {
-      return [];
-    }
-    const out: PendingCloudUnpair[] = [];
-    try {
-      const rows = JSON.parse(text) as Array<Record<string, Object>>;
-      for (let i = 0; i < rows.length; i++) {
-        const o = rows[i];
-        const pairId = o['pairId'] == null ? '' : String(o['pairId']);
-        const uid = o['uid'] == null ? '' : String(o['uid']);
-        if (pairId === '' || uid === '') {
-          continue;
-        }
-        const rec: PendingCloudUnpair = { pairId: pairId, uid: uid, dead: String(o['dead']) === '1' };
-        out.push(rec);
-      }
-    } catch (e) {
+    const out = decodeCloudDebts(text);
+    if (out.length === 0 && text !== '') {
       Logger.warn(TAG, 'pending cloud unpair parse failed');
-      return [];
     }
     return out;
   }
@@ -374,18 +339,11 @@ export class SettingsStore {
   /**
    * 整份队列存成一个串（空队列存空串）：这几条永远一起变，分成几格就把"只写了一半"做出来了。
    *
-   * `dead` 存 **1/0 而不是布尔**：`JSON.stringify(true)` 出来是 `true`，而读侧 `String(v) === '1'`
-   * 认的是这个数；用布尔写就用布尔读，两边各认一种字面量，就是"登记了却读不出"的那一格。
+   * 写侧只认 `encodeCloudDebts` 那一种数组形状——旧版那个单对象只属于**读侧的兼容**，
+   * 新账再往旧形状写，就是下一次升级又要补一遍的地方。
    */
   static async savePendingCloudUnpair(list: PendingCloudUnpair[]): Promise<void> {
-    const rows: Array<Record<string, Object>> = [];
-    for (let i = 0; i < list.length; i++) {
-      const o: Record<string, Object> = {
-        'pairId': list[i].pairId, 'uid': list[i].uid, 'dead': list[i].dead ? 1 : 0
-      };
-      rows.push(o);
-    }
-    await SettingsStore.p().put(KEY_PENDING_CLOUD_UNPAIR, list.length === 0 ? '' : JSON.stringify(rows));
+    await SettingsStore.p().put(KEY_PENDING_CLOUD_UNPAIR, encodeCloudDebts(list));
     await SettingsStore.p().flush();
   }
 

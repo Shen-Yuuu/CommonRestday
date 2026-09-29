@@ -16,3 +16,4 @@ export * from './src/main/ets/parse/CourseTextParser';
 export * from './src/main/ets/snapshot/SnapshotCodec';
 export * from './src/main/ets/snapshot/SnapshotBuilder';
 export * from './src/main/ets/pair/PairLink';
+export * from './src/main/ets/pair/CloudDebtCodec';

@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PendingCloudUnpair, PlanRow, ScheduleRepo, SettingsStore } from 'data';
+import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PlanRow, ScheduleRepo, SettingsStore } from 'data';
+import { PendingCloudUnpair } from 'domain';
 import { AgcPairingClient, CloudApiError, CLOUD_NETWORK, PairKeyStore } from 'cloud';
 import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, encodeSyncState, FeatureFlags,
@@ -807,6 +808,79 @@ export default function profileSettingsGuardTest() {
       expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(1);
 
       await SettingsStore.clearPendingCloudUnpair();
+    });
+
+    /**
+     * 旧包留下的那**一格**欠账（批次 AP·Task 1）。
+     *
+     * 批次 U·U5 到 AO 之间，`pending_cloud_unpair` 存的是 `{"pairId":"…","uid":"…"}` 一个对象，
+     * 而批次 AO 把它改成了数组、读侧只按数组解析。于是从那一版直接升上来的设备上，
+     * 云上那份密文在新版本眼里当场归零：不补删、不报数、界面一句都不提——
+     * 用户什么都没做，账就自己没了。这一格钉的是「升级不许把已经欠下的读没了」，
+     * 四种形状各一句：旧单对象＝一条可重试的欠账；AO 数组＝原义；坏 JSON／空对象＝空队列
+     * （脏值仍按"这条没有欠账"处理，宁可提示不出来，也不挂假警报）。
+     *
+     * 种进存储的是设备侧真出现过的那串原文，读的是同一条解码链——编解码只有一个实现，
+     * 桩替换的只是 Preferences 那一格存储（见 domain 的 `CloudDebtCodec`）。
+     */
+    it('a_legacy_single_object_debt_still_reads_after_the_upgrade', 0, async () => {
+      await SettingsStore.clearPendingCloudUnpair();
+      AgcPairingClient.calls = 0;
+      AgcPairingClient.unpairCalls = [];
+      AgcPairingClient.unpairFailure = null;
+
+      // ① 旧包那一格：缺 `dead` 读成"还值得再敲"，而不是"没有欠账"
+      await SettingsStore.setPendingCloudUnpairRaw('{"pairId":"old","uid":"original"}');
+      const legacy = SettingsStore.getPendingCloudUnpair();
+      expect(legacy.length).assertEqual(1);
+      expect(legacy[0].pairId).assertEqual('old');
+      expect(legacy[0].uid).assertEqual('original');
+      expect(legacy[0].dead).assertFalse();
+      expect(SettingsStore.countDeadCloudUnpair()).assertEqual(0);
+
+      // ② AO 的数组形状照旧：`dead` 认 1/0，两条各归各
+      await SettingsStore.setPendingCloudUnpairRaw(
+        '[{"pairId":"gone","uid":"u-a","dead":1},{"pairId":"owing","uid":"u-b","dead":0}]');
+      const queued = SettingsStore.getPendingCloudUnpair();
+      expect(queued.length).assertEqual(2);
+      const judged = debtOf(queued, 'gone');
+      expect(judged == null ? false : judged.dead).assertTrue();
+      const owing = debtOf(queued, 'owing');
+      expect(owing == null ? true : owing.dead).assertFalse();
+      expect(SettingsStore.countDeadCloudUnpair()).assertEqual(1);
+
+      // ③ 脏值：坏 JSON、空对象、缺字段一律"这条没有欠账"，不炸也不挂假警报
+      await SettingsStore.setPendingCloudUnpairRaw('{"pairId":"old"');
+      expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(0);
+      await SettingsStore.setPendingCloudUnpairRaw('{}');
+      expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(0);
+      await SettingsStore.setPendingCloudUnpairRaw('{"pairId":"","uid":"u"}');
+      expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(0);
+
+      // ④ 读旧、写新、再读：新写出去的统一是数组，旧那一条的 uid 一个字节都不许变
+      await SettingsStore.setPendingCloudUnpairRaw('{"pairId":"old","uid":"original"}');
+      await SettingsStore.addPendingCloudUnpair('new-session', 'uid-of-this-round', false);
+      expect(SettingsStore.pendingCloudUnpairRaw().indexOf('[') === 0).assertTrue();
+      const afterAdd = SettingsStore.getPendingCloudUnpair();
+      expect(afterAdd.length).assertEqual(2);
+      const carried = debtOf(afterAdd, 'old');
+      expect(carried == null ? '' : carried.uid).assertEqual('original');
+
+      // ⑤ 补删那一趟带的就是**旧会话**的 uid：换成新机生成的 uid，云端永远认不出这个成员
+      await ProfileSettingsService.retryPendingCloudUnpair();
+      if (CLOUD_ON) {
+        expect(AgcPairingClient.unpairCalls.indexOf('old|original') >= 0).assertTrue();
+        expect(AgcPairingClient.unpairCalls.indexOf('new-session|uid-of-this-round') >= 0).assertTrue();
+      } else {
+        // 关闭态守卫在补删链第一句：不发请求，也不许把任何一条欠账当成已销账
+        expect(AgcPairingClient.calls).assertEqual(0);
+        expect(SettingsStore.getPendingCloudUnpair().length).assertEqual(2);
+        const closedOld = debtOf(SettingsStore.getPendingCloudUnpair(), 'old');
+        expect(closedOld == null ? '' : closedOld.uid).assertEqual('original');
+        expect(closedOld == null ? true : closedOld.dead).assertFalse();
+      }
+      await SettingsStore.clearPendingCloudUnpair();
+      AgcPairingClient.unpairCalls = [];
     });
 
     /**

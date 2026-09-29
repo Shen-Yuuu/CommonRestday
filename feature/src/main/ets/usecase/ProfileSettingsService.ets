@@ -1,6 +1,6 @@
-import { EngineParams, defaultParams, hhmmToMin, minToHHmm } from 'domain';
+import { EngineParams, defaultParams, hhmmToMin, minToHHmm, PendingCloudUnpair } from 'domain';
 import {
-  PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PartnerProfile, PendingCloudUnpair,
+  PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, PartnerProfile,
   ScheduleRepo, SettingsStore
 } from 'data';
 import {

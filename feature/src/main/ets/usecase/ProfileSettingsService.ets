@@ -260,6 +260,23 @@ export class ProfileSettingsService {
   }
 
   /**
+   * 动手**之前**要如实报出的行数：这一次「解除配对」或「清空全部数据」会牵动云上几行。
+   *
+   * 确认框过去只看 `cloudPairing && pairState`，于是账上好几笔时它仍说"云上那份"，而云端已经
+   * 判死的那一笔被一并说成"下次会自动再试"——那是一句兑现不了的承诺（批次 AP·Task 3）。
+   * 这里直接复用 `cloudUnpairTargets()`：确认框数的与动手后那句实话数的是同一批行，不再第二处数一边。
+   * 判死那一族**不在这一列**，它由 `undeletableCloudSnapshots()` 单独报——两个数混成一个，
+   * 就等于把"这台手机删不掉"说成"下次会自动再试"。
+   */
+  static cloudSnapshotsAtRisk(): number {
+    try {
+      return ProfileSettingsService.cloudUnpairTargets().length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
    * 等级参与快照生成，切换后连同班表一起重算推送。
    *
    * 写侧也要认档：只有 1/2/3 进得了库。「未知」是两个读取口都可能出现的一格，

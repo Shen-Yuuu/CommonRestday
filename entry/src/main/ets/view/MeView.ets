@@ -400,6 +400,36 @@ export struct MeView {
   }
 
   /**
+   * 动手之前那句「云上会怎么样」（批次 AP·Task 3）。
+   *
+   * 三个数各说各的，混成一个就是假话：还删得动的（`cloudSnapshotsAtRisk`，含上一轮没补删的旧账）、
+   * 因为开关关着所以这一趟一份都不会去碰的，以及云端已经判死、这台手机永远删不掉的那几份
+   * （`undeletableCloudSnapshots`，它**不在**前一个数里）。
+   *
+   * 过去这两句确认文案只看 `cloudPairing && pairState`：账上有好几笔时仍然念"云上那份"，
+   * 而已经判死的那一笔被一并说成"下次联网会再试"——那是一句兑现不了的承诺。
+   * `keepsLocalOnFail` 是解除配对与清空数据真实的分岔：前者云端删不动就不清本机标记（重试的凭据
+   * 就是这一屏本身），后者本机一定清得掉，只把欠账留给下一次。
+   */
+  cloudWipeClause(keepsLocalOnFail: boolean): string {
+    const atRisk = ProfileSettingsService.cloudSnapshotsAtRisk();
+    const dead = ProfileSettingsService.undeletableCloudSnapshots();
+    const parts: string[] = [];
+    if (atRisk > 0) {
+      const which = atRisk === 1 ? '云上那份加密快照' : '云上那 ' + atRisk + ' 份加密快照';
+      parts.push(FeatureFlags.cloudPairing
+        ? which + (keepsLocalOnFail
+          ? '会一起删掉（要联网），删不动时本机配对先留着不清'
+          : '会一起删掉（要联网），删不成本机也照清，下次打开应用会自动再试')
+        : which + '这次一份都不会碰（云端功能目前没开通），本机照常清掉，开通后打开应用会自动再试');
+    }
+    if (dead > 0) {
+      parts.push('另有 ' + dead + ' 份这台手机删不掉（云端不认那个删除凭据），做完这一步它们还在云上');
+    }
+    return parts.length === 0 ? '' : parts.join('；') + '。';
+  }
+
+  /**
    * 解除配对（二次确认）：云端删成功才清本机标记（协议 §4.5 批次 U·U5）。
    *
    * 确认框里要把"这一步要联网、云上那份是硬删除"说在操作现场：过去这里只说"不再同步"，
@@ -407,7 +437,7 @@ export struct MeView {
    */
   askUnpair(): void {
     askConfirm(this.getUIContext(), {
-      message: '解除后不再同步 TA 的数据，云上那份加密快照会一起删掉（要联网）。本机代录的内容会留着。',
+      message: '解除后不再同步 TA 的数据，本机代录的内容会留着。' + this.cloudWipeClause(true),
       confirmText: '解除配对',
       danger: true,
       onConfirm: () => this.doUnpair()
@@ -421,6 +451,9 @@ export struct MeView {
         this.pairState = PAIR_NONE;
         this.myCode = '';
       }
+      // 成败都要重读欠账：fail-closed 那一支会把云端判死的那一笔记进队列，
+      // 数据卡里那句「还剩 N 份删不掉」不能还停在动手之前（批次 AP·Task 3）
+      this.undeletableCloud = ProfileSettingsService.undeletableCloudSnapshots();
     });
   }
 
@@ -430,17 +463,19 @@ export struct MeView {
    * 清空我的全部数据（二次确认）：先清系统侧投影（受管日程 +「同休日」日历），再删 8 张 RDB 表与全部设置；
    * 隐私同意标记保留（避免重启重复弹窗）。
    *
-   * 配着对的时候要在这里额外说一句：清空会把云侧那份快照一起删掉，而这一步删不成本机也照清，
-   * 只会留下凭据等下次联网补删（批次 U·U5）——隐私政策里那句"先解除配对"替代不了操作现场的告知。
+   * 云上有没有东西要被牵动，读的是**队列与当前会话本身**而不是"现在配着对没有"：清空会把还删得动
+   * 的那几份一起删掉，而这一步删不成本机也照清，只留下凭据等下次补删（批次 U·U5）；已经判死的那几份
+   * 则要在这里单说一句，因为下面那句"自动再试"对它们不成立（批次 AP·Task 3）。
+   * 隐私政策里那句"先解除配对"替代不了操作现场的告知。
    */
   askClearAll(): void {
     if (this.clearing) {
       return;
     }
-    const paired = FeatureFlags.cloudPairing && this.pairState !== PAIR_NONE;
+    const cloud = this.cloudWipeClause(false);
     askConfirm(this.getUIContext(), {
       title: '清空全部数据',
-      message: (paired ? '还在和 TA 配对：云上那份加密快照也一起删，删不成本机也照清，下次联网会再试。\n' : '')
+      message: (cloud === '' ? '' : cloud + '\n')
         + '班表、课表、计划、伴侣档案和设置全部删掉，「同休日」日历里的日程也一起删，删了就找不回来。'
         + '只有导出到系统日历的那条删不动，要你自己去系统日历里删。',
       confirmText: '清空',

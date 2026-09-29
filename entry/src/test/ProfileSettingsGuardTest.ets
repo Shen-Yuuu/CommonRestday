@@ -959,6 +959,50 @@ export default function profileSettingsGuardTest() {
     });
 
     /**
+     * 确认框在动手之前数的那个数（批次 AP·Task 3）。
+     *
+     * 「我的」页那两句确认文案过去只看 `cloudPairing && pairState`，于是账上有好几笔时它仍说
+     * "云上那份"，而云端已经判死的那一笔被一并说成"下次会自动再试"——一个兑现不了的承诺。
+     * 现在它读 `cloudSnapshotsAtRisk()`，也就是**动手之后那句实话数的同一批行**（同一个
+     * `cloudUnpairTargets()`）；判死那一族由 `undeletableCloudSnapshots()` 单独报。
+     * 话术本体在 `MeView`，而 `entry/src/main` 不参与离线转译，所以这一格钉的是它的两个数据来源
+     * 互不混账——把两个数并成一个，就是 Task 3 要修的那个说谎形状。
+     */
+    it('the_confirm_count_excludes_the_row_that_can_never_be_deleted', 0, async () => {
+      await emptyPlanTable();
+      PlanCapabilities.bind(new CleanCalendar(), new OkReminder());
+      await SettingsStore.clearPendingCloudUnpair();
+      await SettingsStore.savePairId('');
+      await SettingsStore.setPairState(PAIR_NONE, '');
+
+      // 谁都没有：两个数都是 0，确认框那半句整段都不该出现
+      expect(ProfileSettingsService.cloudSnapshotsAtRisk()).assertEqual(0);
+      expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(0);
+
+      // 正在配对：这一趟会牵动一行
+      await SettingsStore.savePairId('live-session');
+      await SettingsStore.setPairState(PAIRED, 'peer-uid');
+      expect(ProfileSettingsService.cloudSnapshotsAtRisk()).assertEqual(1);
+
+      // 上一轮还欠着一笔删得动的：这一趟要跟着一起敲，所以是 2 行而不是"那份"
+      await SettingsStore.addPendingCloudUnpair('owing-from-before', 'uid-b', false);
+      expect(ProfileSettingsService.cloudSnapshotsAtRisk()).assertEqual(2);
+
+      // 云端已判死的那一笔：不敲门所以不在这一列，但必须单独报得出数
+      await SettingsStore.addPendingCloudUnpair('gone-for-good', 'uid-a', true);
+      expect(ProfileSettingsService.cloudSnapshotsAtRisk()).assertEqual(2);
+      expect(ProfileSettingsService.undeletableCloudSnapshots()).assertEqual(1);
+
+      // 同一个 pairId 既活着又记着欠账：只算一行，确认框不许把它数成两份
+      await SettingsStore.addPendingCloudUnpair('live-session', 'uid-of-that-round', false);
+      expect(ProfileSettingsService.cloudSnapshotsAtRisk()).assertEqual(2);
+
+      await SettingsStore.savePairId('');
+      await SettingsStore.setPairState(PAIR_NONE, '');
+      await SettingsStore.clearPendingCloudUnpair();
+    });
+
+    /**
      * 共享等级的"假读数"（批次 AO·AO4）。
      *
      * 旧写法有三处各自的猜法：引擎直取（未初始化时是 NaN）、「我的」页 `catch → 2`、页面初值写死 2，

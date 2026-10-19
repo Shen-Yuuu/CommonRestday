@@ -43,6 +43,36 @@ export function parseCourseText(text: string): ParsedCourseLine[] {
   return out;
 }
 
+/** 图片识别不能借用手工粘贴的默认节次/周次，以免把缺失字段变成错误安排。 */
+export function parseCourseImageText(text: string): ParsedCourseLine[] {
+  const normalized = text.replace(/[０-９]/g, (digit: string): string =>
+    String.fromCharCode(digit.charCodeAt(0) - 0xFEE0))
+    .replace(/[–—－～〜]/g, '-').replace(/，/g, ',');
+  const out = parseCourseText(normalized);
+  for (let i = 0; i < out.length; i++) {
+    const row = out[i];
+    if (!row.ok) { continue; }
+    const raw = row.rawLine.replace(/，/g, ',');
+    const sections = raw.match(/(\d+(?:\s*,\s*\d+)+)\s*节/);
+    const sectionList = sections === null ? [] : sections[1].split(',');
+    if (sectionList.length > 2 || (sectionList.length === 2
+      && Number(sectionList[1]) !== Number(sectionList[0]) + 1)) {
+      row.ok = false;
+      row.error = '请把连续节次写成范围，非连续节次分成多行';
+    } else if (/(?:\d+\s*[,、]\s*)+\d+(?:\s*-\s*\d+)?\s*周/.test(raw)) {
+      row.ok = false;
+      row.error = '请把不连续周次分成多行';
+    } else if (!/第?\s*\d+\s*[-~,]\s*\d+\s*节|第\s*\d+\s*节/.test(raw)) {
+      row.ok = false;
+      row.error = '请补全节次（如第1-2节）';
+    } else if (!/\d+\s*[-–~]\s*\d+\s*周/.test(raw)) {
+      row.ok = false;
+      row.error = '请补全周次（如1-16周）';
+    }
+  }
+  return out;
+}
+
 /** 把解析成功的行转为 Course 实体（id 由调用方生成）。 */
 export function toCourse(p: ParsedCourseLine, id: string): Course {
   const c: Course = {

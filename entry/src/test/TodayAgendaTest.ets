@@ -20,6 +20,8 @@ export default function todayAgendaTest() {
       ], queryDay);
       expect(rows.length).assertEqual(2);
       expect(rows[0].timeText).assertEqual('08:30–10:30');
+      expect(rows[0].startText).assertEqual('08:30');
+      expect(rows[0].endText).assertEqual('10:30');
       expect(rows[1].timeText).assertEqual('14:00–17:00');
     });
     it('captured_minute_selects_the_correct_day_on_each_side_of_midnight', 0, () => {
@@ -49,8 +51,12 @@ export default function todayAgendaTest() {
       const rows = buildTodayAgenda([source('夜班', -120, 420, 'SHIFT'),
         source('晚课', 1380, 1440), source('跨天', 1410, 1500, 'PLAN')], 0);
       expect(rows[0].timeText).assertEqual('昨晚 22:00–07:00');
+      expect(rows[0].startText).assertEqual('昨晚 22:00');
+      expect(rows[0].endText).assertEqual('07:00');
       expect(rows[1].timeText).assertEqual('23:00–24:00');
+      expect(rows[1].endText).assertEqual('24:00');
       expect(rows[2].timeText).assertEqual('23:30–明天 01:00');
+      expect(rows[2].endText).assertEqual('明天 01:00');
     });
     it('invalid_and_recovery_blocks_are_not_user_agenda', 0, () => {
       const rows = buildTodayAgenda([source('零', 500, 500), source('反', 700, 600),

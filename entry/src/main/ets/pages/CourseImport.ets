@@ -7,7 +7,7 @@ import {
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
 import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase } from 'feature';
-import { ownerFromParams } from '../model/RouteParams';
+import { ownerFromParams, courseImageParam } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
 import { appToast } from '../util/AppToast';
@@ -53,10 +53,27 @@ struct CourseImport {
    * 不同主键就是不同行，连点两次「保存通过项」会把同一批课程落进去两遍。
    */
   @State private submitting: boolean = false;
+  @State private imageOpening: boolean = false;
 
   aboutToAppear(): void {
     this.owner = ownerFromParams(router.getParams());
+  }
+
+  onPageShow(): void {
+    this.owner = ownerFromParams(router.getParams());
+    this.imageOpening = false;
     this.reload();
+  }
+
+  private async openImageImport(source: string): Promise<void> {
+    if (this.submitting || this.imageOpening) { return; }
+    this.imageOpening = true;
+    try {
+      await router.pushUrl({ url: 'pages/OcrCourse', params: courseImageParam(this.owner, source) });
+    } catch (_) {
+      this.imageOpening = false;
+      appToast('图片导入暂时打不开，请重试');
+    }
   }
 
   async reload(): Promise<void> {
@@ -292,6 +309,27 @@ struct CourseImport {
           .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
           .backgroundColor($r('app.color.card_bg'))
           .shadow(DesignTokens.cardShadow())
+        }
+
+        ListItem() {
+          Column({ space: 10 }) {
+            Text('从图片导入').fontSize(15).fontWeight(FontWeight.Bold)
+              .fontColor(DesignTokens.textPrimary).width('100%')
+            Text('选择课表截图或拍照，在手机上识别文字，核对后再保存。')
+              .fontSize(12).fontColor(DesignTokens.textSecondary).width('100%')
+            Row({ space: 10 }) {
+              Button('相册导入').layoutWeight(1).constraintSize({ minHeight: 44 })
+                .fontSize(14).fontWeight(FontWeight.Bold)
+                .fontColor(DesignTokens.textAccent).backgroundColor(DesignTokens.primaryBg)
+                .enabled(!this.submitting && !this.imageOpening)
+                .onClick(() => this.openImageImport('album'))
+              Button('拍照识别').layoutWeight(1).constraintSize({ minHeight: 44 })
+                .fontSize(14).fontColor(DesignTokens.textPrimary).backgroundColor(DesignTokens.fillWeak)
+                .enabled(!this.submitting && !this.imageOpening)
+                .onClick(() => this.openImageImport('camera'))
+            }.width('100%')
+          }.width('100%').padding(12).alignItems(HorizontalAlign.Start)
+            .borderRadius(DesignTokens.cardRadius(true)).backgroundColor(DesignTokens.card)
         }
 
         // 粘贴导入

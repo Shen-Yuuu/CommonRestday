@@ -342,11 +342,11 @@
     },
     {
       "name": "page_grad_mid",
-      "value": "#FFF0F0"
+      "value": "#FFF0F3"
     },
     {
       "name": "page_grad_bottom",
-      "value": "#FFF6F3"
+      "value": "#FBE4EE"
     },
     {
       "name": "plan_success_action",

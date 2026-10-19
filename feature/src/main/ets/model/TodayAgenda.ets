@@ -11,6 +11,8 @@ export interface AgendaSource {
 
 export interface TodayAgendaItem {
   id: string;
+  startText: string;
+  endText: string;
   timeText: string;
   name: string;
   kind: string;
@@ -50,9 +52,12 @@ export function buildTodayAgenda(sources: AgendaSource[], epochDay: number): Tod
     return a.id === b.id ? 0 : (a.id < b.id ? -1 : 1);
   });
   return selected.map((s: AgendaSource): TodayAgendaItem => {
+    const startText = agendaEdge(s.start, false, epochDay);
+    const endText = agendaEdge(s.end, true, epochDay);
     return {
       id: s.id, name: s.name, kind: s.kind,
-      timeText: agendaEdge(s.start, false, epochDay) + '–' + agendaEdge(s.end, true, epochDay)
+      startText: startText, endText: endText,
+      timeText: startText + '–' + endText
     };
   });
 }

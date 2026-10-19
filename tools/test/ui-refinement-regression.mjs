@@ -12,13 +12,14 @@ for (const symbol of ['house', 'heart', 'person']) {
     'Dock 线框和实心图标必须保持同族：' + symbol);
 }
 assert.match(nav, /selectedIcon: Resource/);
-assert.match(nav, /SymbolGlyph\(this\.activeTab === item\.tab \? item\.selectedIcon : item\.icon\)/);
-assert.match(nav, /fontColor\(\[this\.activeTab === item\.tab \? \$r\('app\.color\.brand_pink'\)/,
-  '选中仍使用原玫红色');
-const select = nav.slice(nav.indexOf('  private selectTab('), nav.indexOf('  private pressTab('));
-assert.doesNotMatch(select, /animateTo/, '不把切换整个页面放进按压动画');
+assert.match(nav, /new SymbolGlyphModifier\(item\.icon\)/);
+assert.match(nav, /new SymbolGlyphModifier\(item\.selectedIcon\)/);
+assert.match(nav, /selected\.fontColor\(\[\$r\('app\.color\.brand_pink'\)/,
+  '原生页签选中仍使用原玫红色');
+assert.match(nav, /new BottomTabBarStyle\(symbol, item\.text\)/, '标准页签把选中与拖动交给 HDS');
+assert.equal((nav.match(/\.tabBar\(this\.tabBarStyle\(/g) || []).length, 3);
 assert.match(nav, /\.animationDuration\(0\)/, '关闭内容区切换动画');
-assert.match(nav, /stopPropagation\(\)/, '自制条目隔离系统页签点击反馈');
+assert.doesNotMatch(nav, /stopPropagation\(|pressedTab|pressTab\(|brand_pink_bg/, '不截断原生页签触摸或叠加自绘选中块');
 const planSheet = read('entry/src/main/ets/component/WindowDetailSheet.ets');
 const bunnyStart = planSheet.indexOf("        Image($r('app.media.xiuxiu_peek'))");
 assert.ok(bunnyStart >= 0, '使用已确认造型的新版透明休休素材');
@@ -54,6 +55,8 @@ assert.match(me, /height: this\.detailKind === 'rhythm' \? '46%' : this\.partner
   '作息面板根据实测反馈略增高，仍不到半屏');
 assert.match(me, /rhythmForm\(\)/);
 const dock = read('entry/src/main/ets/component/DockFx.ets');
+assert.match(nav, /DockFx\(\{[\s\S]*?bandWidth: this\.bandVp/, '保留已确认的爱心粒子装饰并跟随实测岛宽');
+assert.match(dock, /\.hitTestBehavior\(HitTestMode\.Transparent\)/, '粒子装饰不拦截原生页签触摸');
 assert.doesNotMatch(dock, /keyframeAnimateTo|iterations: -1/);
 assert.match(dock, /onFinish/);
 assert.match(dock, /cancel\(\)/);

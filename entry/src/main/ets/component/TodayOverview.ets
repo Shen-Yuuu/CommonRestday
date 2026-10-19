@@ -11,6 +11,11 @@ interface BusyLineArg {
   dot: Resource;
 }
 
+interface AgendaRowArg {
+  item: TodayAgendaItem;
+  separated: boolean;
+}
+
 /**
  * 今日双方概览：我 / TA / 共同三行忙碌与空闲摘要，加两个下一步动作。
  * 三行文本全部来自读模型（含对方隐私等级造成的粗粒度表述），页面不重算、不改写。
@@ -63,43 +68,51 @@ export struct TodayOverview {
   }
 
   @Builder
-  agendaRow(item: TodayAgendaItem) {
-    Row({ space: 10 }) {
-      Column() {
-        Circle().width(6).height(6).fill(this.agendaColor(item.kind))
-          .accessibilityLevel('no')
-        Column().width(1).layoutWeight(1).backgroundColor(DesignTokens.divider).margin({ top: 5 })
-      }.width(8).height(42).margin({ top: 5 })
-      Text(item.timeText)
-        .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
-        .width(94).maxLines(3)
-      Column({ space: 4 }) {
-        Text(item.name).fontSize(DesignTokens.fontCaption).fontWeight(600)
-          .fontColor(DesignTokens.textPrimary).width('100%')
-        Text(this.agendaKind(item.kind))
-          .fontSize(11).fontColor(DesignTokens.textSecondary)
-          .padding({ left: 7, right: 7, top: 2, bottom: 2 })
-          .backgroundColor(DesignTokens.fillWeakest).borderRadius(8)
-      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-    }
-    .width('100%').alignItems(VerticalAlign.Top)
-    .constraintSize({ minHeight: 44 })
-    .accessibilityGroup(true)
-    .accessibilityText(item.timeText + '，' + item.name + '，' + this.agendaKind(item.kind))
+  agendaRow(row: AgendaRowArg) {
+    Column() {
+      if (row.separated) {
+        Divider().strokeWidth(0.5).color(DesignTokens.divider)
+          .margin({ top: 12, bottom: 12 }).accessibilityLevel('no')
+      }
+      Row({ space: 14 }) {
+        Column({ space: 3 }) {
+          Text(row.item.startText)
+            .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+            .width('100%').textAlign(TextAlign.Center)
+          Column({ space: 3 }) {
+            Column().width(1).height(7).backgroundColor(this.agendaColor(row.item.kind))
+            Circle().width(7).height(7).fill(Color.Transparent)
+              .stroke(this.agendaColor(row.item.kind)).strokeWidth(1.5)
+            Column().width(1).height(7).backgroundColor(this.agendaColor(row.item.kind))
+          }.width('100%').opacity(0.65).accessibilityLevel('no')
+          Text(row.item.endText)
+            .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+            .width('100%').textAlign(TextAlign.Center)
+        }.width(64)
+        Column({ space: 6 }) {
+          Text(row.item.name).fontSize(DesignTokens.fontBody).fontWeight(600)
+            .fontColor(DesignTokens.textPrimary).width('100%')
+          Text(this.agendaKind(row.item.kind))
+            .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+      }.width('100%').alignItems(VerticalAlign.Center)
+        .accessibilityGroup(true)
+        .accessibilityText(row.item.timeText + '，' + row.item.name + '，' + this.agendaKind(row.item.kind))
+    }.width('100%')
   }
 
   @Builder
   agendaList() {
-    Column({ space: 4 }) {
-      ForEach(this.visibleAgenda(), (item: TodayAgendaItem) => {
-        this.agendaRow(item)
+    Column() {
+      ForEach(this.visibleAgenda(), (item: TodayAgendaItem, index: number) => {
+        this.agendaRow({ item: item, separated: index > 0 })
       }, (item: TodayAgendaItem) => item.id + '|' + item.timeText + '|' + item.name + '|' + item.kind)
       if (this.agenda.length > 3) {
         // Scroll 只提供无界的内容测量，禁止滚动交互；高度来自内容而不是外层标题。
         Scroll() {
-          Column({ space: 4 }) {
+          Column() {
             ForEach(this.agenda.slice(3), (item: TodayAgendaItem) => {
-              this.agendaRow(item)
+              this.agendaRow({ item: item, separated: true })
             }, (item: TodayAgendaItem) => item.id + '|' + item.timeText + '|' + item.name + '|' + item.kind)
           }.width('100%').alignItems(HorizontalAlign.Start)
           .onAreaChange((_old: Area, area: Area) => {

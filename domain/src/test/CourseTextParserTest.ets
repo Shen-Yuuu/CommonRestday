@@ -1,8 +1,36 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { parseCourseText, parseCourseLine, toCourse } from '../main/ets/parse/CourseTextParser';
+import { parseCourseText, parseCourseLine, parseCourseImageText, toCourse } from '../main/ets/parse/CourseTextParser';
 
 export default function courseTextParserTest() {
   describe('courseTextParser', () => {
+    it('image_ranges_normalize_ocr_glyphs_without_guessing_discrete_lists', 0, () => {
+      const rows = parseCourseImageText('高数 周一 第３–４节 １–１６周\n英语 周二 1,3节 1-16周\n物理 周三 第1-2节 1,11-16周');
+      expect(rows[0].ok).assertTrue();
+      expect(rows[0].sectionStart).assertEqual(3);
+      expect(rows[0].sectionEnd).assertEqual(4);
+      expect(rows[1].ok).assertFalse();
+      expect(rows[2].ok).assertFalse();
+    });
+    it('image_import_requires_explicit_sections_and_weeks', 0, () => {
+      const rows = parseCourseImageText('数学 周一\n英语 周三 第3-4节\n体育 周五 第5节 2-16周 双周');
+      expect(rows[0].ok).assertFalse();
+      expect(rows[0].error).assertEqual('请补全节次（如第1-2节）');
+      expect(rows[1].ok).assertFalse();
+      expect(rows[1].error).assertEqual('请补全周次（如1-16周）');
+      expect(rows[2].ok).assertTrue();
+      expect(rows[2].sectionStart).assertEqual(5);
+      expect(rows[2].parity).assertEqual(2);
+      expect(parseCourseLine('数学 周一').ok).assertTrue();
+    });
+    it('image_import_preserves_errors_and_complete_ocr_rows', 0, () => {
+      const rows = parseCourseImageText('高数 周一 第1-2节 1-16周 单周\n表头\n越界 周二 第18节 1-16周');
+      expect(rows[0].ok).assertTrue();
+      expect(rows[0].weekTo).assertEqual(16);
+      expect(rows[0].parity).assertEqual(1);
+      expect(rows[1].ok).assertFalse();
+      expect(rows[2].error).assertEqual('节次不合法');
+      expect(parseCourseImageText('').length).assertEqual(0);
+    });
     it('full_format_line', 0, () => {
       const p = parseCourseLine('高等数学 周一 第1-2节 1-16周 单周');
       expect(p.ok).assertTrue();

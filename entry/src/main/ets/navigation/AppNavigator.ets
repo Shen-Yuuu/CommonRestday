@@ -1,4 +1,5 @@
 import { router } from '@kit.ArkUI';
+import { SymbolGlyphModifier } from '@ohos.arkui.modifier';
 import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { Logger } from 'commons';
 import { ScheduleUseCase } from 'feature';
@@ -30,11 +31,7 @@ const DOCK_SIDE_MARGIN = 30;
 const DOCK_BAND_FALLBACK = 236;
 /** 浮岛底部留白（原型 .tabbar 的 margin:-40px 30px 10px）。 */
 const DOCK_BOTTOM_MARGIN = 10;
-/** 岛的圆角（原型 .tabbar/.dock-fx 都是 22）：粒子层要按同一个圆角裁，边缘才不漏光。 */
 const DOCK_RADIUS = 22;
-/** 单项热区：原型 .t 是 flex:1（铺满岛内宽），52 高的岛上下内衬 4/6 后内容区 42；48vp 的无障碍底线由 100vp 宽天然满足。 */
-const ITEM_HEIGHT = 42;
-const ITEM_WIDTH = 100;
 
 interface NavItem {
   icon: Resource;
@@ -60,12 +57,8 @@ const NAV_ITEMS: NavItem[] = [
 @Component
 export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
-  /** 当前按下的底栏单项，-1 = 没有；只影响缩放。 */
-  @State private pressedTab: number = -1;
   @State private dockVisible: boolean = true;
   @StorageProp('crd_root_page_visible') private rootVisible: boolean = true;
-  // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
-  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
   // 服务卡片点击深链广播：EntryAbility 过白名单后登记，壳层取走并落地
@@ -73,7 +66,7 @@ export struct AppNavigator {
   private pathStack: NavPathStack = new NavPathStack();
   /** 悬浮底栏由 HdsTabs 自持控制器；切页仍走 activeTab，控制器只用于组件挂载。 */
   private tabsController: HdsTabsController = new HdsTabsController();
-  /** 岛宽（vp）：onAreaChange 量到容器宽之前先用兜底值，量到后一起改岛与粒子层的宽。 */
+  /** 岛宽（vp）：onAreaChange 量到容器宽之前先用兜底值，量到后更新原生岛宽。 */
   @State private bandVp: number = DOCK_BAND_FALLBACK;
   /** 冷启动深链：aboutToAppear 时 Navigation 尚未挂载，先记下，挂载后再消费。 */
   private pendingRoute: string = '';
@@ -141,19 +134,6 @@ export struct AppNavigator {
     this.activeTab = tab;
   }
 
-  /** 内容切换直接落地，动画只留在被按下的条目上。 */
-  private selectTab(tab: number): void {
-    if (this.activeTab === tab) {
-      return;
-    }
-    this.goTab(tab);
-  }
-
-  /** 单项按压反馈：只画 0.92 缩放，抬起即回弹，不参与切换与导航逻辑。 */
-  private pressTab(tab: number, down: boolean): void {
-    this.pressedTab = down ? tab : -1;
-  }
-
   /**
    * 量宽：容器宽减去原型那 30vp 的两侧内缩就是岛宽。写回前先比一次，同宽不写状态，
    * 免得「写入→重排→再写入」转成布局回环（与 ResponsiveContainer 的幂等口径同一个写法）。
@@ -167,8 +147,7 @@ export struct AppNavigator {
 
   build() {
     Navigation(this.pathStack) {
-      // 光感粒子层要精确压在悬浮岛上，所以岛和它放进同一个 Stack：Stack 是 Navigation 的内容，
-      // push 班表页时整块内容一起被 NavDestination 盖掉，粒子不会浮到子页上。
+      // HDS 承接页签交互；爱心粒子作为穿透触摸的独立装饰层保留。
       Stack({ alignContent: Alignment.BottomStart }) {
         HdsTabs({ controller: this.tabsController, index: this.activeTab }) {
           TabContent() {
@@ -180,7 +159,7 @@ export struct AppNavigator {
               }
             })
           }
-          .tabBar(this.tabBarItem(NavRoutes.TAB_HOME))
+          .tabBar(this.tabBarStyle(NavRoutes.TAB_HOME))
 
           TabContent() {
             // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
@@ -191,7 +170,7 @@ export struct AppNavigator {
               }
             })
           }
-          .tabBar(this.tabBarItem(NavRoutes.TAB_COMMON_TIME))
+          .tabBar(this.tabBarStyle(NavRoutes.TAB_COMMON_TIME))
 
           TabContent() {
             // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
@@ -202,7 +181,7 @@ export struct AppNavigator {
               }
             })
           }
-          .tabBar(this.tabBarItem(NavRoutes.TAB_ME))
+          .tabBar(this.tabBarStyle(NavRoutes.TAB_ME))
         }
         .width('100%')
         .height('100%')
@@ -221,6 +200,9 @@ export struct AppNavigator {
           // 背板蒙层必须留着并显式给全透明色：删掉这行会回落系统默认 #66F1F3F5（深色 #33000000），
           // 而它按整条页签栏宽铺开、高度约 96vp，四周都比悬浮岛（52vp 高、两侧各内缩 30vp）大一圈。
           gradientMask: { maskColor: $r('app.color.dock_mask') },
+          adaptToHandedness: true,
+          lightColor: $r('app.color.glass_highlight'),
+          thermoCtrl: true,
           systemMaterialEffect: {
             materialType: hdsMaterial.MaterialType.IMMERSIVE,
             materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
@@ -234,7 +216,7 @@ export struct AppNavigator {
 
         DockFx({
           bandWidth: this.bandVp,
-          active: this.dockVisible,
+          active: this.dockVisible && this.rootVisible,
           bottom: DOCK_BOTTOM_MARGIN,
           bandHeight: BAR_BAND,
           radius: DOCK_RADIUS
@@ -290,61 +272,21 @@ export struct AppNavigator {
     }
   }
 
-  /**
-   * 底栏单项：岛的面（材质/描边/阴影）由系统悬浮条画，这里只给图标 + 文字 + 选中底色。
-   * tab 就是 NAV_ITEMS 的下标，也是 TabContent 的索引，三处口径同一个数。
-   */
-  @Builder
-  tabBarItem(tab: number) {
-    this.navItem(NAV_ITEMS[tab])
-  }
-
-  @Builder
-  navItem(item: NavItem) {
-    Column({ space: 2 }) {
-      SymbolGlyph(this.activeTab === item.tab ? item.selectedIcon : item.icon)
-        .fontSize(22)
-        .fontColor([this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary')])
-        // 选中那颗图标浮起来一点（原型 .t.on svg 的 drop-shadow），未选中的不画
-        .shadow(this.activeTab === item.tab
-          ? { radius: 6, color: DesignTokens.glow, offsetX: 0, offsetY: 3 }
-          : undefined)
-        // 图标下面就是文字标签，读屏念两遍反而挡路
-        .accessibilityLevel('no')
-      Text(item.text)
-        .fontSize(11)
-        .fontColor(this.activeTab === item.tab ? $r('app.color.text_accent') : $r('app.color.text_secondary'))
-        .fontWeight(this.activeTab === item.tab ? FontWeight.Bolder : FontWeight.Bold)
-    }
-    // 选中态用浅莓实心底标出，不只靠玻璃色差：状态要有底色/字重双重提示
-    .width(ITEM_WIDTH)
-    .height(ITEM_HEIGHT)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
-    .borderRadius(DesignTokens.radiusPill)
-    .scale(this.pressedTab === item.tab
-      ? { x: DesignTokens.dockPressScale, y: DesignTokens.dockPressScale }
-      : { x: 1, y: 1 })
-    .animation({ duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionPress), curve: DesignTokens.curve })
-    .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
-    .hoverEffect(HoverEffect.None)
-    .focusable(true)
-    .accessibilityGroup(true)
-    // 底色/字重是视觉信号，读屏要把"你在哪一页、按了会去哪一页"念出来
-    .accessibilityText(this.activeTab === item.tab
-      ? item.text + '，当前所在页'
-      : '切换到' + item.text + '页')
-    .onTouch((e: TouchEvent) => {
-      // 条目自己承担按压，防止父级系统页签再叠一次反馈。
-      e.stopPropagation();
-      if (e.type === TouchType.Down) {
-        this.pressTab(item.tab, true);
-      } else if (e.type === TouchType.Up || e.type === TouchType.Cancel) {
-        this.pressTab(item.tab, false);
-      }
-    })
-    .onClick(() => {
-      this.selectTab(item.tab);
-    })
+  /** 标准页签保留系统选中、拖动和光感反馈；不截断触摸，也不叠加自绘选中块。 */
+  private tabBarStyle(tab: number): BottomTabBarStyle {
+    const item = NAV_ITEMS[tab];
+    const normal = new SymbolGlyphModifier(item.icon);
+    normal.fontSize(22);
+    normal.fontColor([$r('app.color.text_secondary')]);
+    const selected = new SymbolGlyphModifier(item.selectedIcon);
+    selected.fontSize(22);
+    selected.fontColor([$r('app.color.brand_pink')]);
+    const symbol: TabBarSymbol = { normal: normal, selected: selected };
+    return new BottomTabBarStyle(symbol, item.text)
+      .labelStyle({
+        selectedColor: $r('app.color.text_accent'),
+        unselectedColor: $r('app.color.text_secondary')
+      })
+      .id('main-tab-' + tab);
   }
 }

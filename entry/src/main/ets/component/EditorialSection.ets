@@ -37,7 +37,7 @@ export struct EditorialSection {
       if (hasLabel(this.eyebrow) && !this.senior) {
         Text(this.eyebrow)
           .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.primary)
+          .fontColor(DesignTokens.textAccent)
           .fontFamily(DesignTokens.fontSans)
           .fontWeight(FontWeight.Bolder)
           .letterSpacing(1.8)
@@ -53,7 +53,7 @@ export struct EditorialSection {
         if (hasLabel(this.trailing)) {
           Text(this.trailing)
             .fontSize(DesignTokens.fontCaption)
-            .fontColor(this.trailingAction ? DesignTokens.primary : DesignTokens.textTertiary)
+            .fontColor(this.trailingAction ? DesignTokens.textAccent : DesignTokens.textTertiary)
             .fontWeight(this.trailingAction ? FontWeight.Bold : FontWeight.Normal)
             .textAlign(TextAlign.End)
             .constraintSize({

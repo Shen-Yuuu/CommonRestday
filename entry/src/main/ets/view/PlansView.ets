@@ -1,8 +1,11 @@
 import { CommonTimeQueryService, LOCAL_ONLY_NOTE, PlanConflictView, PlanOpResult, PlanSummary,
   PlanUseCase, calendarBadgeOf, canExportToCalendar, canRetryCalendarSync, canRetryCleanup,
-  isAppManagedEvent, isOnSystemCalendar, planKindLabel } from 'feature';
+  isAppManagedEvent, isOnSystemCalendar, planKindLabel, FeatureFlags, SharedPlanViewData,
+  sharedResultMessage, secureSharedPlans, showPlanEmpty, PlanListEntry, planListEntries, SharedPlanRecord,
+  visibleLocalPlans, visibleSharedPlans } from 'feature';
 import { DateLabel } from 'commons';
-import { dayOfStart } from 'domain';
+import { FadingScrollViewport, ScrollHeaderState } from '../component/FadingHeader';
+import { dayOfStart, nowEpochMin } from 'domain';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from '../component/EditorialCard';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
@@ -13,6 +16,10 @@ import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
 import { syncOnPull } from '../util/PullRefresh';
 import { LatestLanding } from '../util/LatestLanding';
+import { LatestReadQueue } from '../util/LatestReadQueue';
+import { consumeSavedPlan, peekSavedPlan } from '../util/PlanSavedSignal';
+import { SharedPlansPanel } from '../component/SharedPlansPanel';
+import { PlanDateTicket } from '../component/PlanDateTicket';
 
 /** 主句 + 系统侧残留说明：note 为空时只报主句，不 trailing 一个分号。 */
 function joinNote(main: string, note: string): string {
@@ -56,12 +63,14 @@ interface LinkActionArg {
  */
 @Component
 export struct PlansView {
+  @Prop @Watch('onActiveChanged') active: boolean = true;
   /** 宿主切换到"时间窗口"分段：分段归宿主，这里只提请求。 */
   onGoWindow: () => void = () => {
   };
   /** 头部行的「＋ 在下一个窗口计划」：宿主除了切分段，还要把视界内第一段空闲直接开成建计划入口。 */
   onNextWindow: () => void = () => {
   };
+  onVisiblePendingChange: (pending: boolean) => void = () => {};
   @State plans: PlanSummary[] = [];
   @State loading: boolean = true;
   /** 列表是没读到还是真的空：空态卡会说"还没有计划"并推着用户去建，读失败时这句是谎。 */
@@ -70,6 +79,14 @@ export struct PlansView {
   @State private working: boolean = false;
   /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
   @State private refreshing: boolean = false;
+  @State private sharedRefreshTick: number = 0;
+  @State private sharedReady: boolean = false;
+  @State private sharedCount: number = 0;
+  @State private sharedUnresolved: boolean = false;
+  @State private sharedLinked: boolean = false;
+  @State private sharedActor: string = '';
+  @State private sharedRows: SharedPlanRecord[] = [];
+  @State private entries: PlanListEntry[] = [];
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
@@ -78,9 +95,126 @@ export struct PlansView {
    * 两次重叠时先起的那读可能落回写前的表——列表会退回"还没取消"那一版。
    */
   private landing: LatestLanding = new LatestLanding();
+  private reads: LatestReadQueue = new LatestReadQueue();
+  private planScroller: ListScroller = new ListScroller();
+  @State private listVisual: ScrollHeaderState = new ScrollHeaderState();
+  @StorageProp('crd_plan_saved_tick') @Watch('onPlanSaved') savedTick: number = 0;
+  @StorageProp('crd_root_page_visible') @Watch('onRootVisibilityChanged') rootVisible: boolean = true;
+  @State private highlightedPlanId: string = '';
+  private highlightSerial: number = 0;
+  private locatePlanId: string = '';
+  private highlightTimer: number = -1;
+  private locateTimer: number = -1;
+  private mounted: boolean = false;
+  private localSource: PlanSummary[] = [];
+  private visibilityTimer: number = -1;
+  private visibleMinute: number = -1;
 
   aboutToAppear(): void {
+    this.mounted = true;
     this.reload();
+    this.visibilityTimer = setInterval(() => {
+      if (this.mounted && this.active && this.rootVisible && nowEpochMin() !== this.visibleMinute) this.rebuildEntries();
+    }, 30000);
+  }
+
+  aboutToDisappear(): void {
+    this.mounted = false;
+    this.landing.begin();
+    this.reads.cancel();
+    this.clearFeedbackTimers();
+    if (this.visibilityTimer !== -1) {
+      clearInterval(this.visibilityTimer);
+      this.visibilityTimer = -1;
+    }
+  }
+
+  onRootVisibilityChanged(): void {
+    if (this.mounted && this.active && this.rootVisible) this.rebuildEntries();
+  }
+  onActiveChanged(): void {
+    if (!this.active) { this.landing.invalidate(); this.reads.cancel(); return; }
+    if (this.mounted) this.reload();
+  }
+
+  /** Clock-only cleanup uses cached rows, not network calls or schedule recomputation. */
+  private rebuildEntries(): void {
+    const nowMin = nowEpochMin();
+    this.visibleMinute = nowMin;
+    const local = visibleLocalPlans(this.localSource, nowMin);
+    const shared = visibleSharedPlans(this.sharedRows, nowMin);
+    const entries = planListEntries(local, shared, nowMin);
+    // Do not rerender unchanged cards (or disturb an open swipe drawer) on each clock check.
+    if (local.length !== this.plans.length || local.some((p: PlanSummary, index: number): boolean =>
+      p !== this.plans[index])) this.plans = local;
+    if (entries.length !== this.entries.length || entries.some((p: PlanListEntry, index: number): boolean =>
+      p.local !== this.entries[index].local || p.shared !== this.entries[index].shared
+        || p.start !== this.entries[index].start)) this.entries = entries;
+    this.sharedCount = shared.length;
+    if (this.sharedReady) this.onVisiblePendingChange(shared.some((row: SharedPlanRecord): boolean =>
+      row.pendingContent !== null && row.pendingContent.end > nowMin));
+  }
+
+  private clearFeedbackTimers(): void {
+    if (this.highlightTimer !== -1) {
+      clearTimeout(this.highlightTimer);
+      this.highlightTimer = -1;
+    }
+    if (this.locateTimer !== -1) {
+      clearTimeout(this.locateTimer);
+      this.locateTimer = -1;
+    }
+  }
+
+  onPlanSaved(): void {
+    if (this.mounted) {
+      this.reload();
+    }
+  }
+
+  private prepareSavedPlan(): void {
+    const cue = peekSavedPlan();
+    if (cue === undefined || !this.plans.some((p: PlanSummary) => p.id === cue.id)) {
+      return;
+    }
+    if (this.highlightSerial === cue.serial) {
+      return;
+    }
+    this.clearFeedbackTimers();
+    this.highlightSerial = cue.serial;
+    this.highlightedPlanId = cue.id;
+    this.locatePlanId = cue.id;
+  }
+
+  onDidBuild(): void {
+    // 排到本次布局之后；只定位一次，不在滚动测量回调里追着调整位置。
+    if (this.mounted && this.locatePlanId !== '' && this.locateTimer === -1) {
+      this.locateTimer = setTimeout(() => {
+        this.locateTimer = -1;
+        if (!this.mounted) {
+          return;
+        }
+        // Header occupies list index zero, regardless of the local/cloud order below it.
+        const index = this.entries.findIndex((p: PlanListEntry) => p.local?.id === this.locatePlanId) + 1;
+        this.locatePlanId = '';
+        if (index > 0) {
+          this.planScroller.scrollToIndex(index, false, ScrollAlign.START);
+        }
+      }, 0);
+    }
+  }
+
+  private startSavedHighlight(planId: string): void {
+    if (this.highlightedPlanId !== planId || !consumeSavedPlan(this.highlightSerial)) {
+      return;
+    }
+    const serial = this.highlightSerial;
+    this.highlightTimer = setTimeout(() => {
+      this.highlightTimer = -1;
+      if (this.mounted && serial === this.highlightSerial) {
+        this.highlightedPlanId = '';
+      }
+    }, 800);
   }
 
   /** 重算广播（创建/取消计划、课表/参数变更）→ 重新读列表（状态与冲突解释同步）。 */
@@ -89,21 +223,21 @@ export struct PlansView {
   }
 
   reload(): void {
+    if (!this.mounted || !this.active) return;
     const token = this.landing.begin();
-    CommonTimeQueryService.getPlanCards().then((rows: PlanSummary[]) => {
-      if (!this.landing.isCurrent(token)) {
-        return;
-      }
-      this.plans = rows;
-      this.failed = false;
-      this.loading = false;
-    }).catch(() => {
-      if (!this.landing.isCurrent(token)) {
-        return;
-      }
-      this.plans = [];
-      this.failed = true;
-      this.loading = false;
+    this.reads.run(async (): Promise<void> => {
+      await CommonTimeQueryService.getPlanCards().then((rows: PlanSummary[]) => {
+        if (!this.landing.isCurrent(token)) return;
+        this.localSource = rows;
+        this.rebuildEntries();
+        this.failed = false;
+        this.loading = false;
+        this.prepareSavedPlan();
+      }).catch(() => {
+        if (!this.landing.isCurrent(token)) return;
+        this.failed = true;
+        this.loading = false;
+      });
     });
   }
 
@@ -308,71 +442,101 @@ export struct PlansView {
       if (!this.loading && this.plans.length > 0) {
         this.headerRow()
       }
-      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-        List({ space: 12 }) {
-          if (this.loading) {
-            ListItem() {
-              this.skeleton()
-            }
-          } else if (this.failed) {
-            // 空态卡会念「还没有计划」并递一个"去建"的按钮：读失败时这两句都是错的。
-            ListItem() {
-              NoticeBar({
-                tone: NoticeTone.ERROR,
-                title: '计划没读到',
-                body: '不是没有计划，是这次没读出来。',
-                actionLabel: '重试',
-                onAction: () => {
-                  this.reload();
+      Column() {
+        FadingScrollViewport({ fadeHeight: 24, visual: this.listVisual }) {
+          Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+            List({ space: 12, scroller: this.planScroller }) {
+              ListItem() {
+                SharedPlansPanel({ active: this.active, refreshTick: this.sharedRefreshTick, refreshing: this.refreshing,
+                  onRead: (data: SharedPlanViewData) => {
+                    if (!this.mounted) return;
+                    this.sharedLinked = data.linked; this.sharedReady = true;
+                    this.sharedUnresolved = data.unresolved;
+                    this.sharedActor = data.actorId; this.sharedRows = data.rows;
+                    this.rebuildEntries();
+                  }, onReadFailed: () => { if (this.mounted) this.sharedReady = false; } })
+              }
+              if (this.loading) {
+                ListItem() {
+                  this.skeleton()
                 }
-              })
-            }
-          } else if (this.plans.length === 0) {
-            // 空态引导（US5：窗口 → 计划的转化出口）
-            ListItem() {
-              Column({ space: 12 }) {
-                // 原型 emptyCard() 被三个空态共用，App 此前只有共同页接了它，计划页画的是心形符号
-                SleepBunny()
-                Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
-                Text($r('app.string.plans_empty_desc'))
-                  .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
-                Button('去选一个窗口创建计划')
-                  .backgroundColor($r('app.color.brand_pink'))
-                  .borderRadius(22)
-                  .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-                  .onClick(() => {
-                    this.onGoWindow();
+              } else if (this.failed) {
+                // 空态卡会念「还没有计划」并递一个"去建"的按钮：读失败时这两句都是错的。
+                ListItem() {
+                  NoticeBar({
+                    tone: NoticeTone.ERROR,
+                    title: '计划没读到',
+                    body: '不是没有计划，是这次没读出来。',
+                    actionLabel: '重试',
+                    onAction: () => {
+                      this.reload();
+                    }
+                  })
+                }
+              }
+              if (!this.loading && !this.failed && !this.sharedUnresolved && showPlanEmpty(this.sharedReady, this.plans.length, this.sharedCount)) {
+                // 空态引导（US5：窗口 → 计划的转化出口）
+                ListItem() {
+                  Column({ space: 12 }) {
+                    // 原型 emptyCard() 被三个空态共用，App 此前只有共同页接了它，计划页画的是心形符号
+                    SleepBunny()
+                    Text('还没有计划').fontSize(16).fontWeight(FontWeight.Medium)
+                    Text($r('app.string.plans_empty_desc'))
+                      .fontSize(12).fontColor($r('app.color.text_tertiary')).textAlign(TextAlign.Center)
+                    Button('去选一个窗口创建计划')
+                      .backgroundColor($r('app.color.brand_pink'))
+                      .borderRadius(22)
+                      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+                      .onClick(() => {
+                        this.onGoWindow();
+                      })
+                  }
+                  .alignItems(HorizontalAlign.Center)
+                  .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(DesignTokens.cardRadius(false))
+                  .backgroundColor($r('app.color.brand_pink_bg'))
+                }
+              } else if (!this.loading) {
+                // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
+                Repeat<PlanListEntry>(this.entries)
+                  .key((p: PlanListEntry) => p.local !== null ? this.cardKey(p.local)
+                    : p.id + '-' + (p.shared?.stateVersion ?? 0))
+                  .each((ri: RepeatItem<PlanListEntry>) => {
+                    if (ri.item.local !== null) {
+                      ListItem() {
+                        this.planCard({ p: ri.item.local })
+                      }
+                      .swipeAction({ end: () => {
+                        if (ri.item.local !== null) this.cancelSwipe({ p: ri.item.local })
+                      }, edgeEffect: SwipeEdgeEffect.Spring })
+                      .onVisibleAreaChange([0.01], (visible: boolean, ratio: number) => {
+                        if (visible && ratio >= 0.01 && ri.item.local !== null) this.startSavedHighlight(ri.item.local.id);
+                      })
+                    } else {
+                      SharedPlansPanel({ active: this.active, cardRow: ri.item.shared, actorId: this.sharedActor,
+                        linked: this.sharedLinked, refreshing: this.refreshing,
+                        closeDrawer: () => this.planScroller.closeAllSwipeActions(),
+                        onChanged: () => { if (this.mounted) this.sharedRefreshTick++; } })
+                    }
                   })
               }
-              .alignItems(HorizontalAlign.Center)
-              .width('100%').padding({ top: 36, bottom: 36, left: 24, right: 24 }).borderRadius(DesignTokens.cardRadius(false))
-              .backgroundColor($r('app.color.brand_pink_bg'))
             }
-          } else {
-            // Repeat（API 26 稳定）替代 ForEach：键值 diff 更高效，行为一致
-            Repeat<PlanSummary>(this.plans)
-              .key((p: PlanSummary) => this.cardKey(p))
-              .each((ri: RepeatItem<PlanSummary>) => {
-                ListItem() {
-                  this.planCard({ p: ri.item })
-                }
-                .swipeAction({
-                  end: () => {
-                    this.cancelSwipe({ p: ri.item })
-                  },
-                  edgeEffect: SwipeEdgeEffect.Spring
-                })
-              })
+            .padding({ bottom: DesignTokens.dockClearance })
+            .width('100%').height('100%')
+            .onAppear(() => {
+              this.listVisual.update(this.planScroller.currentOffset().yOffset);
+            })
+            .onDidScroll(() => {
+              this.listVisual.update(this.planScroller.currentOffset().yOffset);
+            })
+            // alwaysEnabled：一条计划都没有时列表不满一屏，默认不接下拉手势，Refresh 就白挂。
+            .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
           }
+          .onRefreshing(() => {
+            this.onRefresh();
+          })
+          .width('100%').height('100%')
         }
-        .padding({ bottom: DesignTokens.dockClearance })
-        .width('100%').height('100%')
-        // alwaysEnabled：一条计划都没有时列表不满一屏，默认不接下拉手势，Refresh 就白挂。
-        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-      .onRefreshing(() => {
-        this.onRefresh();
-      })
       .width('100%').layoutWeight(1)
     }
     .width('100%').height('100%')
@@ -380,8 +544,24 @@ export struct PlansView {
 
   /** 下拉刷新：重算一遍视界（已配对时顺带拉对方最新快照），重算广播会带动本页重读列表。 */
   private async onRefresh(): Promise<void> {
-    await syncOnPull();
-    this.refreshing = false;
+    try {
+      // Independent reads overlap; schedule recomputations still use their existing serial queue.
+      const sharedWork = FeatureFlags.sharedPlan && this.sharedLinked
+        ? secureSharedPlans().refresh().catch((): string => 'READ_FAILED') : Promise.resolve('OK');
+      const scheduleWork = syncOnPull();
+      const code = await sharedWork;
+      const scheduleOk = await scheduleWork;
+      if (this.mounted && code !== 'OK') this.say(sharedResultMessage(code));
+      else if (this.mounted && !scheduleOk) this.say('计划已刷新，班表同步暂未完成');
+    } catch {
+      if (this.mounted) this.say('刷新暂未完成，已有计划仍保留');
+    } finally {
+      if (this.mounted) {
+        this.sharedRefreshTick++;
+        this.reload();
+        this.refreshing = false;
+      }
+    }
   }
 
   /**
@@ -432,11 +612,11 @@ export struct PlansView {
   @Builder
   headerRow() {
     Row() {
-      Text('共 ' + this.plans.length + ' 条')
+      Text('本机计划 ' + this.plans.length + ' 条')
         .fontSize(12).fontColor($r('app.color.text_tertiary'))
       Blank()
       Text('＋ 在下一个窗口计划')
-        .fontSize(13).fontColor($r('app.color.brand_pink'))
+        .fontSize(13).fontColor($r('app.color.text_accent'))
         .padding({ left: 12, right: 12, top: 6, bottom: 6 })
         // 原型这颗是 .chip，跟着芯片一起收成胶囊。
         .borderRadius(DesignTokens.radiusPill)
@@ -475,16 +655,13 @@ export struct PlansView {
   @Builder
   planCard(arg: PlanCardArg) {
     Row({ space: 12 }) {
-      Column().width(4).borderRadius(2)
-        .backgroundColor(this.statusColor(arg.p.status))
-        .alignSelf(ItemAlign.Stretch)
-        // 状态另有文字标注（冲突/已取消/已确认），色条只是重复信息
-        .accessibilityLevel('no')
+      PlanDateTicket({ start: arg.p.start })
       Column({ space: 6 }) {
         this.cardHead({ p: arg.p })
 
-        Text(this.subLabel(arg.p))
+        Text(DateLabel.endLabel(arg.p.start, arg.p.end) + ' · ' + DateLabel.duration(arg.p.end - arg.p.start))
           .fontSize(12).fontColor($r('app.color.text_tertiary'))
+          .accessibilityText(this.subLabel(arg.p))
 
         if (arg.p.conflict != null) {
           this.conflictBlock({ p: arg.p, c: arg.p.conflict })
@@ -499,7 +676,9 @@ export struct PlansView {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
     }
-    .width('100%').padding(16).borderRadius(DesignTokens.cardRadius(false)).backgroundColor($r('app.color.card_bg'))
+    .width('100%').padding({ left: 14, right: 14, top: 10, bottom: 10 }).borderRadius(DesignTokens.cardRadius(false))
+    .backgroundColor(this.highlightedPlanId === arg.p.id ? DesignTokens.primaryBg : $r('app.color.card_bg'))
+    .animation({ duration: this.highlightedPlanId === arg.p.id ? 0 : 240, curve: Curve.EaseOut })
     // 原型给计划卡留了一档更轻的落影（0 4px 16px），比正文卡薄，一列排下来才不糊。
     .shadow({ radius: 16, color: $r('app.color.shadow_soft'), offsetX: 0, offsetY: 4 })
     .clickEffect(DesignTokens.tapButton())
@@ -566,7 +745,7 @@ export struct PlansView {
         Text('已按原时间保留，你们的安排再有变动时会重新提示')
           .fontSize(11).fontColor($r('app.color.text_hint'))
       } else if (arg.c.altText !== '') {
-        Text(arg.c.altText).fontSize(12).fontColor($r('app.color.brand_pink'))
+        Text(arg.c.altText).fontSize(12).fontColor($r('app.color.text_accent'))
       } else {
         Text('暂时找不到合适的替代时间，可以保留原计划或另约')
           .fontSize(11).fontColor($r('app.color.text_hint'))

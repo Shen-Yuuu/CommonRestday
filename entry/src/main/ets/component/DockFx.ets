@@ -1,3 +1,5 @@
+import { AnimatorResult } from '@kit.ArkUI';
+import { DockSparkMotion } from 'commons';
 import { DesignTokens } from '../theme/DesignTokens';
 
 /**
@@ -32,9 +34,6 @@ interface SparkSpec {
 const RISE_FROM: number = 10;
 /** 终点：向上 44vp（原型 dockRise 的 100%，正是一个周期的上升距离）。 */
 const RISE_TO: number = -44;
-/** 14% 前淡入、14%–60% 保持峰值、60%–100% 淡出。 */
-const RISE_IN: number = 0.14;
-const RISE_HOLD: number = 0.6;
 /** 原型 bottom:4px。 */
 const SPARK_BOTTOM: number = 4;
 const GLOW_RADIUS: number = 120;
@@ -66,55 +65,85 @@ const SPARKS: SparkSpec[] = [
 
 /**
  * 一颗糖粒：自己的 @State 只装「当前位移 + 当前透明度」，
- * 关键帧动画按原型 dockRise 的三段（淡入 / 保持 / 淡出）无限循环。
+ * 每轮重新选出生位置、漂移与间隔；上升时长不变，后台及被子页盖住时停止。
  */
 @Component
 struct SparkGrain {
   spec: SparkSpec = SPARKS[0];
   bandHeight: number = 52;
+  @Prop @Watch('onPlaybackChanged') active: boolean = true;
+  @StorageProp('crd_app_foreground') @Watch('onPlaybackChanged') foreground: boolean = false;
+  @StorageProp('crd_reduce_motion') @Watch('onPlaybackChanged') reduceMotion: boolean = false;
+  @State private left: string = '50%';
   @State private moveX: number = 0;
   @State private moveY: number = RISE_FROM;
   @State private alpha: number = 0;
+  private mounted: boolean = false;
+  private animator: AnimatorResult | undefined = undefined;
 
   /** 时间进度 → 纵向位置（原型是整段线性上移，不随透明度分段）。 */
   private riseAt(t: number): number {
     return RISE_FROM + (RISE_TO - RISE_FROM) * t;
   }
 
-  private start(): void {
-    const total: number = this.spec.period * 1000;
-    const mid: number = total * RISE_IN;
-    const hold: number = total * (RISE_HOLD - RISE_IN);
-    const tail: number = total * (1 - RISE_HOLD);
-    this.getUIContext().keyframeAnimateTo({ iterations: -1, delay: this.spec.delay * 1000 }, [
-      {
-        duration: Math.round(mid),
-        curve: Curve.Linear,
-        event: () => {
-          this.moveX = this.spec.drift * RISE_IN;
-          this.moveY = this.riseAt(RISE_IN);
-          this.alpha = this.spec.peak;
-        }
-      },
-      {
-        duration: Math.round(hold),
-        curve: Curve.Linear,
-        event: () => {
-          this.moveX = this.spec.drift * RISE_HOLD;
-          this.moveY = this.riseAt(RISE_HOLD);
-          this.alpha = this.spec.peak;
-        }
-      },
-      {
-        duration: Math.round(tail),
-        curve: Curve.Linear,
-        event: () => {
-          this.moveX = this.spec.drift;
-          this.moveY = this.riseAt(1);
-          this.alpha = 0;
-        }
+  private canPlay(): boolean {
+    return this.mounted && this.active && this.foreground && !this.reduceMotion;
+  }
+
+  private start(first: boolean = false): void {
+    if (!this.canPlay() || this.animator !== undefined) {
+      return;
+    }
+    const cycle = DockSparkMotion.next(Math.random(), Math.round(this.spec.period * 1000));
+    this.left = cycle.left + '%';
+    this.moveX = 0;
+    this.moveY = RISE_FROM;
+    this.alpha = 0;
+    const anim = this.getUIContext().createAnimator({
+      duration: cycle.periodMs, easing: 'linear',
+      delay: first ? Math.round(this.spec.delay * 1000) : cycle.delayMs,
+      fill: 'forwards', iterations: 1, direction: 'normal', begin: 0, end: 1
+    });
+    anim.onFrame = (progress: number) => {
+      if (this.animator !== anim || !this.canPlay()) {
+        return;
       }
-    ]);
+      this.moveX = cycle.drift * progress;
+      this.moveY = this.riseAt(progress);
+      this.alpha = DockSparkMotion.opacity(progress, this.spec.peak);
+    };
+    anim.onFinish = () => {
+      if (this.animator !== anim) {
+        return;
+      }
+      this.animator = undefined;
+      this.alpha = 0;
+      this.start();
+    };
+    this.animator = anim;
+    anim.play();
+  }
+
+  private stop(): void {
+    const anim = this.animator;
+    this.animator = undefined;
+    if (anim !== undefined) {
+      anim.cancel();
+    }
+    this.alpha = 0;
+  }
+
+  onPlaybackChanged(): void {
+    if (this.canPlay()) {
+      this.start(true);
+    } else {
+      this.stop();
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.mounted = false;
+    this.stop();
   }
 
   build() {
@@ -133,7 +162,7 @@ struct SparkGrain {
     }
     .width(this.spec.size)
     .height(this.spec.size)
-    .position({ x: this.spec.left, y: this.bandHeight - SPARK_BOTTOM - this.spec.size })
+    .position({ x: this.left, y: this.bandHeight - SPARK_BOTTOM - this.spec.size })
     .translate({ x: this.moveX, y: this.moveY })
     .opacity(this.alpha)
     // 原型 filter：普通颗是自身色的 drop-shadow，`.b` 大颗换成 blur(2px) 的柔焦。
@@ -142,7 +171,8 @@ struct SparkGrain {
       : { radius: 5, color: this.spec.color, offsetX: 0, offsetY: 0 })
     .blur(this.spec.soft ? 2 : 0)
     .onAppear(() => {
-      this.start();
+      this.mounted = true;
+      this.onPlaybackChanged();
     })
   }
 }
@@ -155,6 +185,8 @@ export struct DockFx {
    * 普通成员只在子组件创建时初始化一次，实测粒子层会一直停在兜底宽上。
    */
   @Prop bandWidth: number = 236;
+  @Prop active: boolean = true;
+  @StorageProp('crd_root_page_visible') rootVisible: boolean = true;
   bottom: number = 10;
   bandHeight: number = 52;
   radius: number = 22;
@@ -181,7 +213,7 @@ export struct DockFx {
 
         if (!this.reduceMotion) {
           ForEach(SPARKS, (spec: SparkSpec, index: number) => {
-            SparkGrain({ spec: spec, bandHeight: this.bandHeight })
+            SparkGrain({ spec: spec, bandHeight: this.bandHeight, active: this.active && this.rootVisible })
           }, (spec: SparkSpec, index: number) => 'dock-spark-' + index)
         }
       }

@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+const today = read('entry/src/main/ets/component/TodayOverview.ets');
+assert.match(today, /rotate\(\{[^}]*angle: this\.agendaProgress \* 180/);
+assert.match(today, /height\(this\.extraAgendaHeight \* this\.agendaProgress\)/);
+assert.match(today, /enableScrollInteraction\(false\)/);
+assert.doesNotMatch(today, /animateTo/);
+const me = read('entry/src/main/ets/view/MeView.ets');
+assert.match(me, /duration: this\.shareLevel === lv \?[^\n]*140[^\n]*: 0/);
+assert.match(me, /SyncFeedbackButton\(/);
+assert.match(me, /syncFeedback = ok \? '' : '同步未成功'/, '同步成功只用临时提示，不留下成功标签');
+assert.match(me, /canManuallyRetry\(this\.syncState\) \|\| \(this\.syncRetryBusy && this\.syncOrigin === origin\)/,
+  '同步结果成功后移除重试区域，只在故障或当前处理中保留');
+assert.doesNotMatch(read('entry/src/main/ets/pages/CourseImport.ets'), /点「编辑」可改/, '删除节次模板下方的编辑备注');
+assert.match(me, /feedbackPairId !== SettingsStore\.getPairId\(\)/, '新配对不得复用旧同步结果');
+assert.match(me, /this\.syncTrouble\(\) && this\.syncFeedback !== ''/, '新故障清掉旧成功反馈');
+const sheet = read('entry/src/main/ets/component/WindowDetailSheet.ets');
+assert.ok(sheet.indexOf('publishPlanSaved(r.planId)') > sheet.indexOf('if (!r.ok)'), '失败分支之后才发布保存提示');
+assert.match(sheet, /this\.createdPlanId = r\.planId/);
+assert.match(sheet, /onCreated\(planId\)/, '真实保存成功后延迟确认，保留同一 planId');
+for (const file of ['HomeView', 'CoTimeView']) {
+  assert.match(read(`entry/src/main/ets/view/${file}.ets`), /onCreated:/);
+}
+const plans = read('entry/src/main/ets/view/PlansView.ets');
+assert.match(plans, /scrollToIndex\(index, false, ScrollAlign\.START\)/);
+assert.match(plans, /consumeSavedPlan\(/);
+assert.match(plans, /onVisibleAreaChange\(\[0\.01\]/, '大字号卡片高于视口时也能消费高亮，不要求半张卡可见');
+assert.match(plans, /highlightedPlanId === arg\.p\.id/);
+const week = read('entry/src/main/ets/component/WeekScheduleView.ets');
+assert.match(week, /translate\(\{ x: this\.weekOffset \}\)/);
+assert.match(week, /this\.finishWeekMotion\(\)/);
+assert.doesNotMatch(week, /animateTo/);
+const tween = read('entry/src/main/ets/util/LocalTween.ets');
+assert.match(tween, /cancel\(\)/);
+assert.match(tween, /createAnimator\(/);
+const sync = read('entry/src/main/ets/component/SyncFeedbackButton.ets');
+assert.match(sync, /Button\(\)/);
+assert.match(sync, /LoadingProgress\(\)/);
+assert.match(sync, /this\.busy \? '同步中…'/);
+assert.match(sync, /enabled\(!this\.disabled/);
+assert.doesNotMatch(sync, /enabled\([^\n]*this\.result/, '旧成功标签不能成为下一次重试的永久禁用条件');
+console.log('feedback-motion-regression: PASS（接线检查，观感待设备）');

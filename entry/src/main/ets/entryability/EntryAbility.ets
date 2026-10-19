@@ -1,104 +1,118 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
-import { hilog } from '@kit.PerformanceAnalysisKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { todayEpochDay } from 'domain';
-import { Db, SettingsStore } from 'data';
-import { CalendarGateway, PairingShareGateway, PlanUseCase, ProfileSettingsService, ScheduleUseCase } from 'feature';
+import { Db, SettingsStore, PAIRED } from 'data';
+import { CalendarGateway, FeatureFlags, PlanUseCase, ProfileSettingsService, ScheduleUseCase, SecureLifecycle, secureCloudCleanup,
+  securePairingSetup } from 'feature';
 import { Logger } from 'commons';
-import { pushPendingRoute, routeFromWantParams } from '../util/NavUtil';
-
-const DOMAIN = 0x0000;
+import { AnonymousIdentity } from 'cloud';
+import { pushPendingRoute, routeFromWantParams, navToCoTime } from '../util/NavUtil';
+import { PLAN_PUSH_ACTION, PlanNotifications } from '../util/PlanNotifications';
+import { NavRoutes } from '../navigation/NavRoutes';
+import { publishColorMode } from '../theme/ThemeModeSignal';
+import { publishForeground } from '../util/ForegroundSignal';
+import { BottomSafeArea } from '../util/BottomSafeArea';
 
 export default class EntryAbility extends UIAbility {
   /**
-   * 启动初始化链。Db.init 挂在 promise 上不 await，而 onForeground 紧跟 onCreate，
-   * 所以冷启那一次的回前台必然跑在库就绪之前（实测早约 420ms）。回前台的清扫挂到这条链尾，
-   * 冷启就等库好了再扫，温启动时链已 settle、行为与改前一致。
+   * 只表示 DB、种子与偏好就绪，不包含网络等待或重算。
+   * 冷启先用缓存计算；共同计划与快照同步在存储就绪后独立开始，互不阻塞。
+   * 保留存储失败的拒绝态，防止依赖链使用未初始化的偏好或数据库。
    */
   private initChain: Promise<void> = Promise.resolve();
+  private firstForeground: boolean = true;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    publishForeground(false);
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
+      Logger.error('EntryAbility', 'set colorMode failed: ' + JSON.stringify(err));
     }
+    publishColorMode(this.context.config.colorMode);
     // 系统日历（受管写入与导出）要 UIAbility 上下文；拿不到上下文时一律静默降级
     CalendarGateway.init(this.context);
-    // 扫码/系统分享同样要上下文；能力不具备时网关按"不可用"回话，页面无需判机型
-    PairingShareGateway.init(this.context);
-    // 从配对链接或卡片点击拉起本机：只登记意图，跳转与确认都留给页面（进程外参数不可信）
-    this.takeDeepLink(want);
+    AnonymousIdentity.attach(this.context);
+    SecureLifecycle.installCleanup(() => secureCloudCleanup().clearLocalKeys());
+    SecureLifecycle.installDisconnect(async (): Promise<string> => {
+      const local = await securePairingSetup().local();
+      if (local.phase === 'EMPTY' || local.phase === 'REVOKED') return 'OK';
+      return (await securePairingSetup().disconnect()).code;
+    });
+    // 卡片点击拉起本机：路由名仍过白名单。
+    this.takeRouteIntent(want);
     // 初始化本地存储与内置数据（失败不阻塞启动，页面内各自兜底）；
-    // 就绪后冷启动重算一次，保证窗口缓存与计划冲突状态有效（US6 / FR-011）。
+    // 就绪后先用本机与伴侣缓存冷启动重算，云端更新由首次 onForeground 独立拉取。
     // 必须走 onScheduleChanged 而不是裸 recompute：页面首帧的读可能落在这一路重算之前，
     // 只有广播才能让那次陈旧的读被纠正回来，否则冷启动答案要等用户手动刷新（D-24 现象一）。
     this.initChain = Promise.all([
       Db.init(this.context).then(() => ScheduleUseCase.ensureSeeded()),
       SettingsStore.init(this.context)
-    ]).then(() => {
-      return ScheduleUseCase.onScheduleChanged();
-    }).catch((e: Error) => {
+    ]).then((): void => {});
+    this.initChain.then(() => ScheduleUseCase.onScheduleChanged(true)).catch((e: Error) => {
       Logger.error('EntryAbility', 'startup init/recompute failed: ' + e.message);
     });
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
   onDestroy(): void {
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
+    publishForeground(false);
+    BottomSafeArea.detach();
   }
 
-  /** 已在前台时再次被拉起：同样只登记意图，跳转与确认仍由壳层/页面在用户这边完成。 */
+  /** ChipV2 的 ColorMetrics 是建组件时的颜色快照；系统换档后通知现有页面重取资源。 */
+  onConfigurationUpdate(newConfig: Configuration): void {
+    publishColorMode(newConfig.colorMode);
+  }
+
+  /** 已在前台时再次被拉起：仍只登记白名单路由意图。 */
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    this.takeDeepLink(want);
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onNewWant');
+    this.takeRouteIntent(want);
   }
 
   /**
-   * want 的 uri 与 parameters 都来自进程外：
-   * uri 交给配对网关按"一次性凭据"口径识别，parameters 里的路由名过白名单后再登记，
-   * 两者认不出都无痕丢弃，绝不按外部传来的名字直接跳页。
+   * want 的 parameters 来自进程外：路由名过白名单后再登记。
    */
-  private takeDeepLink(want: Want): void {
-    const uri: string = want.uri ?? '';
-    if (uri !== '') {
-      PairingShareGateway.offerIncoming(uri);
+  private takeRouteIntent(want: Want): void {
+    if (want.action === PLAN_PUSH_ACTION) {
+      navToCoTime('plans'); pushPendingRoute(NavRoutes.COMMON_TIME); return;
     }
     pushPendingRoute(routeFromWantParams(want.parameters));
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
+    try { BottomSafeArea.attach(windowStage.getMainWindowSync()); } catch { /* Footer has a bounded fallback. */ }
 
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
-        hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
-        return;
+        Logger.error('EntryAbility', 'loadContent failed: ' + JSON.stringify(err));
       }
-      hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
     });
   }
 
   onWindowStageDestroy(): void {
-    // Main window is destroyed, release UI related resources
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    BottomSafeArea.detach();
   }
 
   onForeground(): void {
+    publishForeground(true);
+    BottomSafeArea.refresh();
     // 先看一眼钟（K-4③）：后台那段时间"现在"已经走了，游标要挪。
     // 与下面的日切重算分开，是因为它不代表数据变了，只是让看钟的界面重取值。
     ScheduleUseCase.notifyClockTick();
-    // 日切重算（PRD L8/L12）：跨天回到前台时窗口缓存已过期，重算并广播刷新
-    try {
-      if (SettingsStore.getLastRecomputeDay() !== todayEpochDay()) {
-        ScheduleUseCase.onScheduleChanged().catch((e: Error) => {
-          Logger.error('EntryAbility', 'day-rollover recompute failed: ' + e.message);
-        });
+    const coldStart = this.firstForeground;
+    this.firstForeground = false;
+    this.initChain.then(async (): Promise<void> => {
+      if (coldStart) {
+        // 与共同计划同步并行；复用下拉刷新的单次飞行，不重复请求也不重新推送快照。
+        if (FeatureFlags.cloudPairing && SettingsStore.getPairState() === PAIRED)
+          await ScheduleUseCase.pullToRefresh();
+        return;
       }
-    } catch (e) {
-      // Settings 尚未初始化：onCreate 的初始化完成后本就会重算一次
-    }
+      // 日切检查必须等偏好就绪；首次冷启已有缓存重算，不再多排一次日切重算。
+      if (SettingsStore.getLastRecomputeDay() !== todayEpochDay()) await ScheduleUseCase.onScheduleChanged();
+    }).catch((e: Error) => {
+      Logger.error('EntryAbility', 'foreground snapshot/recompute failed: ' + e.message);
+    });
     // 补删系统侧残留：取消/改期时删不动的日程与提醒只留在看不见的行里，
     // 用户不会再有入口点"重试"，权限恢复后的这一次就是它唯一的机会（验收报告 B2）。
     // 挂在初始化链之后：库没就绪时这一趟除了warn 什么都不做，冷启那一次就等于白跑（D-31）。
@@ -108,15 +122,25 @@ export default class EntryAbility extends UIAbility {
     // 心跳（协议 §4.6）：AGC 的闲置回收线在 6 个月外，而本机不建常驻、不起定时器
     // （§3.3/§7 的硬约束），所以"每周一跳"只能靠回前台带起、由节流窗口决定该不该发。
     // 同样排在初始化链之后：Preferences 没就绪时读到的 pairId 是假的。
-    this.initChain.then(() => ProfileSettingsService.beatIfDue());
+    this.initChain.then(() => ProfileSettingsService.beatIfDue()).catch(() => {
+      Logger.warn('EntryAbility', 'cloud heartbeat deferred');
+    });
     // 补删「清空全部数据」那一次没删掉的云上快照（协议 §4.5 批次 U·U5）：配对标记与 pairId
     // 都随那次清空推平了，偏好里剩的两个字段就是它最后的凭据，而用户不会再有入口点"重试"。
-    this.initChain.then(() => ProfileSettingsService.retryPendingCloudUnpair());
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
+    this.initChain.then(() => ProfileSettingsService.retryPendingCloudUnpair()).catch(() => {
+      Logger.warn('EntryAbility', 'pending cloud unpair deferred');
+    });
+    this.initChain.then(() => secureCloudCleanup().clearLocalKeys().catch(() => {
+      Logger.warn('EntryAbility', 'secure local key cleanup deferred');
+    })).then(() => secureCloudCleanup().retry()).catch(() => {
+      Logger.warn('EntryAbility', 'secure cloud cleanup deferred');
+    });
+    this.initChain.then(() => PlanNotifications.onForeground()).catch(() => {
+      Logger.warn('EntryAbility', 'shared plan foreground refresh deferred');
+    });
   }
 
   onBackground(): void {
-    // Ability has back to background
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+    publishForeground(false);
   }
 }

@@ -1,9 +1,7 @@
 /**
- * 云同步失败之后的三态收敛（协议 §3.4 末行「UI 只消费已同步/待重试/已降级」+ §7 末行「当天不再重排」）。
+ * 云同步失败之后的三态收敛：失败后暂停自动云请求，直到用户在「我的」手动重试。
  *
- * 整份都是纯函数，**判断与发送/写库分开**：设备侧改不了系统钟（`hdc shell` 无 root，
- * `date -s` 回 `Operation not permitted`），于是"当天不再重排"这种按日期的分支在真机上属于撞运气，
- * 权威覆盖只能离线断言——同 `ProfileSettingsService.heartbeatDue`、`greetingOf` 的口径。
+ * 整份都是纯函数，**判断与发送/写库分开**：线值兼容旧包的日序，但暂停与否不再依赖本机日切。
  * `ScheduleUseCase` 只负责把 `CloudApiError.retryable` 递进 `outcomeOfFailure`，
  * 以及把 `encodeSyncState` 的串存进偏好、在排推送之前问一句 `pushBlockedToday`。
  *
@@ -57,19 +55,16 @@ export function decodeSyncState(raw: string): SyncState {
 }
 
 /**
- * 今天还排不排得动一次推送，两条规则各对应 §3.4 的一行：
- * - 可重试（超时/配额）→ **只有当天**排不动，换日后第一次真实保存自然再试；
- * - 不可重试（语义拒绝、本机密钥/解码失败）→ 一直排不动，直到某一次**拉**成功把它清回「已同步」。
- *
- * 换日的判据是 `epochDay` 相等而不是时间差：配额按天恢复，跨了日切就该放出去试一次。
- * 时钟被往回拨时 `day !== today`，结果是"多试一次"，与心跳那条同一取向。
+ * 兼容旧调用签名和旧存储格式，但日序不再解除暂停：任何失败都须由用户主动处理。
  */
 export function pushBlockedToday(raw: string, today: number): boolean {
   const s = decodeSyncState(raw);
-  if (s.outcome === SYNC_STATE_BLOCKED) {
-    return true;
-  }
-  return s.outcome === SYNC_STATE_RETRY && s.day === today;
+  return s.outcome === SYNC_STATE_BLOCKED || s.outcome === SYNC_STATE_RETRY;
+}
+
+/** 只有暂时性故障提供手动重试；凭据/版本类故障需要先按指引修复。 */
+export function canManuallyRetry(s: SyncState): boolean {
+  return s.outcome === SYNC_STATE_RETRY;
 }
 
 /**
@@ -99,10 +94,7 @@ export function shareLevelFromStore(raw: number): number {
 }
 
 /**
- * 这台设备要不要在页面上挂那一句坏消息：三态里只剩两格坏值才算。
- * 三处读它的页面（首页、共同时间、「我的」配对卡）判据必须一模一样——
- * 同一件事在两个页面两种说法，正是最终验收 R1 点过的那类问题。
- * 开关（`FeatureFlags.cloudPairing`）与"这一页要不要让位给别的提示"留给各页自己判断。
+ * 这台设备要不要在「我的」配对卡挂坏消息；首页和共同时间不再展示云故障条。
  */
 export function syncTroubleOf(s: SyncState): boolean {
   return syncStateNoteOf(s) !== '';
@@ -119,13 +111,13 @@ export function syncStateTitleOf(s: SyncState): string {
   return '';
 }
 
-/** 提示条正文：说清"现在 TA 看到的是哪一份"以及"下一次什么时候再试"，不给承诺不了的日期。 */
+/** 提示条正文：说清 TA 看到的是哪一份以及需要用户主动重试，不承诺自动恢复。 */
 export function syncStateNoteOf(s: SyncState): string {
   if (s.outcome === SYNC_STATE_RETRY) {
     if (s.code === 'QUOTA_EXHAUSTED') {
-      return '今天的同步次数用完了，明天会自动恢复；这期间 TA 看到的还是上一次那一份。';
+      return '云端提示今日同步次数已用尽；额度恢复后请手动重试。这期间 TA 看到的还是上一次那一份。';
     }
-    return '暂时连不上云端，今天不再重试；明天改班表时会自动再试一次。';
+    return '这次云同步未完成，自动同步已暂停；请手动重试。这期间 TA 看到的还是上一次那一份。';
   }
   if (s.outcome !== SYNC_STATE_BLOCKED) {
     return '';
@@ -134,10 +126,13 @@ export function syncStateNoteOf(s: SyncState): string {
     return '云端不认这个配对了，重新配对后才能继续同步；本机数据不受影响。';
   }
   if (s.code === 'SCHEMA_UNSUPPORTED') {
-    return '云端版本和手机上的应用对不上，更新应用后才能继续同步。';
+    return '云端版本和手机上的应用对不上；请更新应用，再解除并重新配对。';
   }
   if (s.code === SYNC_CODE_LOCAL) {
     return '这台手机解不开你们的同步数据了，解除配对再重新配对一次就能恢复；本机数据不受影响。';
   }
-  return '这次失败不是网络问题，重试也不会有变化。这期间共同时间只用这台手机上的数据算。';
+  if (s.code === 'CONFLICT_VERSION') {
+    return '云端版本与本机版本冲突；请解除并重新配对后再同步，本机数据不受影响。';
+  }
+  return '这次失败不是网络问题，直接重试也不会有变化；请检查配对或重新配对。本机数据不受影响。';
 }

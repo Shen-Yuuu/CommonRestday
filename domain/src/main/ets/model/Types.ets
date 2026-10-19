@@ -45,6 +45,18 @@ export interface ShiftType {
   /** 值班类班次允许在班内安排活动（首版不参与计算，预留）。 */
   allowActivity: boolean;
   kind: string;
+  /** 多段班次；历史单段班次未设置时沿用 startMin/endMin。 */
+  segments?: ShiftSegment[];
+}
+
+export interface ShiftSegment { startMin: number; endMin: number; crossDay: boolean; }
+export interface RosterDay { epochDay: number; status: string; entries: ShiftType[]; }
+export interface PersonalEntry { id: string; title: string; kind: string; start: number; end: number; }
+export interface WeeklyScheduleState {
+  version: number;
+  enabled: boolean;
+  days: RosterDay[];
+  personal: PersonalEntry[];
 }
 
 /** 循环模板：班次序列 + 锚点（seq[0] 对应的真实 epochDay）。 */
@@ -53,6 +65,8 @@ export interface CycleTemplate {
   name: string;
   seq: string[];
   anchorEpochDay: number;
+  /** 周一到周日对应低七位；历史模板缺省为每天（127）。 */
+  weekdaysMask?: number;
 }
 
 /** 单日覆盖：临时换班/请假；shiftTypeId 为 null 表示该日清空为休息。 */
@@ -225,6 +239,9 @@ export interface MySchedule {
   wakeMin: number;
   bedMin: number;
   windDownMin: number;
+  datedDays?: RosterDay[];
+  personalEntries?: PersonalEntry[];
+  weeklyMode?: boolean;
 }
 
 /** 对方共享输入：busyIntervals 已是"不可用"语义（含对方睡眠/缓冲）。 */

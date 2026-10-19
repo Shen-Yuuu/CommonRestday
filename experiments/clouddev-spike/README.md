@@ -74,7 +74,29 @@
 6. 别名生命周期：`isKeyExist` → 应用重启 → 备份/恢复 → 卸载重装 → 换机；记录哪一步密钥丢失，据此定"重新配对"的产品口径。
 7. 删除：`deleteKey` / `deleteKeyItem` 后 `isKeyExist` 为 false（解除配对路径依赖它）。
 
-失败判据：任一环节 ArkTS 表面跑不通 → 评估 NDK（`native/sysroot/usr/include/huks/`，`OH_HUKS_KEY_PURPOSE_AGREE = 256`）；NDK 也不可行 → **维持 `CLOUD_BLOCKED`，禁止退回短码派生长期密钥**（现有 `SettingsStore.savePairKey` 那条 Preferences 路径就是要禁止的形态，见门禁文件 §5）。
+失败判据：任一环节 ArkTS 表面跑不通 → 评估 NDK（`native/sysroot/usr/include/huks/`，`OH_HUKS_KEY_PURPOSE_AGREE = 256`）；NDK 也不可行 → **维持 `CLOUD_BLOCKED`，禁止退回短码派生长期密钥**。
+> `[更正 2026-09-23]` 上一句里"现有 `SettingsStore.savePairKey` 那条路径"已不成立：阶段 6R.2 把 `savePairKey` 与 `deriveKeyHex` 从源码删掉了，现在余下的只是 `getPairKey` 这个**读**口子（见门禁文件 §5）。
+
+### 5.1 本项已有可跑用例：`HuksCustodySpike.test.ets`
+
+上面 7 待测项里的 1/2/3/4/5/7 已经写成一份 instrument 用例（同目录，**刻意不放进构建**，理由见下）。它不需要 AGC、不需要云函数、不需要网络权限——**插上台设备或起个模拟器就能把"阶段 3 生死"这一项判掉**。
+
+三步接线（跑完记得撤）：
+
+1. `cp experiments/clouddev-spike/HuksCustodySpike.test.ets entry/src/ohosTest/ets/test/HuksCustodySpikeTest.ets`
+2. 在 `entry/src/ohosTest/ets/test/List.test.ets` 里 `import huksCustodySpike from './HuksCustodySpikeTest';` 并在 `testsuite()` 末尾加 `huksCustodySpike();`
+3. DevEco 里右键 `entry@ohosTest` → Run（或 `tools/verify.mjs` 那条 ohosTest 步骤的等价命令）；日志过滤词 `CRD-HUKS`
+
+**跑法要求按声明顺序**（hypium 默认满足）：用例之间存在有意的依赖——第 2 项造的托管别名是第 3、4 项的输入，第 1 项造的 ECC 别名是第 2 项的输入。
+
+**为什么要撤掉**：这份文件本身打 46 条 `ArkTS:WARN`（35 条 syscap 提示 + 8 条"可能抛异常" + 3 条废弃标签），直接超过 `tools/verify-baseline.json` 里 ohosTest 那一档"告警只降不升"的门禁。它是探针，不是交付物。
+
+已核对过的静态前提（都在本机 `@ohos.security.huks.d.ts` 上核过，不再靠猜）：
+
+- 曲线没有独立标签，由 `HUKS_TAG_KEY_SIZE = HUKS_ECC_KEY_SIZE_256` 隐含 → 上面待测项 1 的那个问号可以划掉；
+- `HUKS_STORAGE_PERSISTENT` / `HUKS_STORAGE_TEMP` **自 API 10 起废弃**，d.ts 原文明确让派生/协商场景改用 `HUKS_STORAGE_ONLY_USED_IN_HUKS` 或 `HUKS_STORAGE_KEY_EXPORT_ALLOWED` → 生成本端密钥对时**不要**带 `KEY_STORAGE_FLAG`；
+- `HUKS_TAG_DERIVE_MAIN_KEY` / `DERIVE_FACTOR` / `DERIVE_ALG` 三个**全是 `@deprecated since 9`**，且表里没有未废弃的替代（`HUKS_TAG_KEY` 注释只有 "Reserved"）→ 这就是第 4 项要实测的原因：跑通了也要记"建立在废弃标签上"，跑不通就退回"协商时直接给 `DERIVED_AGREED_KEY_STORAGE_FLAG`"那条；
+- `HUKS_TAG_AAD` 是 **@since 24**（`AE_TAG` 自 8 就有）→ 今天 `compatibleSdkVersion` 是 26 所以无感，**但哪天为了装机量往下调版本，先砍的是 AAD 绑 pairId 这一步**，托管链路本身在 API 12 上仍成立。
 
 ## 实验 6 · 云数据库只经云函数访问
 

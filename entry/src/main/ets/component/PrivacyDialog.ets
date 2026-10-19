@@ -100,7 +100,7 @@ export struct PrivacyDialog {
 
           // 《隐私政策》全文：随包出厂的半模态，不依赖浏览器与联网权限
           Text($r('app.string.privacy_link_fulltext'))
-            .fontSize(13).fontColor($r('app.color.brand_pink'))
+            .fontSize(13).fontColor($r('app.color.text_accent'))
             .margin({ top: 6 })
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)

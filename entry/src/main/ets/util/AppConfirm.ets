@@ -57,7 +57,7 @@ function askSystemDialog(ctx: UIContext, o: ConfirmOptions): void {
     },
     secondaryButton: {
       value: o.confirmText,
-      fontColor: o.danger === true ? DesignTokens.danger : DesignTokens.primary,
+      fontColor: o.danger === true ? DesignTokens.danger : DesignTokens.textAccent,
       action: () => {
         o.onConfirm();
       }

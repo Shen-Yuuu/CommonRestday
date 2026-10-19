@@ -5,8 +5,9 @@ import {
 import { expandCycle } from '../expand/CycleExpander';
 import { expandCourses } from '../expand/CourseExpander';
 import { buildNotAvailable, shiftToBlocks } from '../buffer/AvailabilityBuilder';
-import { complement, mergeIntervals, mkIv, unionIntervals } from '../merge/IntervalOps';
+import { complement, mergeIntervals, mkIv, unionIntervals, intersects } from '../merge/IntervalOps';
 import { classifyWindows } from '../classify/WindowClassifier';
+import { ROSTER_LOOKBACK_DAYS, ROSTER_LOOKAHEAD_DAYS } from '../expand/WeeklyRoster';
 
 /**
  * 共同空闲计算引擎门面：展开 → 缓冲 → 合并取补 → 分类 → 筛选。
@@ -55,7 +56,7 @@ export class CommonFreeEngine {
     // 旅行窗口：真忙+收整参与忙集（睡眠可跨越），只保留带旅行标签的跨时段窗口
     const windows: Window[] = cls.windows.slice();
     const myTripBusy = mergeIntervals(my.trueBusy.map((iv: Interval): Interval => {
-      return mkIv(iv.start, iv.end + input.my.windDownMin, iv.tag);
+      return mkIv(iv.start, iv.end + (iv.tag === 'UNKNOWN' ? 0 : input.my.windDownMin), iv.tag);
     }));
     const tripFree = complement(unionIntervals(myTripBusy, peerBusyNoSleep), from, to);
     const tripCls = classifyWindows(tripFree, my.trueBusy, peerBusyNoSleep, p,
@@ -106,10 +107,14 @@ export function buildAvailability(schedule: MySchedule, p: EngineParams,
   // 今天两支等价，但口径一改（比如"涂成休息"）共同时间和画面上就不是同一份忙——D-56 接 D-55。
   const tpl: CycleTemplate = schedule.template != null ? schedule.template
     : { id: '', name: '', seq: [], anchorEpochDay: startEpochDay };
-  const insts: ShiftInstance[] = expandCycle(tpl, schedule.overrides, startEpochDay, days);
+  const insts: ShiftInstance[] = expandCycle(tpl, schedule.overrides, startEpochDay - ROSTER_LOOKBACK_DAYS,
+    days + ROSTER_LOOKBACK_DAYS + ROSTER_LOOKAHEAD_DAYS);
+  const dated = new Set<number>();
+  for (const day of schedule.datedDays ?? []) dated.add(day.epochDay);
 
   const trueBusy: Interval[] = [];
   for (let i = 0; i < insts.length; i++) {
+    if (dated.has(insts[i].epochDay)) continue;
     const cfg = typeMap.get(insts[i].typeId);
     if (cfg == null) {
       continue;
@@ -119,6 +124,14 @@ export function buildAvailability(schedule: MySchedule, p: EngineParams,
       trueBusy.push(blocks[j]);
     }
   }
+  for(const day of schedule.datedDays ?? []) {
+    if(day.epochDay < startEpochDay-ROSTER_LOOKBACK_DAYS || day.epochDay >= startEpochDay+days+ROSTER_LOOKAHEAD_DAYS)continue;
+    for(const st of day.entries) trueBusy.push(...shiftToBlocks({epochDay:day.epochDay,typeId:st.id},st,p));
+  }
+  for(const entry of schedule.personalEntries ?? []) {
+    if(entry.end>entry.start)trueBusy.push(mkIv(entry.start,entry.end,'PERSONAL'));
+  }
+  // 未安排工作不占用时间；课程、个人安排、已确认计划及作息仍继续参与计算。
   const courseIvs = expandCourses(schedule.courses, schedule.sectionTimes, schedule.termStartEpochDay, startEpochDay, days);
   for (let i = 0; i < courseIvs.length; i++) {
     trueBusy.push(courseIvs[i]);
@@ -129,8 +142,11 @@ export function buildAvailability(schedule: MySchedule, p: EngineParams,
     }
   }
 
-  const notAvail = buildNotAvailable(trueBusy, schedule.wakeMin, schedule.bedMin, schedule.windDownMin, startEpochDay, days);
-  const out: MyAvailability = { trueBusy: trueBusy, notAvailable: notAvail };
+  const from=startEpochDay*MIN_PER_DAY,to=(startEpochDay+days)*MIN_PER_DAY;
+  const relevant=trueBusy.filter((iv: Interval): boolean =>
+    intersects(iv.start,iv.end+(iv.tag==='UNKNOWN'?0:schedule.windDownMin),from,to));
+  const notAvail = buildNotAvailable(relevant, schedule.wakeMin, schedule.bedMin, schedule.windDownMin, startEpochDay, days);
+  const out: MyAvailability = { trueBusy: relevant, notAvailable: notAvail };
   return out;
 }
 

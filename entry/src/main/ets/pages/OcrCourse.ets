@@ -106,7 +106,7 @@ struct OcrCourse {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(15).fontColor($r('app.color.text_accent'))
         }.onClick(() => router.back())
         Blank()
         Text('拍照识别课表').fontSize(17).fontWeight(FontWeight.Bold)

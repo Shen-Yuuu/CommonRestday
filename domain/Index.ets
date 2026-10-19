@@ -6,6 +6,7 @@
 export * from './src/main/ets/model/Types';
 export * from './src/main/ets/utils/TimeUtil';
 export * from './src/main/ets/expand/CycleExpander';
+export * from './src/main/ets/expand/WeeklyRoster';
 export * from './src/main/ets/expand/CourseExpander';
 export * from './src/main/ets/buffer/AvailabilityBuilder';
 export * from './src/main/ets/merge/IntervalOps';
@@ -15,5 +16,4 @@ export * from './src/main/ets/conflict/PlanConflict';
 export * from './src/main/ets/parse/CourseTextParser';
 export * from './src/main/ets/snapshot/SnapshotCodec';
 export * from './src/main/ets/snapshot/SnapshotBuilder';
-export * from './src/main/ets/pair/PairLink';
 export * from './src/main/ets/pair/CloudDebtCodec';

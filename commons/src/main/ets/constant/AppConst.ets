@@ -9,11 +9,7 @@ export class AppConst {
   /** 卡片定时刷新（毫秒，6h）。 */
   static readonly FORM_UPDATE_MS: number = 6 * 60 * 60 * 1000;
   /**
-   * 《隐私政策》在线版地址（商店提审材料与托管页用）。
-   *
-   * 阶段 6R.4 起应用内的全文不再依赖它：首发包没有联网权限，全文随包出厂
-   * （entry/component/PrivacyPolicySheet），空串时也只是不显示那一行链接，
-   * 不再 toast「即将上线」把用户挡在全文外面。
+   * AGC 托管的《隐私政策》地址；应用内保留离线全文，并提供托管版入口。
    */
-  static readonly PRIVACY_POLICY_URL: string = '';
+  static readonly PRIVACY_POLICY_URL: string = 'https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2050723336664704960';
 }

@@ -15,9 +15,10 @@
         "name": "EntryAbility",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",
-        "icon": "$media:layered_image",
+        "icon": "$media:jim1_resized",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:startIcon",
+        "startWindow": "$profile:start_window",
+        "startWindowIcon": "$media:start_icon_rounded",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         // 首发锁竖屏（验收报告 §5 D2）：断点按容器宽度分档，手机横屏会落进
@@ -33,19 +34,7 @@
             ]
           },
           {
-            // 配对链接深链（Task 4.1）：crdpair://join?t=<一次性凭据> 拉起本机。
-            // 常量取自 wantConstant：ACTION_VIEW_DATA / ENTITY_DEFAULT；内容不直接执行，先过 PairLink 校验。
-            "entities": [
-              "entity.system.default"
-            ],
-            "actions": [
-              "ohos.want.action.viewData"
-            ],
-            "uris": [
-              {
-                "scheme": "crdpair"
-              }
-            ]
+            "actions": ["com.common.fortwo.action.PLAN"]
           }
         ]
       }

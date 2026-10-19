@@ -81,6 +81,8 @@ export function displayTagLine(tags: string[]): string {
 
 /** 忙碌区间标签（AvailabilityBuilder/快照的 BlockTag）中文短词。 */
 export function busyTagLabel(tag: string): string {
+  if (tag === 'PERSONAL') return '个人安排';
+  if (tag === 'UNKNOWN') return '工作安排未填写';
   if (tag === 'WORK') {
     return '班次';
   }

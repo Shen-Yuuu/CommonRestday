@@ -1,0 +1,35 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>两人份 · 仅眨眼与点击反馈</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fff2ed;color:#5c4750;font:14px/1.7 'Microsoft YaHei',sans-serif}body.dark{background:#30263c;color:#ffedf4}
+main{max-width:1060px;margin:32px auto;padding:0 24px}h1{font-size:22px;margin:0}p{opacity:.75}button{font:inherit;border:0;border-radius:20px;padding:10px 16px;background:#f8dfe9;color:#684852;cursor:pointer}button:focus-visible{outline:2px solid #e55e8c;outline-offset:3px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0}.preview{display:flex;gap:50px;align-items:center;flex-wrap:wrap}.large{position:relative;width:448px;height:188px;flex-shrink:0}.large .scene{transform:scale(4);transform-origin:0 0}
+.actual{width:360px;padding:22px;background:#ffffff66;border-radius:28px}.actual header{display:flex;align-items:end;gap:8px}.header-copy{flex:1;min-width:0;position:relative;top:3px;display:flex;flex-direction:column;gap:2px}.actual h2{font-size:28px;line-height:34px;margin:0}.actual small{opacity:.7;line-height:18px}.actual .scene{flex:none}
+.scene{width:112px;height:44px;top:3px;position:relative;overflow:hidden;touch-action:manipulation;user-select:none;cursor:pointer;outline-offset:3px}.actor{position:absolute;width:120px;height:120px;transform-origin:0 0}.actor img{position:absolute;inset:0;width:120px;height:120px;object-fit:contain;pointer-events:none}.notice{padding:12px 0;border-top:1px solid #b78e9e55;margin-top:30px}.caption{font-size:12px}
+@media(max-width:650px){main{padding:0 16px}.large{width:336px;height:144px}.large .scene{transform:scale(3)}.preview{gap:30px}.actual{max-width:100%}}
+</style>
+<main><h1>保留原造型，只眨眼、轻点捏一下</h1><p>完整角色底图保留两只耳朵和爪子；不再呼吸、摆耳、伸爪或自动互动。</p>
+<div class="controls"><button id="pause">暂停眨眼</button><button id="narrow">100×44 窄尺寸</button><button id="theme">深色背景</button></div>
+<div class="preview"><div class="large" id="large"></div><section class="actual"><header><div class="header-copy"><h2>共同休时</h2><small>TA · 未来 4 个月</small></div><div id="actual"></div></header><p class="caption">112×44 实际尺寸，注释与角色底部对齐</p></section></div>
+<p id="status" role="status" aria-live="polite">静止待机 · 自动眨眼 · 轻点可捏一下</p>
+<p class="notice caption">仅保留开眼/闭眼与原有点击响应。离页或暂停后取消计时，回来重新等待，不补播。此页是浏览器预览，不代替模拟器验收。</p></main>
+<script src="assets/companion-layered-2026-10-17.js"></script><script>
+(()=>{
+const rig=window.CompanionRig,touch=window.CompanionMotion,base='../../entry/src/main/resources/base/media/',roots=[];
+function image(file){const img=new Image();img.src=base+file;img.alt='';img.draggable=false;return img;}
+function actor(name){const node=document.createElement('div');node.className='actor '+name;const b=name==='bubu';node.style.left=(b?rig.BUBU_RIG_X:rig.XIUXIU_RIG_X)+'px';node.style.top=(b?rig.BUBU_RIG_Y:rig.XIUXIU_RIG_Y)+'px';node.style.transform=`scale(${b?rig.BUBU_RIG_SCALE:rig.XIUXIU_RIG_SCALE})`;node.append(image('companions_'+name+'_plate.png'));const open=image('companions_'+name+'_face_0.svg'),closed=image('companions_'+name+'_face_3.svg');closed.style.opacity=0;node.append(open,closed);return{node,open,closed};}
+for(const id of ['large','actual']){const scene=document.createElement('div');scene.className='scene';scene.role='button';scene.tabIndex=0;scene.setAttribute('aria-label','布布和休休，轻点捏一下');const frame=document.createElement('div');Object.assign(frame.style,{position:'absolute',width:'112px',height:'44px',transformOrigin:'0 0'});const b=actor('bubu'),x=actor('xiuxiu');frame.append(b.node,x.node);scene.append(frame);document.getElementById(id).append(scene);roots.push({scene,frame,b,x});scene.addEventListener('pointerdown',e=>{e.preventDefault();squish();});scene.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();squish();}});}
+let paused=false,epoch=0,timers=[0,0],raf=0,run=null,count=0,last=0,current={x:1,y:1,angle:0};
+const status=document.getElementById('status'),reduced=matchMedia('(prefers-reduced-motion:reduce)').matches;
+function eyes(bear,closed){for(const r of roots){const a=bear?r.b:r.x;a.open.style.opacity=closed?0:1;a.closed.style.opacity=closed?1:0;r.scene.dataset[bear?'bearClosed':'bunnyClosed']=String(closed);}}
+function stopBlinking(){epoch++;timers.forEach(clearTimeout);timers=[0,0];eyes(false,false);eyes(true,false);}
+function schedule(bear,close=true){if(paused||document.hidden||reduced||run)return;const i=bear?1:0,e=epoch;timers[i]=setTimeout(()=>{if(e!==epoch||paused||document.hidden||run)return;timers[i]=0;eyes(bear,close);schedule(bear,!close);},close?(bear?7000:5000)+Math.random()*3000:150);}
+function startBlinking(){if(!timers[0])schedule(false);if(!timers[1])schedule(true);}
+function draw(s={x:1,y:1,angle:0}){current=s;for(const r of roots){const ratio=r.scene.clientWidth/112;r.frame.style.transform=`scale(${ratio})`;r.frame.style.top=44*(1-ratio)+'px';const large=r.scene.parentElement.id==='large',zoom=large?r.scene.parentElement.clientWidth/112:1;r.scene.style.transformOrigin=large?'0 0':'50% 100%';r.scene.style.transform=`scale(${zoom*s.x},${zoom*s.y}) rotate(${s.angle}deg)`;r.scene.dataset.mode=run?'squish':'idle';}}
+function squish(){if(paused||document.hidden)return;stopBlinking();const now=performance.now();count=touch.nextCompanionCombo(count,last,now);last=now;run={start:now,from:current,spec:touch.companionSquishSpec(count,reduced,Math.random(),Math.random(),Math.random())};status.textContent='捏一下 · '+count;if(!raf)raf=requestAnimationFrame(loop);}
+function loop(now){raf=0;if(!run||paused||document.hidden)return;const s=touch.companionSquishFrame(run.spec,now-run.start,run.from.x,run.from.y,run.from.angle);if(now-run.start>=run.spec.duration){run=null;draw();startBlinking();status.textContent='静止待机 · 自动眨眼 · 轻点可捏一下';}else{draw(s);raf=requestAnimationFrame(loop);}}
+function reset(){stopBlinking();if(raf)cancelAnimationFrame(raf);raf=0;run=null;count=0;last=0;draw();startBlinking();}
+document.getElementById('narrow').onclick=()=>{const narrow=roots[1].scene.clientWidth===112;roots[1].scene.style.width=narrow?'100px':'112px';document.querySelector('.actual .caption').textContent=(narrow?'100':'112')+'×44 实际尺寸，注释与角色底部对齐';document.getElementById('narrow').textContent=narrow?'112×44 标准尺寸':'100×44 窄尺寸';draw(current);};
+document.getElementById('pause').onclick=()=>{paused=!paused;reset();status.textContent=paused?'已暂停':'静止待机 · 自动眨眼 · 轻点可捏一下';document.getElementById('pause').textContent=paused?'继续眨眼':'暂停眨眼';};document.getElementById('theme').onclick=()=>document.body.classList.toggle('dark');document.addEventListener('visibilitychange',reset);window.addEventListener('pagehide',()=>{stopBlinking();if(raf)cancelAnimationFrame(raf);raf=0;run=null;});reset();
+})();
+</script></html>

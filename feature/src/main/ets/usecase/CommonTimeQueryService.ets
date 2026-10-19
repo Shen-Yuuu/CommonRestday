@@ -346,10 +346,9 @@ export class CommonTimeQueryService {
     const plans = await ScheduleRepo.listActivePlans();
     const computedAt = await ScheduleRepo.windowCacheComputedAt();
     const day = await CommonTimeQueryService.loadDay(today);
-    const profile = SettingsStore.getPartnerProfile();
     const input: HomeInput = {
       mode: CommonTimeQueryService.resolveMode(day.partnerSource),
-      partnerName: profile != null ? profile.nick : '',
+      partnerName: SettingsStore.getPartnerDisplayName(),
       windows: windows,
       plans: plans,
       day: day,
@@ -366,13 +365,12 @@ export class CommonTimeQueryService {
     const plans = await ScheduleRepo.listActivePlans();
     const computedAt = await ScheduleRepo.windowCacheComputedAt();
     const day = await CommonTimeQueryService.loadDay(today);
-    const profile = SettingsStore.getPartnerProfile();
     const input: PageInput = {
       windows: windows,
       plans: plans,
       filter: filter,
       mode: CommonTimeQueryService.resolveMode(day.partnerSource),
-      partnerName: profile != null ? profile.nick : '',
+      partnerName: SettingsStore.getPartnerDisplayName(),
       partnerSource: day.partnerSource,
       horizonDays: SettingsStoreParams().horizonDays,
       computedAt: computedAt,
@@ -382,8 +380,9 @@ export class CommonTimeQueryService {
   }
 
   /**
-   * 计划分段读模型：全部活动计划（含已结束的历史条目——计划列表按开始时间升序全量展示，
-   * 不套用"未来窗口"那套筛选口径）。起点传 0 即只取全部，投影口径仍走 planSummaries。
+   * 计划分段的原始读模型：包含已结束的活动记录，保留历史日历与占用计算的查询口径。
+   * 当前计划列表由展示策略按结束时间过滤；这里不删除历史，也不套用未来空闲窗口筛选。
+   * 起点传 0 取全部，投影口径仍走 planSummaries。
    */
   static async getPlanCards(): Promise<PlanSummary[]> {
     const rows = await ScheduleRepo.listActivePlans();
@@ -735,6 +734,7 @@ export class CommonTimeQueryService {
   }
 
   static myLabel(day: DayBusy, from: number, to: number): string {
+    if(day.myBusy.some((iv: Interval): boolean => iv.tag === 'UNKNOWN' && intersects(iv.start,iv.end,from,to))) return '工作安排未填写';
     const dayStart = day.epochDay * MIN_PER_DAY;
     return CommonTimeQueryService.dayPrefix(from, day.epochDay)
       + busyLabel(busyWithin(day.myBusy, from, to), idleWord(from, to, dayStart));
@@ -744,6 +744,7 @@ export class CommonTimeQueryService {
     if (day.partnerBusy == null) {
       return prefix + 'TA 的忙碌未知';
     }
+    if(day.partnerBusy.some((iv: Interval): boolean => iv.tag === 'UNKNOWN' && intersects(iv.start,iv.end,from,to))) return prefix + 'TA 的工作安排未填写';
     const segs = busyWithin(day.partnerBusy, from, to);
     if (day.partnerShareLevel <= 1) {
       // L1 快照只有 30 分钟位图：给段数不给时刻，避免把粗粒度数据当精确事实展示

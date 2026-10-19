@@ -1,6 +1,8 @@
 import { AppConst } from 'commons';
+import { common } from '@kit.AbilityKit';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { DesignTokens } from '../theme/DesignTokens';
+import { appToast } from '../util/AppToast';
 
 /** 《隐私政策》一节：标题 + 正文，两份文字都走资源引用。 */
 interface PolicySection {
@@ -17,13 +19,25 @@ interface PolicySection {
  * docs/legal/privacy-policy.html、以及 string.json 的 `pp_*` 条目**逐字同源**，
  * 增删一节必须四处同批改；漂移由 `node tools/test/run.mjs` 的文案口径审计拦下
  * （`tools/test/copy-audit.mjs`），它会同时核对这里的**节序**。
- * 首启弹窗与「我的」页共用本组件，两处不再各写一套说法。
+ * 「我的」页提供离线全文与托管版入口。
  */
 @Component
 export struct PrivacyPolicySheet {
   onClose: () => void = () => {};
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
+
+  private async openHostedPolicy(): Promise<void> {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await ctx.startAbility({
+        action: 'ohos.want.action.viewData',
+        uri: AppConst.PRIVACY_POLICY_URL
+      });
+    } catch (e) {
+      appToast('暂时无法打开隐私政策，请稍后重试');
+    }
+  }
 
   /** 分节清单（资源引用在组件方法内构造，避免模块级 $r）。 */
   sections(): PolicySection[] {
@@ -77,19 +91,27 @@ export struct PrivacyPolicySheet {
             .alignItems(HorizontalAlign.Start)
           }, (sec: PolicySection, idx: number) => 'pp' + idx)
 
-          // 托管地址只在填写后才显示；空串时明确"以本页为准"，不再 toast 一句"即将上线"
-          Row({ space: 4 }) {
+          // 保留离线全文，托管版交由系统浏览器打开。
+          Column({ space: 8 }) {
             if (AppConst.PRIVACY_POLICY_URL === '') {
               Text($r('app.string.pp_link_none'))
                 .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
             } else {
+              Button('查看托管版隐私政策')
+                .fontSize(DesignTokens.fontBody)
+                .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+                .backgroundColor(DesignTokens.fillWeak)
+                .fontColor(DesignTokens.textPrimary)
+                .onClick(() => { this.openHostedPolicy(); })
               Text($r('app.string.pp_link_prefix'))
                 .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
               Text(AppConst.PRIVACY_POLICY_URL)
                 .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textHint)
+                .width('100%')
             }
           }
           .width('100%')
+          .alignItems(HorizontalAlign.Start)
           .margin({ top: 4 })
         }
         .width('100%')

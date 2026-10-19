@@ -1,311 +1,193 @@
-import { OWNER_ME, ShiftType } from 'domain';
+import { util } from '@kit.ArkTS';
+import { OWNER_ME, RosterDay, ShiftSegment, ShiftType, rosterError, rosterSnapshot, shiftSnapshot, shiftSegments, minToHHmm, todayEpochDay, epochDayOf } from 'domain';
+import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import {
-  DayShiftState, ScheduleCommandResult, ScheduleCommandService, ScheduleOverviewQueryService
-} from 'feature';
+import { WeeklyRosterService, RosterSaveResult, ScheduleUseCase } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
-import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
-import { NoticeBar, NoticeTone } from './NoticeBar';
+import { TimeSegmentsEditor } from './TimeSegmentsEditor';
+import { LatestLanding } from '../util/LatestLanding';
 import { appToast } from '../util/AppToast';
+import { askConfirm } from '../util/AppConfirm';
 
-/** 休息哨兵：覆盖表用 shiftTypeId=null 表示"这天强制休息"，组件内统一用空串表达。 */
-const REST_ID = '';
-
-/**
- * 单日改班半模态（「临时调整」主入口）：只写这一天的覆盖，不动循环模板。
- * 覆盖与月历涂抹是同一条数据（覆盖优先于模板展开），清除后即回到模板推算值；
- * 长期规律请去循环模板，这里只解决"就这天不一样"。
- */
+/** 日期编辑共用一份 UI；周班表回传草稿，首页及周历直接保存该日。 */
 @Component
 export struct DayShiftSheet {
+  @StorageProp('crd_bottom_safe_vp') private bottomSafe: number = 16;
+  @StorageProp('crd_window_height_vp') private windowHeight: number = 640;
+  @Prop enclosingHeader: number = 0;
   @Prop @Watch('reload') owner: string = OWNER_ME;
-  /** 目标日（epochDay）：点周历日格进入时由父页给。 */
   @Prop @Watch('reload') epochDay: number = 0;
-  onClose: () => void = () => {
-  };
+  @Prop draft: RosterDay = {epochDay:-1,status:'UNKNOWN',entries:[]};
+  @Prop commitImmediately: boolean = true;
+  onDraft: (day: RosterDay) => void = () => {};
+  onClose: () => void = () => {};
+  @State private selectedDay: number = 0;
+  @State private day: RosterDay = {epochDay:0,status:'UNKNOWN',entries:[]};
   @State private types: ShiftType[] = [];
-  /** 循环模板推算的当日班次（'' = 休）；无模板时恒为 ''。 */
-  @State private baseId: string = '';
-  @State private hasTpl: boolean = false;
-  /** 手动覆盖是否存在（null 覆盖=休息，所以必须单独记一位）。 */
-  @State private hasOv: boolean = false;
-  @State private ovId: string = REST_ID;
   @State private loading: boolean = true;
-  /** 读失败时这一天的真相是未知的：不给选，也不说"当前是休息"（详见 load 的注释）。 */
   @State private failed: boolean = false;
   @State private saving: boolean = false;
-  // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
-  @StorageProp('crd_senior_mode') senior: boolean = false;
-
-  aboutToAppear(): void {
-    this.load();
-  }
-
-  reload(): void {
-    this.load();
-  }
-
-  /**
-   * 取这天的班次状态。失败时必须停在"未知"而不是退回空表：
-   * 空表会把界面渲染成「只剩休息可点」，而休息是真写一条覆盖——
-   * 一次读失败就被盖成"这天休息"，模板值也被遮住，用户看不出来。
-   */
+  @State private custom: boolean = false;
+  @State private customName: string = '';
+  @State private editingEntryId: string = '';
+  @State private customSegments: ShiftSegment[] = [{startMin:540,endMin:720,crossDay:false}];
+  @State private feedback: string = '';
+  @State private warning: boolean = false;
+  private landing: LatestLanding = new LatestLanding();
+  private original: string = '';
+  // FIT_CONTENT cannot derive its height from a wrap-content Scroll that also shrinks.
+  private editorHeight(): number { return Math.max(180,Math.min(720,this.windowHeight*0.82)-this.enclosingHeader); }
+  aboutToAppear(): void {this.reload();}
+  private mounted: boolean = false;
+  aboutToDisappear(): void {this.mounted=false;this.landing.begin();}
+  reload(): void {this.mounted=true;this.selectedDay=this.epochDay>0?this.epochDay:todayEpochDay();this.load();}
   async load(): Promise<void> {
-    this.loading = true;
+    const token=this.landing.begin(),day=this.selectedDay,owner=this.owner;this.loading=true;this.feedback='';this.warning=false;this.custom=false;
     try {
-      const st: DayShiftState = await ScheduleOverviewQueryService.getDayShiftState(this.owner,
-        this.epochDay);
-      this.types = st.types;
-      this.hasTpl = st.hasTemplate;
-      this.baseId = st.baseTypeId;
-      this.hasOv = st.hasOverride;
-      this.ovId = st.overrideTypeId;
-      this.failed = false;
-    } catch (e) {
-      this.types = [];
-      this.hasOv = false;
-      this.ovId = REST_ID;
-      this.baseId = REST_ID;
-      this.failed = true;
+      await ScheduleUseCase.ensureSeeded(owner);
+      const types=await ScheduleRepo.listShiftTypes(owner);
+      const days=await WeeklyRosterService.loadDays(owner,day,1);
+      if(!this.landing.isCurrent(token))return;
+      this.types=types;this.day=rosterSnapshot(!this.commitImmediately && this.draft.epochDay===day?this.draft:days[0]);this.original=JSON.stringify(this.day);this.failed=false;
+    }catch(e){if(this.landing.isCurrent(token)){this.failed=true;this.feedback='这次没有读到班表，请重试；已有内容保留';}}
+    finally{if(this.landing.isCurrent(token))this.loading=false;}
+  }
+  private pickDate(): void {
+    if(this.saving || !this.commitImmediately)return;
+    const d=DateLabel.ymd(this.selectedDay);
+    this.getUIContext().showDatePickerDialog({selected:new Date(d.y,d.m-1,d.d),
+      onDateAccept:(date: Date) => {
+        if(!this.mounted||this.saving)return;
+        const next=epochDayOf(date.getFullYear(),date.getMonth()+1,date.getDate());
+        if(next===this.selectedDay)return;
+        const apply=(): void => {if(!this.mounted||this.saving)return;this.selectedDay=next;this.load();};
+        if(this.custom||JSON.stringify(this.day)!==this.original)askConfirm(this.getUIContext(),{
+          message:'当天有未保存的修改。放弃草稿并切换日期？',confirmText:'放弃草稿',onConfirm:apply});
+        else apply();
+      }});
+  }
+  private times(st: ShiftType): string {return shiftSegments(st).map((s: ShiftSegment): string => minToHHmm(s.startMin)+'–'+(s.crossDay||s.endMin<=s.startMin?'次日 ':'')+minToHHmm(s.endMin)).join(' / ');}
+  private add(st: ShiftType): void {
+    if(this.saving || this.loading || this.failed)return;
+    const next=rosterSnapshot(this.day),snapshot=shiftSnapshot(st);snapshot.id=util.generateRandomUUID();
+    if(this.editingEntryId!=='') {
+      snapshot.id=this.editingEntryId;
+      next.entries=next.entries.map((entry: ShiftType): ShiftType => entry.id===this.editingEntryId?snapshot:entry);
+    } else {
+      next.entries.push(snapshot);
     }
-    this.loading = false;
+    next.status='WORK';const invalid=rosterError([next]);
+    if(invalid!==''){this.feedback=invalid;return;}
+    this.day=next;this.custom=false;this.editingEntryId='';this.feedback='';this.warning=false;
   }
-
-  /** 当日实际生效班次：覆盖优先，其次模板。 */
-  private effectiveId(): string {
-    return this.hasOv ? this.ovId : this.baseId;
+  private status(value: string): void {
+    if(this.saving)return;
+    const apply=(): void => {if(!this.mounted||this.saving)return;this.day={epochDay:this.selectedDay,status:value,entries:[]};this.feedback='';this.warning=false;};
+    if(this.day.entries.length>0) askConfirm(this.getUIContext(),{message:'将移除当天的工作班次，个人安排会保留。确认改为'+(value==='REST'?'休息':'未安排')+'？',confirmText:'确认更改',onConfirm:apply});
+    else apply();
   }
-
-  private isSelected(id: string): boolean {
-    return this.effectiveId() === id;
+  private addCustom(): void {
+    const current=this.day.entries.find((entry: ShiftType): boolean => entry.id===this.editingEntryId);
+    const st=current!=null?shiftSnapshot(current):ScheduleUseCase.mkType(util.generateRandomUUID(),this.customName.trim(),'#83A8D5',
+      this.customSegments[0].startMin,this.customSegments[0].endMin,this.customSegments[0].crossDay,0,0,0);
+    st.name=this.customName.trim();st.startMin=this.customSegments[0].startMin;st.endMin=this.customSegments[0].endMin;
+    st.crossDay=this.customSegments[0].crossDay;
+    st.segments=this.customSegments;this.add(st);
   }
-
-  private nameOf(id: string): string {
-    if (id === REST_ID) {
-      return '休息';
-    }
-    for (let i = 0; i < this.types.length; i++) {
-      if (this.types[i].id === id) {
-        return this.types[i].name;
+  private async save(): Promise<void> {
+    if(this.saving || this.loading || this.failed)return;
+    if(!this.commitImmediately){this.onDraft(rosterSnapshot(this.day));this.onClose();return;}
+    const day=this.selectedDay,owner=this.owner;this.saving=true;
+    const result: RosterSaveResult=await WeeklyRosterService.saveDays(owner,[this.day],this.warning);
+    this.saving=false;
+    if(!this.mounted || this.selectedDay!==day || this.owner!==owner)return;
+    this.feedback=result.message;this.warning=result.warning;
+    if(result.changed){appToast(result.ok?'已保存当天安排':result.message);this.onClose();}
+  }
+  @Builder
+  shiftSelection() {
+    Column({space:14}) {
+      Row() {
+        Button(DateLabel.mdw(this.selectedDay)+(this.commitImmediately?' ›':''))
+          .fontSize(20).fontWeight(FontWeight.Bold).fontColor(DesignTokens.textPrimary)
+          .backgroundColor(Color.Transparent).stateEffect(false).layoutWeight(1).height(44).onClick(() => this.pickDate())
+        Button('关闭').height(40).fontSize(13).backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textPrimary)
+          .enabled(!this.saving).onClick(() => this.onClose())
+      }.width('100%')
+      if(this.loading){Text('正在读取班表…').fontColor(DesignTokens.textSecondary)}
+      else if(this.failed){Button('重新读取').onClick(() => this.load())}
+      else if(this.custom){
+        Row({space:12}) {
+          Text('名称').fontSize(13).fontColor(DesignTokens.textSecondary)
+          TextInput({text:this.customName,placeholder:'如：加班、门诊班'}).layoutWeight(1).maxLength(30)
+            .onChange((value: string) => {this.customName=value;this.feedback='';})
+        }.width('100%')
+        TimeSegmentsEditor({segments:this.customSegments,editable:!this.saving,
+          onChange:(parts: ShiftSegment[]) => {this.customSegments=parts;this.feedback='';}})
+      }else{
+        Row({space:10}) {
+          Button('休息').height(40).fontSize(13).backgroundColor(this.day.status==='REST'?DesignTokens.shareSelectedBg:DesignTokens.fillWeak)
+            .fontColor(DesignTokens.textPrimary).enabled(!this.saving).onClick(() => this.status('REST'))
+          Button('未安排').height(40).fontSize(13).backgroundColor(this.day.status==='UNKNOWN'?DesignTokens.shareSelectedBg:DesignTokens.fillWeak)
+            .fontColor(DesignTokens.textPrimary).enabled(!this.saving).onClick(() => this.status('UNKNOWN'))
+        }.width('100%')
+        ForEach(this.day.entries,(st: ShiftType) => {
+          Row({space:10}) {
+            Circle().width(7).height(7).fill(st.color)
+            Column({space:4}) {
+              Text(st.name).fontSize(15).fontWeight(FontWeight.Medium).fontColor(DesignTokens.textPrimary)
+              Text(this.times(st)).fontSize(12).fontColor(DesignTokens.textSecondary)
+            }.layoutWeight(1).alignItems(HorizontalAlign.Start).onClick(() => {
+              if(this.saving)return;this.editingEntryId=st.id;this.customName=st.name;
+              this.customSegments=shiftSegments(shiftSnapshot(st));this.custom=true;this.feedback='';this.warning=false;
+            })
+            Button('移除').height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(DesignTokens.textSecondary)
+              .enabled(!this.saving).onClick(() => {const next=rosterSnapshot(this.day);next.entries=next.entries.filter((s: ShiftType): boolean => s.id!==st.id);
+                next.status=next.entries.length?'WORK':'UNKNOWN';this.day=next;this.feedback='';this.warning=false;})
+          }.width('100%').padding(12).borderRadius(16).backgroundColor(DesignTokens.fillWeakest)
+        },(st: ShiftType): string => JSON.stringify(st))
+        Text('添加一个班次').fontSize(12).fontColor(DesignTokens.textSecondary).width('100%')
+        ForEach(this.types,(st: ShiftType) => {
+          Row({space:12}) {
+            Circle().width(24).height(24).fill(st.color).opacity(0.7)
+            Column({space:3}) {
+              Text(st.name).fontSize(14).fontWeight(FontWeight.Medium).fontColor(DesignTokens.textPrimary)
+              Text(this.times(st)).fontSize(11).fontColor(DesignTokens.textSecondary)
+            }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+            Text('＋').fontSize(22).fontColor(DesignTokens.primary)
+          }.width('100%').padding(12).border({width:1,color:DesignTokens.borderWeak}).borderRadius(16)
+            .clickEffect(DesignTokens.tapChip())
+            .enabled(!this.saving).onClick(() => this.add(st))
+        },(st: ShiftType): string => JSON.stringify(st))
+        Button('＋ 自填工作时间').width('100%').height(44).backgroundColor(Color.Transparent).fontColor(DesignTokens.primary)
+          .enabled(!this.saving).onClick(() => {this.custom=true;this.editingEntryId='';this.customName='';this.customSegments=[{startMin:540,endMin:720,crossDay:false}];})
       }
-    }
-    // 覆盖指向的班次可能已在管理页删除，这里说清状态而不是留空
-    return '已删除的班次';
+      if(this.feedback!==''){Text(this.feedback).width('100%').fontSize(12).fontColor(this.warning?DesignTokens.warn:DesignTokens.danger)}
+    }.width('100%').alignItems(HorizontalAlign.Start).padding({left:20,right:20,top:18,bottom:12}).backgroundColor(DesignTokens.card)
   }
-
-  private colorOf(id: string): ResourceColor {
-    for (let i = 0; i < this.types.length; i++) {
-      if (this.types[i].id === id) {
-        return this.types[i].color;
-      }
-    }
-    return DesignTokens.fillWeak;
-  }
-
-  private currentNote(): string {
-    if (this.failed) {
-      // 未知就说未知：这句在页头，芯片行已经收起来了，不能还写着"当前：休息"。
-      return '这天的班表没读到';
-    }
-    if (this.hasOv) {
-      return '手动覆盖 · ' + this.nameOf(this.ovId);
-    }
-    return (this.hasTpl ? '循环模板推算 · ' : '未配置模板 · ') + this.nameOf(this.baseId);
-  }
-
-  // ---------- 写入（一次一条覆盖，重算与广播由命令层收口） ----------
-
-  /** 保存失败要说清是"没写进去"还是"写进去了但共同时间没刷新"，否则用户不知道要不要重试。 */
-  private failNote(res: ScheduleCommandResult): string {
-    return res.errorCode === 'RECOMPUTE_FAILED'
-      ? '已保存，共同时间稍后会自己刷新' : '保存失败，未做任何改动';
-  }
-
-  private write(shiftId: string): void {
-    if (this.saving || (this.hasOv && this.ovId === shiftId)) {
-      return;
-    }
-    this.saving = true;
-    ScheduleCommandService.setDayShift(this.epochDay, shiftId === REST_ID ? null : shiftId,
-      this.owner).then((res: ScheduleCommandResult) => {
-      this.saving = false;
-      if (!res.ok) {
-        appToast(this.failNote(res));
-        return;
-      }
-      this.hasOv = true;
-      this.ovId = shiftId;
-      appToast(DateLabel.md(this.epochDay) + ' 已改为' + this.nameOf(shiftId));
-    });
-  }
-
-  private clearOverride(): void {
-    if (this.saving || !this.hasOv) {
-      return;
-    }
-    this.saving = true;
-    ScheduleCommandService.clearDayShift(this.epochDay, this.owner)
-      .then((res: ScheduleCommandResult) => {
-        this.saving = false;
-        if (!res.ok) {
-          appToast(this.failNote(res));
-          return;
-        }
-        this.hasOv = false;
-        this.ovId = REST_ID;
-        appToast('已恢复模板排班');
-      });
-  }
-
-  private chipBg(id: string): ResourceColor {
-    if (!this.isSelected(id)) {
-      return DesignTokens.fillWeakest;
-    }
-    // 休息没有自带色，用次级文本色即可与真班次区分
-    return id === REST_ID ? DesignTokens.textTertiary : this.colorOf(id);
-  }
-
-  private chipFg(id: string): ResourceColor {
-    if (!this.isSelected(id)) {
-      return DesignTokens.textSecondary;
-    }
-    // 选中「休息」铺的是 token 底 textTertiary（它没有自带色），前景照旧暖白；
-    // 选中真班次铺的是用户挑的色，前景跟着底色走。
-    return id === REST_ID ? DesignTokens.heroText : DesignTokens.foregroundOn(this.colorOf(id));
-  }
-
-  /**
-   * 选中态不能只靠底色（docs/06 §3.10 B）：文字前加记号给眼睛，
-   * 朗读文本再说明当前生效与点按后果，色觉与读屏用户拿到的是同一句事实。
-   */
-  private chipLabel(id: string): string {
-    return (this.isSelected(id) ? '✓ ' : '') + this.nameOf(id);
-  }
-
-  private chipRead(id: string): string {
-    if (this.isSelected(id)) {
-      return this.nameOf(id) + '，当前生效';
-    }
-    return id === REST_ID ? '休息，点按把这天设为休息' : this.nameOf(id) + '，点按把这天改为该班次';
-  }
-
-  build() {
-    Column({ space: DesignTokens.space4 }) {
-      Column({ space: DesignTokens.space1 }) {
-        Text(DateLabel.mdw(this.epochDay))
-          .fontSize(DesignTokens.fontTitle)
-          .fontFamily(DesignTokens.fontRound)
-          .fontWeight(FontWeight.Bolder)
-          .fontColor(DesignTokens.textPrimary)
-        Text('当前：' + this.currentNote())
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textSecondary)
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-      // 日期和"当前是什么班"是一句话，分开念会听不出后半句在说哪天
-      .accessibilityGroup(true)
-      .accessibilityText(DateLabel.mdw(this.epochDay) + '，' + this.currentNote())
-
-      if (this.loading) {
-        Text('加载中…')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textTertiary)
-          .width('100%').textAlign(TextAlign.Center)
-          .padding({ top: DesignTokens.space5, bottom: DesignTokens.space5 })
-      } else if (this.failed) {
-        // 不给选：状态未知时任何一次点按都是往覆盖表里写一条猜测。
-        NoticeBar({
-          tone: NoticeTone.ERROR,
-          title: '这天的班表没读到',
-          body: '为避免误改，先不给你选班次。',
-          actionLabel: '重试',
-          onAction: () => {
-            this.load();
-          }
-        })
+  @Builder
+  safeFooter() {
+    Row({space:10}) {
+      if(this.custom) {
+        Button('返回').layoutWeight(1).height(46).backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textPrimary)
+          .enabled(!this.saving).onClick(() => this.custom=false)
+        Button(this.editingEntryId!==''?'更新这个班次':'加入当天').layoutWeight(1).height(46)
+          .backgroundColor(DesignTokens.primary).fontColor(DesignTokens.heroText)
+          .enabled(!this.saving).onClick(() => this.addCustom())
       } else {
-        Column({ space: DesignTokens.space2 }) {
-          Text('这天算什么')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textTertiary)
-          Flex({ wrap: FlexWrap.Wrap }) {
-            ForEach(this.types, (st: ShiftType) => {
-              Text(this.chipLabel(st.id))
-                .fontSize(DesignTokens.fontBody)
-                .fontColor(this.chipFg(st.id))
-                .fontWeight(600)
-                .textAlign(TextAlign.Center)
-                .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-                .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-                .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-                .borderRadius(DesignTokens.radiusPill)
-                .backgroundColor(this.chipBg(st.id))
-                // 选中那颗才有下沿：没被选中的芯片是浅底，不该浮起来
-                .shadow(this.isSelected(st.id)
-                  ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip)
-                  : undefined)
-                .focusable(true)
-                .accessibilityText(this.chipRead(st.id))
-                .clickEffect(DesignTokens.tapChip())
-                .onClick(() => this.write(st.id))
-            }, (st: ShiftType) => st.id)
-            Text(this.chipLabel(REST_ID))
-              .fontSize(DesignTokens.fontBody)
-              .fontColor(this.chipFg(REST_ID))
-              .fontWeight(600)
-              .textAlign(TextAlign.Center)
-              .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-              .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-              .borderRadius(DesignTokens.radiusPill)
-              .backgroundColor(this.chipBg(REST_ID))
-              .shadow(this.isSelected(REST_ID)
-                ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip)
-                : undefined)
-              .focusable(true)
-              .accessibilityText(this.chipRead(REST_ID))
-              .clickEffect(DesignTokens.tapChip())
-              .onClick(() => this.write(REST_ID))
-          }
-          .width('100%')
-
-          Text('只改这一天，比循环模板优先；长期规律请去「循环模板」里改。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-            .margin({ top: DesignTokens.space2 })
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
+        Button(this.saving?'保存中…':this.warning?'仍然保存':this.commitImmediately?'保存当天安排':'完成本日安排')
+          .layoutWeight(1).height(46).backgroundColor(DesignTokens.primary).fontColor(DesignTokens.heroText)
+          .fontWeight(FontWeight.Bold).enabled(!this.loading&&!this.failed&&!this.saving).onClick(() => this.save())
       }
-
-      Row({ space: DesignTokens.space3 }) {
-        // 失败时这句也不能念"无覆盖可清除"：那是对一条没读到的数据下结论。
-        Button(this.failed ? '覆盖状态未知' : (this.hasOv ? '清除覆盖' : '无覆盖可清除'))
-          .layoutWeight(1)
-          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-          .backgroundColor(DesignTokens.fillWeak)
-          .fontColor(this.hasOv ? DesignTokens.textSecondary : DesignTokens.textDisabled)
-          .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
-          .enabled(!this.failed && this.hasOv && !this.saving)
-          .onClick(() => this.clearOverride())
-        Button('完成')
-          .layoutWeight(1)
-          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-          .backgroundColor(DesignTokens.primary)
-          .fontWeight(700)
-          .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-          .enabled(!this.saving)
-          .onClick(() => this.onClose())
-      }
-      .width('100%')
-    }
-    .width('100%')
-    .height('100%')
-    .alignItems(HorizontalAlign.Start)
-    .padding({ left: 20, right: 20, top: DesignTokens.space4, bottom: DesignTokens.space6 })
-    .backgroundColor(DesignTokens.page)
-    // 7 分甜的 sheet 面是竖向暖白渐变，不是一块平色（原型 .sheet）
-    .linearGradient(DesignTokens.sheetGradient())
+    }.width('100%').padding({left:20,right:20,top:10,bottom:Math.max(12,this.bottomSafe+12)})
+      .backgroundColor(DesignTokens.card).flexShrink(0)
+  }
+  build() {
+    Column() {
+      Scroll(){this.shiftSelection()}.width('100%').layoutWeight(1)
+        .align(Alignment.TopStart).scrollBar(BarState.Off)
+      this.safeFooter()
+    }.width('100%').height(this.editorHeight())
+      .backgroundColor(DesignTokens.card)
   }
 }

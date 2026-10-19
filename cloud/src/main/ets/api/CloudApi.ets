@@ -59,7 +59,7 @@ export interface PairSession {
   peerUid: string;
   /** 对端 HUKS 公钥（base64，不透明字节）。 */
   peerPublicKey: string;
-  /** 加入方拿到、由加入方经安全信道交回发起方的一次性确认凭据。 */
+  /** 仅 create 返回给邀请方的一次性确认凭据；join/status 均为空。 */
   confirmToken: string;
   expiresAt: number;
   serverTime: number;

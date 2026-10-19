@@ -1,0 +1,2084 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>共同休时 · 全页面界面原型</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root[data-theme="light"]{
+--start_window_background:#FAF7F5;--brand_pink:#D24A7E;--brand_pink_bg:#FFF3F8;--brand_pink_border:#F7D6E5;--brand_pink_muted:#B27A99;
+--text_primary:#333333;--text_secondary:#666666;--text_tertiary:#999999;--text_hint:#AAAAAA;--text_disabled:#CCCCCC;
+--card_bg:#FFFFFF;--page_bg:#FFFFFF;--page_bg_soft:#F7F7F7;--page_bg_warm:#FAF7F5;
+--border_weak:#F0F0F0;--fill_weak:#F0F0F0;--fill_weakest:#FAFAFA;--fill_soft:#EEEEEE;--divider:#DDDDDD;
+--btn_neutral:#999999;--sheet_handle:#DDDDDD;
+--success_green:#4E9A63;--success_bg:#F1FBF3;--danger_red:#E0533A;--danger_bg:#FDF0ED;--danger_border:#F3C1B5;
+--info_blue:#3AA6E8;--info_bg:#EEF4FF;--accent_purple:#8A63D2;--warn_orange:#E8833A;--warn_bg:#FFF3EC;
+--tag_weekend:#8A63D2;--tag_trip:#2B4C9B;--tag_fallback:#7A7A7A;
+--month_free_none_bg:#F2F2F2;--month_free_low_bg:#F7D9E4;--month_free_mid_bg:#E89AB6;--month_free_none_fg:#B0B0B0;--month_free_low_fg:#7A3550;
+--bar_gap:#EFEFEF;--my_busy:#8FA3B0;--partner_busy:#D9A441;
+--sunset_from:#D24A7E;--sunset_to:#E8833A;--shadow_soft:#14000000;
+--scene_warm:rgba(242,214,164,.30);--scene_rose:rgba(231,174,184,.26);--scene_blue:rgba(140,166,180,.23);
+--scene_veil_soft:rgba(247,237,223,.32);--scene_veil_strong:rgba(247,237,223,.55);
+--glass_strong:rgba(255,249,240,.875);--glass_soft:rgba(143,47,76,.85);
+--glass_border:rgba(151,49,79,.19);--glass_highlight:rgba(255,255,255,.30);--glass_shadow:rgba(91,66,51,.10);
+--glass_fallback:rgba(255,249,240,.95);
+}
+:root[data-theme="dark"]{
+--start_window_background:#171412;--brand_pink:#DE5F8E;--brand_pink_bg:#3A2230;--brand_pink_border:#5A3A4C;--brand_pink_muted:#C79BB3;
+--text_primary:#E6E6E6;--text_secondary:#B8B8B8;--text_tertiary:#8F8F8F;--text_hint:#7A7A7A;--text_disabled:#5A5A5A;
+--card_bg:#1E1E1E;--page_bg:#141414;--page_bg_soft:#171717;--page_bg_warm:#171412;
+--border_weak:#2E2E2E;--fill_weak:#2A2A2A;--fill_weakest:#232323;--fill_soft:#2A2A2A;--divider:#3D3D3D;
+--btn_neutral:#8F8F8F;--sheet_handle:#444444;
+--success_green:#74BB8E;--success_bg:#1B2E22;--danger_red:#EF7B64;--danger_bg:#331E1A;--danger_border:#6E3A2E;
+--info_blue:#5FB4F0;--info_bg:#1A2635;--accent_purple:#AB8CEB;--warn_orange:#F09A5F;--warn_bg:#332619;
+--tag_weekend:#AB8CEB;--tag_trip:#7D9BE0;--tag_fallback:#9C9C9C;
+--month_free_none_bg:#2E2E2E;--month_free_low_bg:#4A2837;--month_free_mid_bg:#B8617F;--month_free_none_fg:#6A6A6A;--month_free_low_fg:#F0C9D8;
+--bar_gap:#2E2E2E;--my_busy:#A6BAC7;--partner_busy:#E0B25E;
+--sunset_from:#C4537F;--sunset_to:#C96A33;--shadow_soft:#00000000;
+--scene_warm:rgba(92,69,41,.18);--scene_rose:rgba(91,48,64,.16);--scene_blue:rgba(47,70,82,.14);
+--scene_veil_soft:rgba(23,20,18,.32);--scene_veil_strong:rgba(23,20,18,.55);
+--glass_strong:rgba(36,30,27,.875);--glass_soft:rgba(108,39,64,.85);
+--glass_border:rgba(255,255,255,.20);--glass_highlight:rgba(255,255,255,.15);--glass_shadow:rgba(0,0,0,.25);
+--glass_fallback:rgba(32,27,25,.96);
+}
+body{font:14px/1.5 -apple-system,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",sans-serif;background:#0d0d0f;color:#ddd}
+.wrap{display:flex;gap:16px;padding:16px;align-items:flex-start;min-height:100vh}
+.panel{width:336px;flex:0 0 336px;max-height:calc(100vh - 32px);overflow:auto;background:#17171a;border:1px solid #2a2a2e;border-radius:14px;padding:14px 14px 22px;font-size:12px;color:#cfcfcf}
+.panel h2{font-size:14px;color:#fff;margin-bottom:2px}
+.panel p.sub{color:#8a8a8a;font-size:11px;line-height:1.6;margin-bottom:8px}
+.panel h3{font-size:10px;letter-spacing:.1em;color:#7d7d84;margin:16px 0 6px;text-transform:uppercase}
+.prow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.pbtn{background:#26262a;border:1px solid #35353b;color:#d6d6d6;border-radius:8px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:inherit}
+.pbtn.on{background:#D24A7E;border-color:#D24A7E;color:#fff}
+.pslider{display:grid;grid-template-columns:78px 1fr 52px;align-items:center;gap:6px;margin-bottom:6px;color:#b6b6b6}
+.pslider b{font-weight:500;color:#f0c9d8;text-align:right;font-variant-numeric:tabular-nums}
+.pslider input[type=range]{width:100%;accent-color:#D24A7E}
+.nav{display:grid;grid-template-columns:1fr;gap:3px}
+.nav button{display:flex;justify-content:space-between;align-items:center;gap:6px;background:transparent;border:1px solid #2c2c31;color:#cfcfcf;border-radius:8px;padding:6px 8px;cursor:pointer;font-family:inherit;font-size:11px;text-align:left}
+.nav button:hover{border-color:#D24A7E}
+.nav button.on{background:#2a1c22;border-color:#D24A7E;color:#fff}
+.nav span{color:#6d6d74;font-size:9px;font-family:ui-monospace,Consolas,monospace}
+.tok{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.tok div{display:flex;align-items:center;gap:4px;font-size:9px;color:#9a9aa2;font-family:ui-monospace,Consolas,monospace}
+.tok i{width:12px;height:12px;border-radius:3px;border:1px solid #3a3a40;flex:0 0 12px}
+.panel hr{border:0;border-top:1px solid #2a2a2e;margin:14px 0}
+.stage{display:flex;justify-content:center;align-items:flex-start}
+.phone{width:384px;height:812px;flex:0 0 384px;background:var(--page_bg_warm);color:var(--text_primary);border:10px solid #000;border-radius:40px;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 26px 60px rgba(0,0,0,.55)}
+.sb{height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:11px;color:var(--text_secondary);background:var(--page_bg_warm)}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;background:var(--page_bg_warm);scrollbar-width:none}
+.screen::-webkit-scrollbar{display:none}
+.tabbar{flex:0 0 64px;display:flex;align-items:stretch;background:var(--card_bg);border-top:1px solid var(--border_weak);padding-bottom:8px}
+.tabbar.hide{display:none}
+.tabbar .t{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--text_tertiary);font-size:11px;border:0;background:transparent;font-family:inherit}
+.tabbar .t.on{color:var(--brand_pink);font-weight:700}
+.page{padding-bottom:20px}
+.hd{display:flex;align-items:center;padding:12px;gap:6px}
+.hd .ht{flex:1;text-align:center;font-size:17px;font-weight:700}
+.hd .hl{display:flex;align-items:center;gap:2px;cursor:pointer;color:var(--brand_pink);font-size:15px;min-width:44px}
+.hd .hr{min-width:44px;text-align:right;font-size:14px;color:var(--brand_pink);cursor:pointer}
+.body{padding:0 12px}
+.card{background:var(--card_bg);border-radius:16px;padding:12px;box-shadow:0 4px 16px var(--shadow_soft)}
+.row{display:flex;align-items:center;gap:8px}.col{display:flex;flex-direction:column}
+.w100{width:100%}.lw{flex:1}.between{justify-content:space-between}.center{justify-content:center;align-items:center}
+.wrapf{flex-wrap:wrap}.gap2{gap:2px}.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}
+.mt4{margin-top:4px}.mt8{margin-top:8px}.mt10{margin-top:10px}.mt12{margin-top:12px}.mt16{margin-top:16px}
+.t10{font-size:10px}.t11{font-size:11px}.t12{font-size:12px}.t13{font-size:13px}.t14{font-size:14px}.t15{font-size:15px}.t16{font-size:16px}.t17{font-size:17px}
+.c1{color:var(--text_primary)}.c2{color:var(--text_secondary)}.c3{color:var(--text_tertiary)}.ch{color:var(--text_hint)}
+.pink{color:var(--brand_pink)}.blue{color:var(--info_blue)}.green{color:var(--success_green)}.red{color:var(--danger_red)}.purple{color:var(--accent_purple)}
+.b5{font-weight:500}.b7{font-weight:700}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:13px;font-size:12px;background:var(--fill_weak);color:var(--text_secondary);border:0;cursor:pointer;font-family:inherit}
+.chip.on{background:var(--brand_pink);color:#fff}
+.chip.blue-on{background:var(--info_blue);color:#fff}
+.tag{display:inline-block;font-size:10px;line-height:1;padding:4px 8px;border-radius:8px;color:#fff}
+.btn{background:var(--brand_pink);color:#fff;border:0;border-radius:12px;padding:9px 14px;font-size:14px;cursor:pointer;font-family:inherit}
+.btn.big{height:44px;border-radius:22px}
+.btn.sm{height:32px;padding:0 12px;font-size:12px;border-radius:16px}
+.btn.ghost{background:var(--fill_weak);color:var(--text_secondary)}
+.btn.blue{background:var(--info_blue)}.btn.purple{background:var(--accent_purple)}.btn.green{background:var(--success_green)}
+.btn.orange{background:var(--warn_orange)}.btn.navy{background:var(--tag_trip)}.btn.red{background:var(--danger_red)}
+.btn:disabled{opacity:.35;cursor:default}
+.inp{background:var(--fill_weakest);border:1px solid var(--border_weak);border-radius:10px;height:38px;padding:0 10px;font-size:13px;color:var(--text_primary);font-family:inherit;outline:none;width:100%}
+.inp:focus{border-color:var(--brand_pink_border)}
+.ta{height:auto;padding:8px 10px;line-height:1.5;resize:vertical}
+.li{display:flex;align-items:center;gap:10px;background:var(--card_bg);border-radius:14px;padding:14px 12px;box-shadow:0 4px 16px var(--shadow_soft);cursor:pointer}
+.arow{display:flex;align-items:center;gap:10px;padding:12px 2px;cursor:pointer}
+.arow + .arow{border-top:1px solid var(--border_weak)}
+.hero{border-radius:18px;padding:16px;color:#fff;background:linear-gradient(135deg,var(--sunset_from),var(--sunset_to));box-shadow:0 10px 26px #d24a7e40}
+.hr-line{height:1px;background:var(--divider);margin:10px 0}
+.seg{display:flex;background:var(--fill_weak);border-radius:16px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--text_secondary);font-size:12px;padding:6px 0;border-radius:13px;cursor:pointer;font-family:inherit}
+.seg button.on{background:var(--card_bg);color:var(--brand_pink);font-weight:600;box-shadow:0 2px 6px var(--shadow_soft)}
+.seg.slide{position:relative;width:20%}
+.seg.slide .thumb{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 4.5px);border-radius:13px;background:var(--card_bg);box-shadow:0 2px 6px var(--shadow_soft);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.seg.slide button{position:relative;z-index:1;font-size:11px;padding:6px 0}
+.seg.slide button.on{background:transparent;box-shadow:none}
+.sw{width:42px;height:24px;border-radius:12px;background:var(--fill_soft);position:relative;cursor:pointer;transition:.18s;flex:0 0 42px;border:0;display:inline-block}
+.sw.on{background:var(--brand_pink)}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.18s}
+.sw.on:after{left:21px}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--divider);flex:0 0 18px;position:relative;cursor:pointer;display:inline-block}
+.radio.on{border-color:var(--brand_pink)}
+.radio.on:after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--brand_pink)}
+.bar{height:10px;border-radius:5px;display:flex;gap:1px;background:var(--bar_gap);overflow:hidden}
+.bar>i{display:block;height:100%}
+.track{position:relative;height:18px;border-radius:9px;background:var(--brand_pink_border);overflow:hidden}
+.track>i{position:absolute;top:0;bottom:0;background:var(--brand_pink);border-radius:9px}
+.src{display:inline-block;font-size:9px;line-height:1.4;color:#fff;background:#3AA6E8d9;border-radius:4px;padding:0 4px;margin-left:5px;font-weight:400;vertical-align:middle}
+.mgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 6px}
+.mhead{display:grid;grid-template-columns:repeat(7,1fr);padding:0 6px}
+.mhead div{text-align:center;font-size:12px;color:var(--text_tertiary)}
+.week{display:flex;gap:0}
+.wlabels{width:26px;flex:0 0 26px;position:relative;height:816px}
+.wlabels span{position:absolute;right:3px;font-size:8px;color:var(--text_hint);transform:translateY(-50%)}
+.wcols{display:flex;flex:1;gap:0}
+.wcol{width:14.28%;flex:0 0 14.28%;position:relative;height:816px;cursor:pointer}
+.wgrid{position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent 33px,var(--border_weak) 33px,var(--border_weak) 34px)}
+.wblk{position:absolute;left:1px;right:1px;border-radius:4px;font-size:9px;line-height:1.15;color:#fff;overflow:hidden;padding:1px 2px;pointer-events:none}
+.whead{display:flex;flex:1}
+.whead div{width:14.28%;flex:0 0 14.28%;text-align:center;font-size:10px;color:var(--text_tertiary);line-height:1.3}
+.whead div b{display:block;font-size:12px;font-weight:500;color:var(--text_secondary)}
+.whead div i{display:block;font-size:9px;font-style:normal;line-height:1.1;color:var(--brand_pink_muted)}
+.whead div i u{display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--tag_trip);margin-left:2px;vertical-align:middle;text-decoration:none}
+/* 共同时间周视图：22px/小时，整周 528px 一屏放得下 */
+.clabels{width:26px;flex:0 0 26px;position:relative;height:var(--gh,528px)}
+.clabels span{position:absolute;right:3px;font-size:8px;color:var(--text_hint);transform:translateY(-50%)}
+.ccols{display:flex;flex:1}
+.ccol{width:14.28%;flex:0 0 14.28%;position:relative;height:var(--gh,528px);cursor:pointer}
+.ccol.off{cursor:default}
+.cgrid{position:absolute;inset:0;background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh,22px) - 1px),var(--border_weak) calc(var(--hh,22px) - 1px),var(--border_weak) var(--hh,22px))}
+.cgrid.t{background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh,22px) - 1px),var(--border_weak) calc(var(--hh,22px) - 1px),var(--border_weak) var(--hh,22px)),linear-gradient(var(--brand_pink_bg),var(--brand_pink_bg))}
+.cblk{position:absolute;left:1px;right:1px;border-radius:4px;font-size:9px;line-height:1.1;color:#fff;overflow:hidden;padding-top:1px;pointer-events:none;text-align:center;font-variant-numeric:tabular-nums}
+.cslp{position:absolute;left:0;right:0;background:var(--fill_soft);pointer-events:none}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.36);opacity:0;pointer-events:none;transition:.2s;z-index:20}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--page_bg_warm);border-radius:20px 20px 0 0;transform:translateY(106%);transition:transform .26s cubic-bezier(.2,.8,.2,1);z-index:22;max-height:86%;overflow-y:auto;padding-bottom:18px}
+.sheet.on{transform:none}
+.handle{width:36px;height:4px;border-radius:2px;background:var(--sheet_handle);margin:8px auto 4px}
+.dlgwrap{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.42);z-index:30;padding:26px}
+.dlgwrap.on{display:flex}
+.dlg{background:var(--card_bg);border-radius:20px;padding:22px 20px;width:100%}
+.privacy{position:absolute;inset:0;background:var(--page_bg);z-index:40;display:none;overflow-y:auto;padding:26px 22px 40px}
+.privacy.on{display:block}
+.toast{position:absolute;left:50%;transform:translateX(-50%) translateY(8px);bottom:96px;background:rgba(0,0,0,.82);color:#fff;padding:9px 18px;border-radius:18px;font-size:12px;opacity:0;transition:.25s;z-index:60;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.card2x2{width:170px;height:170px;border-radius:20px;padding:14px;color:#fff;display:flex;flex-direction:column;background:linear-gradient(135deg,#D24A7E,#E8833A)}
+.empty{text-align:center;padding:34px 16px;color:var(--text_hint);font-size:12px;line-height:1.8}
+
+/* ========== 视觉方向 01：温暖编辑感 ========== */
+.phone{
+--brand_pink:#97314F;--brand_pink_bg:#F7E9E7;--brand_pink_border:#E8C8C7;--brand_pink_muted:#A26372;
+--text_primary:#382B28;--text_secondary:#6F5F59;--text_tertiary:#8C7C75;--text_hint:#A89992;--text_disabled:#C8BBB3;
+--card_bg:#FFF9F0;--page_bg:#F7EDDF;--page_bg_soft:#F2E5D7;--page_bg_warm:#F7EDDF;
+--border_weak:#E8D9CC;--fill_weak:#EFE2D5;--fill_weakest:#FBF2E7;--fill_soft:#E9DCCE;--divider:#E4D3C5;
+--btn_neutral:#8D7D76;--sheet_handle:#CEBCAF;
+--success_green:#577D67;--success_bg:#E8F0E9;--danger_red:#A94750;--danger_bg:#F3DFDA;--danger_border:#E5C0B9;
+--info_blue:#587783;--info_bg:#E6ECEB;--accent_purple:#7E6078;--warn_orange:#B36B4E;--warn_bg:#F4E6DC;
+--tag_weekend:#7E6078;--tag_trip:#536F75;--tag_fallback:#82736D;
+--month_free_none_bg:#EEE4D9;--month_free_low_bg:#EAD2CF;--month_free_mid_bg:#C9808F;--month_free_none_fg:#A99C95;--month_free_low_fg:#743E4A;
+--bar_gap:#E9DDD1;--my_busy:#72888B;--partner_busy:#B59061;
+--sunset_from:#8F2F4C;--sunset_to:#8F2F4C;--shadow_soft:#20120A0D;
+background:var(--page_bg_warm);
+font-family:"Avenir Next","HarmonyOS Sans SC","PingFang SC",sans-serif;
+box-shadow:0 30px 85px rgba(56,35,27,.34),inset 0 0 0 1px rgba(255,255,255,.18);
+}
+html[data-theme="dark"] .phone{
+--brand_pink:#D58AA1;--brand_pink_bg:#38272A;--brand_pink_border:#60424A;--brand_pink_muted:#C3909D;
+--text_primary:#F0E6DB;--text_secondary:#C8B9AF;--text_tertiary:#A89990;--text_hint:#897B74;--text_disabled:#655B56;
+--card_bg:#201B19;--page_bg:#171311;--page_bg_soft:#1D1816;--page_bg_warm:#191411;
+--border_weak:#332925;--fill_weak:#302621;--fill_weakest:#261F1C;--fill_soft:#372C27;--divider:#45362F;
+--btn_neutral:#A3948B;--sheet_handle:#5A4840;
+--success_green:#82AA90;--success_bg:#1F3025;--danger_red:#E09093;--danger_bg:#3A2424;--danger_border:#68403E;
+--info_blue:#82A6AD;--info_bg:#213033;--accent_purple:#B997AE;--warn_orange:#C98E71;--warn_bg:#39291F;
+--tag_weekend:#B997AE;--tag_trip:#86A2A2;--tag_fallback:#A6978F;
+--month_free_none_bg:#2C2521;--month_free_low_bg:#4B3036;--month_free_mid_bg:#A15B6E;--month_free_none_fg:#71645E;--month_free_low_fg:#E7C2C7;
+--bar_gap:#302722;--my_busy:#91A7A8;--partner_busy:#C7A777;--shadow_soft:#00000000;
+}
+.phone::after{
+content:"";position:absolute;inset:0;z-index:19;pointer-events:none;opacity:.026;
+background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.85'/%3E%3C/svg%3E");
+}
+.sb{height:30px;flex-basis:30px;padding:0 21px;background:var(--page_bg_warm);font-size:10px;letter-spacing:.02em}
+.screen{background:
+radial-gradient(circle at 106% -5%,color-mix(in srgb,var(--brand_pink) 8%,transparent),transparent 180px),
+var(--page_bg_warm)}
+.page{padding-bottom:28px}
+.body{padding:0 18px}
+.hd{position:relative;min-height:74px;padding:18px 20px 10px;align-items:flex-start}
+.hd .ht,.hd .t17,.page>.body>.hero:first-child>div .b7{
+font-family:"Iowan Old Style","Songti SC","STSong",serif;letter-spacing:-.035em
+}
+.hd .ht{font-size:21px;font-weight:500}
+.hd .t17{font-size:26px;font-weight:500;line-height:1.05}
+.hd .hl,.hd .hr{font-size:13px;font-weight:600}
+.date-seal{
+position:absolute;right:20px;top:15px;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;
+border:1px solid color-mix(in srgb,var(--brand_pink) 28%,transparent);color:var(--brand_pink);
+font-family:"Iowan Old Style","Songti SC",serif;font-size:8px;line-height:1.2;text-align:center;transform:rotate(8deg)
+}
+.card{
+background:color-mix(in srgb,var(--card_bg) 88%,transparent);border-radius:8px 21px 21px 21px;padding:15px;
+box-shadow:0 13px 32px rgba(91,66,51,.065),inset 0 1px 0 rgba(255,255,255,.42)
+}
+html[data-theme="dark"] .card{box-shadow:inset 0 1px 0 rgba(255,255,255,.045)}
+.body>.card:nth-of-type(even){border-radius:21px 8px 21px 21px}
+.hero{
+position:relative;overflow:hidden;border-radius:8px 28px 28px 28px;padding:19px 20px!important;
+background:#8F2F4C!important;color:#FFF8EF;box-shadow:0 18px 38px rgba(99,40,53,.2),inset 0 1px 0 rgba(255,255,255,.13)
+}
+.hero::after{
+content:"";position:absolute;right:-34px;bottom:-55px;width:148px;height:148px;border-radius:50%;
+background:rgba(224,157,137,.52);pointer-events:none
+}
+.hero>*{position:relative;z-index:1}
+.hero [style*="font-size:28px"],.hero [style*="font-size:19px"]{
+font-family:"Iowan Old Style","Songti SC","STSong",serif;font-weight:500!important;letter-spacing:-.04em
+}
+.hero .hero-duration{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:30px;font-weight:500;letter-spacing:-.04em;margin-top:11px}
+.editorial-cta{display:inline-flex;align-items:center;gap:7px;color:#FFF8EF;font-size:10px;font-weight:600}
+.editorial-cta i{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);font-style:normal;transition:transform 650ms cubic-bezier(.22,1,.36,1)}
+.hero:hover .editorial-cta i{transform:translate(2px,-2px) scale(1.05)}
+.conflict-card{border:0!important;border-radius:18px 6px 18px 18px!important;padding:12px 13px!important}
+.conflict-mark{width:25px;height:25px;flex:0 0 25px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--danger_red) 10%,transparent);color:var(--danger_red);font:600 12px/1 "Iowan Old Style",serif}
+.answer-card{padding:4px 15px}
+.arow{position:relative;padding:15px 2px 15px 10px;transition:transform 600ms cubic-bezier(.22,1,.36,1)}
+.arow::before{content:"";position:absolute;left:0;top:18px;width:2px;height:28px;border-radius:2px;background:color-mix(in srgb,var(--brand_pink) 58%,transparent)}
+.arow:hover{transform:translateX(3px)}
+.arow+.arow{border-top:1px solid color-mix(in srgb,var(--divider) 72%,transparent)}
+.answer-value{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:17px;font-weight:500;letter-spacing:-.025em}
+/* N-01：App 的 EditorialSection 版式（component/EditorialSection.ets）——眉标 + 衬线小标题 + 右侧动作。
+   眉标在 App 长辈模式下收起，所以只算装饰，正文含义全在小标题里。 */
+.sect-head{padding:15px 2px 0}
+.answer-card .sect-head{padding-left:10px}
+.sect-eyebrow{color:var(--brand_pink);font-size:13px;line-height:1.1;letter-spacing:.08em;margin-bottom:5px}
+.sect-row{display:flex;align-items:center;gap:8px}
+.sect-title{flex:1;font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:21px;font-weight:500;
+letter-spacing:-.035em;line-height:1.15;color:var(--text_primary)}
+.sect-act{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--brand_pink);cursor:pointer;padding:8px 2px}
+/* D-19：App 的 EditorialCard 卡头（MeView.cardHead）是 16fp 衬线 + 右侧 13fp 品牌色动作 */
+.cd-head{display:flex;align-items:center;gap:8px}
+.cd-title{flex:1;font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:16px;font-weight:500;
+letter-spacing:-.02em;color:var(--text_primary)}
+.cd-act{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--brand_pink);cursor:pointer;padding:8px 2px}
+/* D-19：三个主参数常驻为只读格，视界与最短共同时段收进「高级设置」折叠 */
+.stat-row{display:flex;gap:8px}
+.stat{flex:1;display:flex;flex-direction:column;gap:2px}
+.stat b{font-family:"Iowan Old Style","Songti SC","STSong",serif;font-size:16px;font-weight:500;
+letter-spacing:-.02em;line-height:1.2;color:var(--brand_pink)}
+.stat span{font-size:13px;color:var(--text_tertiary)}
+.adv-head{display:flex;align-items:center;gap:5px;min-height:44px;font-size:13px;color:var(--text_secondary);cursor:pointer}
+.adv-head .cw{flex:0 0 auto;color:var(--text_tertiary)}
+.chip{
+min-height:28px;border-radius:9px;padding:5px 10px;background:color-mix(in srgb,var(--fill_weak) 82%,transparent);
+font-size:11px;transition:transform 550ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)
+}
+.chip:hover{transform:translateY(-1px)}
+.chip:active,.btn:active{transform:scale(.98)}
+.chip.on{background:var(--brand_pink);color:#fff}
+/* D-16：回到本周的那颗——品牌色淡底 + 品牌色字，12fp / radius 10（同 WeekScheduleView.currentWeekChip） */
+.chip.soft{background:var(--brand_pink_bg);color:var(--brand_pink);font-weight:600;font-size:12px;border-radius:10px;padding:4px 8px}
+.chip.blue-on{background:var(--brand_pink);color:#fff}
+.tag{border-radius:5px;padding:4px 7px;font-size:9px;letter-spacing:.02em}
+.btn{
+min-height:38px;border-radius:999px;background:var(--brand_pink);font-size:12px;font-weight:600;
+transition:transform 600ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)
+}
+.btn.big{height:44px;border-radius:999px}
+.btn.ghost{background:var(--fill_weak);color:var(--text_secondary)}
+.btn.blue,.btn.purple,.btn.green,.btn.orange,.btn.navy{background:var(--brand_pink)}
+.inp{
+height:40px;border:0;border-radius:8px 14px 14px 14px;background:var(--fill_weakest);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand_pink) 9%,transparent);color:var(--text_primary)
+}
+.inp:focus{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--brand_pink) 46%,transparent)}
+.li{border-radius:8px 18px 18px 18px;background:transparent;box-shadow:none;padding:14px 3px}
+.seg{border-radius:12px;padding:4px;background:color-mix(in srgb,var(--fill_weak) 84%,transparent)}
+.seg button{border-radius:9px;padding:7px 0;transition:transform 500ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)}
+.seg button.on{background:var(--card_bg);color:var(--brand_pink);box-shadow:0 8px 18px rgba(96,65,52,.08)}
+.seg.slide{width:31%;min-width:112px}
+.seg.slide .thumb{border-radius:9px;background:var(--card_bg);box-shadow:0 8px 18px rgba(96,65,52,.08);transition:transform 600ms cubic-bezier(.22,1,.36,1)}
+.track{height:7px;border-radius:5px;background:var(--brand_pink_border)}
+.track>i{border-radius:5px;background:var(--brand_pink)}
+.sw{background:var(--fill_soft);transition:background-color 500ms cubic-bezier(.22,1,.36,1)}
+.sw:after{left:3px;transition:transform 550ms cubic-bezier(.22,1,.36,1)}
+.sw.on:after{left:3px;transform:translateX(18px)}
+.radio{border-color:var(--divider)}
+.cgrid{background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh,22px) - 1px),color-mix(in srgb,var(--border_weak) 70%,transparent) calc(var(--hh,22px) - 1px),color-mix(in srgb,var(--border_weak) 70%,transparent) var(--hh,22px))}
+.cgrid.t{background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh,22px) - 1px),color-mix(in srgb,var(--border_weak) 70%,transparent) calc(var(--hh,22px) - 1px),color-mix(in srgb,var(--border_weak) 70%,transparent) var(--hh,22px)),linear-gradient(var(--brand_pink_bg),var(--brand_pink_bg))}
+.cblk{border-radius:3px 7px 7px 7px}
+.sheet{border-radius:28px 28px 0 0;background:var(--page_bg_warm);box-shadow:0 -22px 65px rgba(49,30,23,.18);transition:transform 650ms cubic-bezier(.22,1,.36,1)}
+.scrim{background:rgba(42,27,22,.42);transition:opacity 450ms cubic-bezier(.22,1,.36,1)}
+.dlgwrap{background:rgba(42,27,22,.5)}
+.dlg{border-radius:9px 25px 25px 25px;background:var(--card_bg);box-shadow:0 28px 70px rgba(43,27,21,.2)}
+.privacy{background:var(--page_bg_warm)}
+.toast{border-radius:10px;background:rgba(52,39,34,.9);transition:transform 500ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)}
+.tabbar{
+position:relative;z-index:21;flex-basis:60px;height:60px;margin:0 11px 10px;padding:4px 5px 6px;border:0;border-radius:20px;
+background:color-mix(in srgb,var(--card_bg) 94%,transparent);box-shadow:0 14px 34px rgba(79,56,45,.15),inset 0 1px 0 rgba(255,255,255,.48)
+}
+.tabbar .t{font-size:9px;font-weight:500;transition:transform 550ms cubic-bezier(.22,1,.36,1),opacity 350ms cubic-bezier(.22,1,.36,1)}
+.tabbar .t:hover{transform:translateY(-2px)}
+.tabbar .t.on{font-weight:650}
+.tabbar .t.on svg{filter:drop-shadow(0 5px 5px color-mix(in srgb,var(--brand_pink) 24%,transparent))}
+.screen-enter .page{animation:enterUp 800ms cubic-bezier(.22,1,.36,1) both}
+.screen-enter .page>.body>*{animation:itemUp 780ms cubic-bezier(.22,1,.36,1) both}
+.screen-enter .page>.body>*:nth-child(2){animation-delay:55ms}
+.screen-enter .page>.body>*:nth-child(3){animation-delay:100ms}
+.screen-enter .page>.body>*:nth-child(4){animation-delay:145ms}
+@keyframes enterUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes itemUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.phone :is(button,[data-act],[data-p],input,textarea):focus-visible{outline:2px solid color-mix(in srgb,var(--brand_pink) 72%,white);outline-offset:3px}
+
+/* ---- 阶段 1V「温暖影像玻璃」试点：气氛层 / 纸面层 / 玻璃层 ----
+   只覆盖首页背景、Hero 与底栏，其余页面维持纸面；对应 entry 的 AmbientScene / GlassSurface / AppNavigator。
+   html[data-glass="material"]＝系统材质路径；html[data-glass="solid"]＝降低透明度或材质不可用，退化为近实色。 */
+.phone[data-screen="home"] .screen{background:transparent}
+.phone[data-screen="home"] .screen::before,.phone[data-screen="home"] .screen::after{
+  content:'';position:sticky;top:0;z-index:-1;display:block;width:100%;pointer-events:none}
+.phone[data-screen="home"] .screen::before{height:487px;margin-bottom:-487px;
+  background:linear-gradient(168deg,var(--scene_warm) 0%,var(--scene_rose) 42%,var(--scene_blue) 72%,transparent 100%)}
+.phone[data-screen="home"] .screen::after{height:786px;margin-bottom:-786px;
+  background:linear-gradient(180deg,var(--scene_veil_soft) 0%,var(--scene_veil_strong) 34%,transparent 66%)}
+/* 首屏唯一强玻璃焦点：文字底下始终有稳定深莓底 */
+html[data-glass="material"] .hero{
+  background:var(--glass_soft);border:1px solid var(--glass_border);
+  box-shadow:0 14px 34px var(--glass_shadow),inset 0 1px 0 var(--glass_highlight);
+  backdrop-filter:blur(18px) saturate(1.3)}
+@media(max-width:820px){
+.wrap{flex-direction:column;align-items:stretch;padding:8px;gap:12px}
+.panel{width:100%;flex-basis:auto;max-height:none}
+.stage{width:100%}
+.phone{width:min(384px,calc(100vw - 16px));flex-basis:auto;margin-inline:auto}
+}
+@media(max-width:390px){
+.phone{height:780px;border-width:7px;border-radius:32px}
+.body{padding-inline:14px}
+.hd{padding-inline:16px}
+.date-seal{right:16px}
+.card{padding:13px}
+.hero{padding:17px!important}
+.answer-value{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+.screen-enter .page,.screen-enter .page>.body>*{animation:none}
+.chip,.btn,.arow,.tabbar .t,.editorial-cta i,.sheet,.scrim,.toast{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="panel">
+    <h2>共同休时 · 界面原型</h2>
+    <p class="sub">单文件同步 <b>entry/src/main/ets</b> 全部页面与半模态。引擎（展开 → 缓冲 → 并集 → 补集 → 分类 → 过滤，v1.2 常规/旅行双通道）按 <b>domain</b> 逻辑移植，窗口形状与标签是算出来的，不是假数据。</p>
+    <p class="sub" id="scope-note"></p>
+    <h3>主题 / 调试</h3>
+    <div class="prow">
+      <button class="pbtn" data-p="theme-light">浅色</button>
+      <button class="pbtn" data-p="theme-dark">深色</button>
+      <button class="pbtn" data-p="inspect">来源标记</button>
+      <button class="pbtn" data-p="privacy">隐私弹窗</button>
+    </div>
+    <h3>阶段 1V 玻璃试点</h3>
+    <div class="prow">
+      <button class="pbtn" data-p="glass-material">玻璃：系统材质</button>
+      <button class="pbtn" data-p="glass-solid">玻璃：实色回退</button>
+    </div>
+    <p class="sub">只覆盖首页气氛层与 Hero 的深莓底；底栏沿用不透明纸面，对应 App 的 GlassSurface 降级分支。</p>
+    <div class="prow">
+      <button class="pbtn" data-p="partner">伴侣：开</button>
+      <button class="pbtn" data-p="agc">AGC 云服务：已开通</button>
+      <button class="pbtn" data-p="owner">录入对象：我</button>
+      <button class="pbtn" data-p="reset">重置全部数据</button>
+    </div>
+    <h3>作息参数（实时重算）</h3>
+    <div id="sliders"></div>
+    <div class="prow"><button class="pbtn" data-p="default-params">恢复 defaultParams()</button></div>
+    <hr>
+    <h3>页面跳转 · 对应 .ets</h3>
+    <div class="nav" id="nav"></div>
+    <h3>色板 token（本页 55 项 / color.json 61 项）</h3>
+    <div class="tok" id="tok"></div>
+    <hr>
+    <p class="sub">改 UI 只需改本文件的 <code>&lt;style&gt;</code> 与 <code>scr*/sheet*</code> 函数；<code>S</code> 是状态树，<code>CACHE</code> 是引擎输出。回写 ArkUI 时注意：一个节点只能绑一个 bindSheet、ForEach key 需含月份、无 LongPressGesture 清除（同色再点一次）。</p>
+  </aside>
+
+  <main class="stage">
+    <div class="phone" id="phone">
+      <div class="sb"><span id="sb-time">09:41</span><span>共同休时</span><span>100%</span></div>
+      <div class="screen" id="screen"></div>
+      <div class="tabbar" id="tabbar"></div>
+      <div class="scrim" id="scrim" data-act="closeSheet"></div>
+      <div class="sheet" id="sheet"></div>
+      <div class="dlgwrap" id="dlgwrap" data-act="dlgBackdrop"></div>
+      <div class="privacy" id="privacy"></div>
+      <div class="toast" id="toast"></div>
+    </div>
+  </main>
+</div>
+<script>
+/* ========== 0. 时间工具（对齐 commons/TimeUtil + DateLabel） ========== */
+var MIN = 1440;
+var WD = ['一','二','三','四','五','六','日'];
+var _n = new Date();
+function pad2(x){ return (x < 10 ? '0' : '') + x; }
+function epochDayOfYmd(y,m,d){ return Math.floor(Date.UTC(y, m-1, d) / 86400000); }
+function dayParts(ed){ var t = new Date(ed * 86400000); return { y:t.getUTCFullYear(), m:t.getUTCMonth()+1, d:t.getUTCDate() }; }
+var TODAY = epochDayOfYmd(_n.getFullYear(), _n.getMonth()+1, _n.getDate());
+var NOW = TODAY * MIN + _n.getHours() * 60 + _n.getMinutes();
+function weekdayOf(ed){ return ((ed % 7) + 7 + 3) % 7 + 1; }
+function isWeekend(ed){ return weekdayOf(ed) >= 6; }
+function hm(min){ var m = ((min % MIN) + MIN) % MIN; return pad2(Math.floor(m/60)) + ':' + pad2(m % 60); }
+function md(ed){ var p = dayParts(ed); return p.m + '月' + p.d + '日'; }
+function mdw(ed){ return md(ed) + ' 周' + WD[weekdayOf(ed)-1]; }
+function ymdOfEpoch(ed){ var p = dayParts(ed); return p.y + '-' + pad2(p.m) + '-' + pad2(p.d); }
+function epochOfInput(v){ var a = String(v || '').split('-'); return a.length === 3 ? epochDayOfYmd(+a[0], +a[1], +a[2]) : null; }
+function duration(m){ if (m < 60) { return m + '分钟'; } var h = Math.floor(m/60), r = m % 60; return r === 0 ? h + '小时' : h + '小时' + r + '分'; }
+function endLabel(s,e){
+  var ds = Math.floor(s / MIN), de = Math.floor((e-1) / MIN), et = (e % MIN === 0) ? '24:00' : hm(e);
+  if (ds === de) { return hm(s) + '–' + et; }
+  return hm(s) + ' – ' + md(de) + ' ' + et;
+}
+function uid(){ uid._i = (uid._i || 0) + 1; return 'x' + Date.now().toString(36) + uid._i; }
+function esc(s){ return String(s === null || s === undefined ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toInt(v,dft){ var x = Number.parseInt(v, 10); return Number.isNaN(x) ? dft : x; }
+function hhmmToMin(txt,dft){
+  var m = String(txt || '').match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/);
+  if (!m) { return dft; }
+  var v = (+m[1]) * 60 + (+m[2]);
+  return v >= 0 && v < MIN ? v : dft;
+}
+function fv(k,dft){ var el = document.getElementById('f-' + k); return el ? el.value : dft; }
+
+/* ========== 1. 常量与种子数据 ========== */
+var REST_KEY = '__rest__';
+var SEED_SHIFTS = [
+  { id:'day',   name:'常白班', startMin:540,  endMin:1080, crossDay:false, commuteInMin:30, commuteOutMin:30, recoveryMin:0,   nightMode:0, color:'#E8833A' },
+  { id:'early', name:'早班',   startMin:420,  endMin:900,  crossDay:false, commuteInMin:30, commuteOutMin:30, recoveryMin:0,   nightMode:0, color:'#3AA6E8' },
+  { id:'mid',   name:'中班',   startMin:660,  endMin:1140, crossDay:false, commuteInMin:20, commuteOutMin:20, recoveryMin:0,   nightMode:0, color:'#8A63D2' },
+  { id:'late',  name:'晚班',   startMin:900,  endMin:1380, crossDay:false, commuteInMin:20, commuteOutMin:30, recoveryMin:0,   nightMode:0, color:'#D24A7E' },
+  { id:'night', name:'夜班',   startMin:1350, endMin:480,  crossDay:true,  commuteInMin:20, commuteOutMin:40, recoveryMin:360, nightMode:0, color:'#2B4C9B' },
+  { id:'train', name:'培训',   startMin:540,  endMin:720,  crossDay:false, commuteInMin:20, commuteOutMin:20, recoveryMin:0,   nightMode:0, color:'#4E9A63' }
+];
+var PALETTE = ['#E8833A','#3AA6E8','#8A63D2','#D24A7E','#2B4C9B','#4E9A63','#C9A227','#7A7A7A'];
+/* 计划类型不参与任何计算，只决定一次默认标题：可创建的收成 2 种。
+   key 用 'custom' 而不是新造 'other'：阶段 6R.4 的定稿是「其他」复用已有 key，从而不产生数据迁移。
+   历史计划存过的旧 key 只影响「怎么念」，见 KIND_LABEL。 */
+var PLAN_KINDS = [{ k:'meal', n:'一起吃饭' }, { k:'custom', n:'其他' }];
+var KIND_LABEL = { movie:'看电影', pickup:'接送孩子', parents:'回父母家', errand:'办证体检', trip:'短途旅行', study:'共同自习', other:'其他安排' };
+var TAG_COLOR = { WEEKEND:'var(--tag_weekend)', FULL_DAY:'var(--brand_pink)', TRIP:'var(--tag_trip)' };
+var BUSY_LABEL = { WORK:'班次', RECOVERY:'夜班恢复', COURSE:'课程', PLAN:'已有计划', BUSY:'通勤/忙碌', SLEEP:'睡眠' };
+var PLAN_COLOR = '#4E9A63', PLAN_CONFLICT_COLOR = '#D9534F', COURSE_COLOR = '#3AA6E8', RECOVERY_COLOR = '#A08CD8';
+function defaultSections(){
+  var out = [];
+  [480, 840, 1140].forEach(function(b){ for (var i = 0; i < 4; i++) { out.push({ startMin:b + i*55, endMin:b + i*55 + 45 }); } });
+  return out;
+}
+function sectionsToText(list){ return list.map(function(x){ return hm(x.startMin) + '-' + hm(x.endMin); }).join('\n'); }
+function textToSections(txt){
+  var out = [];
+  String(txt || '').split('\n').forEach(function(l){
+    var m = l.match(/(\d{1,2}):(\d{2})\s*[-–~]\s*(\d{1,2}):(\d{2})/);
+    if (m) { out.push({ startMin:(+m[1])*60 + (+m[2]), endMin:(+m[3])*60 + (+m[4]) }); }
+  });
+  return out.length ? out : defaultSections();
+}
+function defaultParams(){
+  return { horizonDays:120, wakeMin:420, bedMin:1350, windDownMin:20, minSlotMin:120, halfDayMin:240,
+    fullDayAvailMin:720, overnightMin:960, tripMin:1920, studyStartMin:480, studyEndMin:1260, studyMinMin:120 };
+}
+/* ========== 2. 状态树 ========== */
+function seedState(){
+  var mk = function(arr){ return arr.map(function(x){ return x === 'rest' ? REST_KEY : x; }); };
+  return {
+    theme:'light', inspect:false, screen:'home', tab:0, owner:'ME', glass:'material',
+    seg:'window', view:'list', filter:'ALL',
+    weekStart:TODAY - (weekdayOf(TODAY) - 1),
+    sheet:null, sheetWin:null, dayOpen:null, anchorWhich:'anchor',
+    // D-19：作息卡默认只读，「编辑」态与「高级设置」折叠各自独立于全局参数
+    meEdit:false, meDraft:null, advOpen:false,
+    dlg:null, privacy:false,
+    params:defaultParams(),
+    partner:{ nick:'阿明', wakeMin:420, bedMin:1320, windDownMin:20, exists:true },
+    shareLevel:2, pairState:'NONE', inviteCode:'', showJoin:false, agcOn:true, pairSyncedAt:0,
+    shiftTypes:SEED_SHIFTS.map(function(s){ return Object.assign({}, s); }),
+    templates:{
+      ME:{ seq:mk(['day','day','rest','night','rest','rest','rest']), anchor:TODAY },
+      PARTNER:{ seq:mk(['late','late','day','rest','mid','rest','rest']), anchor:TODAY - 1 }
+    },
+    overrides:{ ME:{}, PARTNER:{} },
+    courses:{ ME:[], PARTNER:[
+      { id:'c1', name:'高等数学', weekday:1, sectionStart:1, sectionEnd:2, weekFrom:1, weekTo:16, parity:0 },
+      { id:'c2', name:'大学英语', weekday:2, sectionStart:3, sectionEnd:4, weekFrom:1, weekTo:16, parity:0 },
+      { id:'c3', name:'物理实验', weekday:3, sectionStart:5, sectionEnd:6, weekFrom:1, weekTo:16, parity:2 },
+      { id:'c4', name:'体育课', weekday:4, sectionStart:9, sectionEnd:10, weekFrom:1, weekTo:16, parity:0 },
+      { id:'c5', name:'近代史', weekday:5, sectionStart:1, sectionEnd:2, weekFrom:1, weekTo:8, parity:1 }
+    ] },
+    termStart:TODAY - 14, sections:defaultSections(),
+    plans:[], editShift:null, showSections:false, cardK:0,
+    draft:{ kind:'meal', start:0, end:0, title:'', touched:false }
+  };
+}
+var S = seedState();
+function seedPlans(){
+  S.plans = [
+    { id:uid(), kind:'meal', title:'一起午饭', start:(TODAY + 16) * MIN + 720, end:(TODAY + 16) * MIN + 810, enabled:true },
+    { id:uid(), kind:'pickup', title:'接孩子放学', start:TODAY * MIN + 660, end:TODAY * MIN + 720, enabled:true }
+  ];
+}
+var _parsed = [], _manualWd = 1, _manualPar = 0;
+function reseedAll(){
+  var keepTheme = S.theme, keepInspect = S.inspect, keepScreen = S.screen, keepGlass = S.glass;
+  S = seedState();
+  seedPlans();
+  S.theme = keepTheme; S.inspect = keepInspect; S.screen = keepScreen; S.glass = keepGlass;
+  _parsed = [];
+  compute();
+}
+
+/* ========== 3. 引擎（domain 移植） ========== */
+function mergeIv(list){
+  var a = list.filter(function(i){ return i.end > i.start; }).sort(function(x,y){ return x.start - y.start || x.end - y.end; });
+  var out = [];
+  a.forEach(function(i){
+    var l = out[out.length - 1];
+    if (l && i.start <= l.end) { if (i.end > l.end) { l.end = i.end; } } else { out.push({ start:i.start, end:i.end }); }
+  });
+  return out;
+}
+function cut(from, to, busy){
+  var out = [], cur = from;
+  mergeIv(busy).forEach(function(b){
+    if (b.end <= cur || b.start >= to) { return; }
+    if (b.start > cur) { out.push({ start:cur, end:b.start }); }
+    cur = Math.max(cur, b.end);
+  });
+  if (cur < to) { out.push({ start:cur, end:to }); }
+  return out;
+}
+function overlapIv(a,b){ return Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)); }
+function totalOverlap(ivs, list){
+  var s = 0;
+  ivs.forEach(function(a){ list.forEach(function(b){ s += overlapIv(a, b); }); });
+  return s;
+}
+function ownerParams(o){
+  if (o === 'PARTNER' && S.partner.exists) {
+    return { wakeMin:S.partner.wakeMin, bedMin:S.partner.bedMin, windDownMin:S.partner.windDownMin };
+  }
+  return { wakeMin:S.params.wakeMin, bedMin:S.params.bedMin, windDownMin:S.params.windDownMin };
+}
+function shiftOf(id){
+  for (var i = 0; i < S.shiftTypes.length; i++) { if (S.shiftTypes[i].id === id) { return S.shiftTypes[i]; } }
+  return null;
+}
+function typeName(id){ if (id === REST_KEY) { return '休息'; } var s = shiftOf(id); return s ? s.name : '已删除班次'; }
+function typeColor(id){ if (id === REST_KEY) { return '#B8C4CE'; } var s = shiftOf(id); return s ? s.color : '#B8C4CE'; }
+function isNightShift(st){
+  if (!st) { return false; }
+  if (st.nightMode === 1) { return true; }
+  return st.crossDay || st.endMin <= st.startMin || st.startMin >= 1200;
+}
+function shiftFor(o, d){
+  var ov = S.overrides[o][d];
+  if (ov !== undefined) { return (ov === REST_KEY || ov === null) ? null : shiftOf(ov); }
+  var t = S.templates[o];
+  if (!t || !t.seq || !t.seq.length) { return null; }
+  var idx = (((d - t.anchor) % t.seq.length) + t.seq.length) % t.seq.length;
+  var id = t.seq[idx];
+  return id === REST_KEY ? null : shiftOf(id);
+}
+function termWeekOf(ed){
+  if (!S.termStart) { return null; }
+  var diff = Math.floor((ed - S.termStart) / 7);
+  return diff < 0 ? null : diff + 1;
+}
+function trueBusy(o, d, skipPlanId){
+  var out = [];
+  if (o === 'PARTNER' && !S.partner.exists) { return out; }
+  var st = shiftFor(o, d);
+  if (st) {
+    var s = d * MIN + st.startMin, e = d * MIN + st.endMin + (st.endMin <= st.startMin ? MIN : 0);
+    out.push({ start:s, end:e, tag:'WORK', name:st.name, color:st.color });
+    out.push({ start:s - st.commuteInMin, end:s, tag:'BUSY', name:'', color:st.color });
+    out.push({ start:e, end:e + st.commuteOutMin, tag:'BUSY', name:'', color:st.color });
+    if (isNightShift(st)) { out.push({ start:e, end:e + st.recoveryMin, tag:'RECOVERY', name:'恢复', color:st.color }); }
+  }
+  if (o === 'ME') {
+    S.plans.forEach(function(pl){
+      if (pl.enabled === false || pl.id === skipPlanId) { return; }
+      out.push({ start:pl.start, end:pl.end, tag:'PLAN', name:pl.title, pid:pl.id, color:null });
+    });
+  }
+  S.courses[o].forEach(function(c){
+    if (c.weekday !== weekdayOf(d)) { return; }
+    var wk = termWeekOf(d);
+    if (wk === null || wk < c.weekFrom || wk > c.weekTo) { return; }
+    if (c.parity === 1 && wk % 2 === 0) { return; }
+    if (c.parity === 2 && wk % 2 === 1) { return; }
+    var a = S.sections[c.sectionStart - 1], b = S.sections[c.sectionEnd - 1];
+    if (!a || !b) { return; }
+    out.push({ start:d * MIN + a.startMin, end:d * MIN + b.endMin, tag:'COURSE', name:c.name, color:null });
+  });
+  return out.filter(function(i){ return i.end > i.start; });
+}
+function sleepBusy(d, pp){
+  var wake = d * MIN + pp.wakeMin, bed = d * MIN + pp.bedMin, out = [];
+  if (pp.bedMin > pp.wakeMin) { out.push({ start:d * MIN, end:wake }); out.push({ start:bed, end:(d + 1) * MIN }); }
+  else { out.push({ start:bed, end:wake }); }
+  return out;
+}
+function withWind(iv, w){ return iv.map(function(i){ return { start:i.start, end:i.end + w }; }); }
+function classifyTags(w, ctx, trip){
+  var p = S.params, tags = [], dur = w.end - w.start;
+  var fd = Math.floor(w.start / MIN), ld = Math.floor((w.end - 1) / MIN), days = [], d;
+  for (d = fd; d <= ld; d++) { days.push(d); }
+  function coversDay(dd){
+    var mins = Math.min(w.end, (dd + 1) * MIN) - Math.max(w.start, dd * MIN);
+    return ctx.full[dd] && mins >= p.fullDayAvailMin;
+  }
+  if (trip) {
+    /* 旅行通道只出旅行类标签：睡眠被跨越，不能再按"整天空闲"判定 */
+    if (days.length >= 2 && days.every(coversDay)) { tags.push('TWO_DAYS'); }
+    if (dur >= p.overnightMin && ld > fd) { tags.push('OVERNIGHT_TRIP'); }
+    if (dur >= p.tripMin || ld > fd) { tags.push('TRIP'); }
+    return tags;
+  }
+  var meal = [[690,780],[1080,1170]], hasMeal = false;
+  days.forEach(function(dd){
+    meal.forEach(function(m){
+      if (hasMeal) { return; }
+      if (overlapIv(w, { start:dd * MIN + m[0], end:dd * MIN + m[1] }) > 0) { hasMeal = true; }
+    });
+  });
+  if (hasMeal) { tags.push('MEAL'); }
+  if (dur >= p.halfDayMin) { tags.push('HALF_DAY'); }
+  var covered = days.filter(coversDay).length;
+  if (covered >= 1) { tags.push('FULL_DAY'); }
+  if (covered >= 1 && ctx.full[fd] && ctx.full[fd + 1]) { tags.push('TWO_DAYS'); }
+  if (days.length && days.every(function(dd){ return isWeekend(dd); })) { tags.push('WEEKEND'); }
+  if (dur >= p.studyMinMin && fd === ld && !isWeekend(fd)
+    && w.start >= fd * MIN + p.studyStartMin && w.end <= fd * MIN + p.studyEndMin) { tags.push('STUDY'); }
+  return tags;
+}
+var CACHE = { reg:[], trip:[], windows:[], dayFree:{}, dayMy:{}, dayPeer:{}, conflicts:{} };
+function compute(){
+  var p = S.params, meP = ownerParams('ME'), prP = ownerParams('PARTNER');
+  var from = TODAY * MIN, to = (TODAY + p.horizonDays) * MIN;
+  var meNA = [], prNA = [], meTW = [], prTW = [], dayMy = {}, dayPeer = {};
+  for (var d = TODAY; d < TODAY + p.horizonDays; d++) {
+    var bt = trueBusy('ME', d);
+    meNA = meNA.concat(mergeIv(withWind(bt, meP.windDownMin).concat(sleepBusy(d, meP))));
+    meTW = meTW.concat(withWind(bt, meP.windDownMin));
+    dayMy[d] = totalOverlap([{ start:d * MIN + meP.wakeMin, end:d * MIN + meP.bedMin }], bt);
+    if (S.partner.exists) {
+      var pt = trueBusy('PARTNER', d);
+      prNA = prNA.concat(mergeIv(withWind(pt, prP.windDownMin).concat(sleepBusy(d, prP))));
+      prTW = prTW.concat(withWind(pt, prP.windDownMin));
+      dayPeer[d] = totalOverlap([{ start:d * MIN + prP.wakeMin, end:d * MIN + prP.bedMin }], pt);
+    } else { dayPeer[d] = 0; }
+  }
+  var reg = cut(from, to, mergeIv(meNA.concat(prNA)))
+    .filter(function(w){ return w.end - w.start >= p.minSlotMin; })
+    .map(function(w){ return { start:w.start, end:w.end, trip:false }; });
+  var trip = cut(from, to, mergeIv(meTW.concat(prTW)))
+    .filter(function(w){ return w.end - w.start >= p.overnightMin && Math.floor(w.start / MIN) !== Math.floor((w.end - 1) / MIN); })
+    .map(function(w){ return { start:w.start, end:w.end, trip:true }; });
+  var full = {};
+  for (var dd2 = TODAY; dd2 < TODAY + p.horizonDays; dd2++) {
+    full[dd2] = (dayMy[dd2] || 0) === 0 && (dayPeer[dd2] || 0) === 0;
+  }
+  var ctx = { dayMy:dayMy, dayPeer:dayPeer, pp:meP, full:full };
+  reg.forEach(function(w){ w.tags = classifyTags(w, ctx, false); });
+  trip.forEach(function(w){ w.tags = classifyTags(w, ctx, true); });
+  var dayFree = {};
+  reg.forEach(function(w){
+    var ds = Math.floor(w.start / MIN), de = Math.floor((w.end - 1) / MIN);
+    for (var dd = ds; dd <= de; dd++) {
+      var ov = Math.min(w.end, (dd + 1) * MIN) - Math.max(w.start, dd * MIN);
+      if (ov > 0) { dayFree[dd] = (dayFree[dd] || 0) + ov; }
+    }
+  });
+  CACHE = { reg:reg, trip:trip, windows:reg.concat(trip).sort(function(a,b){ return a.start - b.start; }),
+    dayFree:dayFree, dayMy:dayMy, dayPeer:dayPeer, conflicts:{} };
+  detectConflicts();
+}
+function detectConflicts(){
+  CACHE.conflicts = {};
+  S.plans.forEach(function(pl){
+    if (pl.enabled === false) { return; }
+    var fd = Math.floor(pl.start / MIN), ld = Math.floor((pl.end - 1) / MIN), raw = [];
+    for (var d = fd - 1; d <= ld + 1; d++) {
+      trueBusy('ME', d, pl.id).forEach(function(i){ raw.push(i); });
+      trueBusy('PARTNER', d).forEach(function(i){ raw.push(i); });
+      sleepBusy(d, ownerParams('ME')).forEach(function(i){ raw.push({ start:i.start, end:i.end, tag:'SLEEP' }); });
+    }
+    var ov = 0, tag = 'WORK';
+    raw.forEach(function(b){
+      var o = overlapIv(pl, b);
+      if (o > ov) { ov = o; tag = b.tag; }
+    });
+    if (ov <= 0) { return; }
+    var dur = pl.end - pl.start, alt = null;
+    for (var i = 0; i < CACHE.reg.length; i++) {
+      var w = CACHE.reg[i];
+      if (w.start >= pl.end && w.end - w.start >= dur) { alt = { start:w.start, end:w.start + dur }; break; }
+    }
+    CACHE.conflicts[pl.id] = { overlap:ov, tag:tag, alt:alt };
+  });
+}
+function recompute(){ compute(); }
+/* 筛选：半天 / 自习不再是标签，只留时长与场景条件 */
+var FILTERS = [
+  { k:'ALL', n:'全部' }, { k:'GTE2H', n:'≥2小时' }, { k:'FULL_DAY', n:'完整同休' },
+  { k:'WEEKEND', n:'周末' }, { k:'GTE24H', n:'可出行' }
+];
+function passFilter(w){
+  var k = S.filter, t = windowTags(w), dur = w.end - w.start;
+  if (k === 'GTE2H') { return dur >= 120; }
+  if (k === 'GTE24H') { return t.indexOf('TRIP') >= 0; }
+  if (k === 'FULL_DAY') { return t.indexOf('FULL_DAY') >= 0; }
+  if (k === 'WEEKEND') { return t.indexOf('WEEKEND') >= 0; }
+  return true;
+}
+/* 共同时间列表按天归并：优先最长的一段，被覆盖的天不再单列 */
+function dayRows(){
+  var list = CACHE.windows.filter(passFilter).slice().sort(function(a, b){ return (b.end - b.start) - (a.end - a.start) || a.start - b.start; });
+  var covered = {}, rows = [];
+  list.forEach(function(w){
+    var fd = Math.floor(w.start / MIN), ld = Math.floor((w.end - 1) / MIN), d, hit = false;
+    for (d = fd; d <= ld; d++) { if (covered[d]) { hit = true; } }
+    if (hit) { return; }
+    for (d = fd; d <= ld; d++) { covered[d] = 1; }
+    rows.push(w);
+  });
+  return rows.sort(function(a, b){ return a.start - b.start; });
+}
+function findWin(start, end){
+  var fallback = null;
+  for (var i = 0; i < CACHE.windows.length; i++) {
+    var w = CACHE.windows[i];
+    if (w.start !== start) { continue; }
+    if (end !== undefined && w.end === end) { return w; }
+    if (!fallback) { fallback = w; }
+  }
+  return fallback;
+}
+function dayWindows(d){
+  return CACHE.windows.filter(function(w){ return w.start < (d + 1) * MIN && w.end - 1 >= d * MIN; });
+}
+function nextWindow(after){
+  for (var i = 0; i < CACHE.windows.length; i++) { if (CACHE.windows[i].end > after) { return CACHE.windows[i]; } }
+  return null;
+}
+seedPlans();
+compute();
+/* ========== 4. 图标（SymbolGlyph 替身） ========== */
+var PATHS = {
+  chevL:'M15 4l-8 8 8 8', chevR:'M9 4l8 8-8 8', chevU:'M6 14l6-6 6 6', chevD:'M6 10l6 6 6-6',
+  house:'M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5',
+  heart:'M12 20s-7-4.6-7-9.5A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.5C19 15.4 12 20 12 20z',
+  calendar:'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  person:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-3.6 3.6-5.5 8-5.5s8 1.9 8 5.5',
+  cycle:'M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M18 3v4h-4M6 21v-4h4',
+  brush:'M4 20c3 1 6-1 6-4a3 3 0 1 0-6 0c0 2-1 3-3 4zM13 12l6-6a2 2 0 1 1 3 3l-6 6',
+  book:'M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zM8 3v18',
+  gear:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1',
+  camera:'M4 8h3l1.5-2h7L17 8h3v12H4zM12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+  clock:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4',
+  trash:'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v7M14 11v7',
+  pencil:'M4 20h4L20 8l-4-4L4 16zM14 6l4 4'
+};
+function ic(n, sz, c){
+  return '<svg width="' + (sz || 16) + '" height="' + (sz || 16) + '" viewBox="0 0 24 24" fill="none" stroke="'
+    + (c || 'currentColor') + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + (PATHS[n] || '') + '"/></svg>';
+}
+/* ========== 5. 公共片段 ========== */
+function srcTag(name){ return S.inspect ? '<span class="src">' + name + '</span>' : ''; }
+function pageHead(title, back, rightHtml){
+  return '<div class="hd"><div class="hl" data-act="go" data-s="' + back + '">' + ic('chevL', 16, 'var(--brand_pink)')
+    + '<span>返回</span></div><div class="ht">' + esc(title) + '</div><div class="hr">' + (rightHtml || '&nbsp;') + '</div></div>';
+}
+/* 界面上的标签只有 3 个（完整同休日 / 周末 / 可出行），MEAL·HALF_DAY·STUDY 只作为筛选条件存在。
+   标签从窗口几何 + 当日空闲直接推导，因此列表卡片与窗口详情永远一致。 */
+var TRIP_MIN = 1440;
+var TAG_LABEL = { FULL_DAY:'完整同休日', WEEKEND:'周末', TRIP:'可出行' };
+function windowTags(w){
+  var t = [], fd = Math.floor(w.start / MIN), ld = Math.floor((w.end - 1) / MIN), d, full = 0, wk = true;
+  for (d = fd; d <= ld; d++) {
+    var mins = Math.min(w.end, (d + 1) * MIN) - Math.max(w.start, d * MIN);
+    if (mins >= S.params.fullDayAvailMin && (CACHE.dayFree[d] || 0) >= S.params.fullDayAvailMin) { full++; }
+    if (!isWeekend(d)) { wk = false; }
+  }
+  if (full) { t.push('FULL_DAY'); }
+  if (wk) { t.push('WEEKEND'); }
+  if ((w.end - w.start) >= TRIP_MIN) { t.push('TRIP'); }
+  return t;
+}
+function tagChips(tags){
+  return tags.filter(function(t){ return !!TAG_LABEL[t]; }).map(function(t){
+    return '<span class="tag" style="background:' + (TAG_COLOR[t] || 'var(--tag_fallback)') + '">' + TAG_LABEL[t] + '</span>';
+  }).join('');
+}
+function winTagChips(w){ return tagChips(windowTags(w)); }
+function winTagRow(w, cls){ var h = winTagChips(w); return h ? '<div class="' + cls + '">' + h + '</div>' : ''; }
+function ownerTitle(base){ return S.owner === 'ME' ? base : 'TA 的' + base; }
+function sw(on, act){ return '<button class="sw' + (on ? ' on' : '') + '" data-act="' + act + '"></button>'; }
+function radio(on){ return '<span class="radio' + (on ? ' on' : '') + '"></span>'; }
+function toneLegend(bg, txt){ return '<span class="row gap4"><i style="width:10px;height:10px;border-radius:3px;background:' + bg + ';display:inline-block"></i>' + txt + '</span>'; }
+function shiftTxt(st){
+  if (!st) { return '休息'; }
+  return st.name + ' ' + hm(st.startMin) + '–' + hm(st.endMin) + (st.endMin <= st.startMin ? '(次日)' : '');
+}
+
+/* ---- HomeView ---- */
+function greeting(){
+  var h = Math.floor((NOW % MIN) / 60);
+  if (h < 5) { return '夜深了'; } if (h < 11) { return '早上好'; } if (h < 14) { return '中午好'; }
+  if (h < 18) { return '下午好'; } return '晚上好';
+}
+function answerRow(label, value, sub, act, data){
+  return '<div class="arow" data-act="' + act + '" ' + data + '>'
+    + '<div class="col lw gap2" style="text-align:left"><div class="t11 c3">' + label + '</div>'
+    + '<div class="answer-value">' + value + '</div>' + (sub ? '<div class="t11 c3">' + sub + '</div>' : '') + '</div>'
+    + '<span style="color:var(--text_disabled)">' + ic('chevR', 16) + '</span></div>';
+}
+/** EditorialSection 的镜像：眉标 + 衬线小标题 + 可选右侧动作；内容紧接其后自行拼接。 */
+function sectHead(eyebrow, title, actHtml){
+  return '<div class="sect-head"><div class="sect-eyebrow">' + eyebrow + '</div>'
+    + '<div class="sect-row"><div class="sect-title">' + title + '</div>' + (actHtml || '') + '</div></div>';
+}
+/** EditorialCard 的卡头镜像（MeView.cardHead）：卡内标题比小节标题小一档，右侧是纯文字动作。 */
+function cdHead(title, src, actHtml){
+  return '<div class="cd-head"><div class="cd-title">' + title + srcTag(src) + '</div>' + (actHtml || '') + '</div>';
+}
+/** 与 feature/…/model/RhythmRules.ets 的 horizonLabel / minSlotLabel 同一口径。 */
+function horizonLabel(d){ var m = Math.round(d / 30); return m < 1 ? '未来 ' + d + ' 天' : '未来 ' + m + ' 个月'; }
+function minSlotLabel(v){ return '≥ ' + (v % 60 === 0 ? (v / 60) + ' 小时' : v + ' 分钟'); }
+/* 首页：一屏只回答三个问题——今晚能一起吗 / 下个完整同休日 / 最近能出行吗（措辞同 D-14 定稿后的 App） */
+function daysTxt(w){
+  var fd = Math.floor(w.start / MIN), ld = Math.floor((w.end - 1) / MIN);
+  return ld > fd ? (ld - fd + 1) + ' 天（跨夜）' : duration(w.end - w.start);
+}
+function scrHome(){
+  var pt = S.partner, w = nextWindow(NOW), html;
+  var meal = null, full = null, trip = null;
+  CACHE.windows.forEach(function(x){
+    var d = Math.floor(x.start / MIN), lt = windowTags(x);
+    if (!meal && (d === TODAY || d === TODAY + 1) && x.start < d * MIN + 1170 && x.end > d * MIN + 1050) { meal = x; }
+    if (!full && lt.indexOf('FULL_DAY') >= 0) { full = x; }
+    if (!trip && lt.indexOf('TRIP') >= 0) { trip = x; }
+  });
+  html = '<div class="page"><div class="hd" style="padding-bottom:4px"><div class="col" style="gap:2px">'
+    + '<div class="t17 b7">' + greeting() + srcTag('HomeView.ets') + '</div>'
+    + '<div class="t11 ' + (pt.exists ? 'pink' : 'c3') + '">'
+    + (pt.exists ? '和 ' + esc(pt.nick) + ' 的时间' : '添加伴侣后算共同时间') + '</div></div>'
+    + '<div class="date-seal">' + dayParts(TODAY).d + '<br>' + dayParts(TODAY).m + '月</div></div><div class="body">';
+  if (!pt.exists) {
+    html += '<div class="hero" data-act="go" data-s="me" style="cursor:pointer">'
+      + '<div class="t16 b5">还没有录入伴侣</div>'
+      + '<div class="t12 mt8" style="opacity:.92;line-height:1.7">在「我的」里代录 TA 的作息与班表，<br>这里就会显示你们的第一个共同窗口。</div>'
+      + '<div class="mt12"><span class="chip" style="background:#ffffff33;color:#fff">去添加 ›</span></div></div>';
+  } else if (!w) {
+    html += '<div class="card center col" style="padding:28px 12px"><div class="c3 t13">近 '
+      + Math.round(S.params.horizonDays / 30) + ' 个月没有可安排的共同时间</div>'
+      + '<div class="t11 ch mt8">放宽「最短共同时段」，或检查双方班表是否完全错开</div></div>';
+  } else {
+    var days = Math.floor(w.start / MIN) - TODAY;
+    html += '<div class="hero" data-act="openWin" data-w="' + w.start + '" style="cursor:pointer">'
+      + '<div class="row between"><div class="t13" style="opacity:.9">'
+      + (days === 0 ? '就是今天' : days === 1 ? '就在明天' : days + ' 天后') + ' · ' + mdw(Math.floor(w.start / MIN)) + '</div>'
+      + '<span class="editorial-cta">去计划 <i>↗</i></span></div>'
+      + '<div class="hero-duration">' + duration(w.end - w.start) + '</div>'
+      + '<div class="t12 mt4" style="opacity:.95">' + endLabel(w.start, w.end) + '</div>'
+      + winTagRow(w, 'row wrapf gap6 mt10') + '</div>';
+  }
+  var ck = Object.keys(CACHE.conflicts).filter(function(id){ return CACHE.conflicts[id].overlap > 0; })[0];
+  if (ck) {
+    var cp = planById(ck), cc = CACHE.conflicts[ck];
+    html += '<div class="card conflict-card mt12 row gap8" style="background:var(--danger_bg);border:1px solid var(--danger_border);cursor:pointer" data-act="viewPlans">'
+      + '<span class="conflict-mark">!</span><div class="col lw gap2" style="text-align:left">'
+      + '<div class="t13 b5" style="color:var(--danger_red)">「' + esc(cp.title) + '」和' + esc(cc.tag === 'WORK' ? '班次' : cc.tag === 'COURSE' ? '课程' : '其他安排') + '冲突</div>'
+      + '<div class="t11 c2">' + mdw(Math.floor(cp.start / MIN)) + ' ' + hm(cp.start) + ' · 重叠 ' + duration(cc.overlap) + '</div></div>'
+      + (cc.alt ? '<span class="chip" data-act="reschedule" data-id="' + cp.id + '">改到 ' + hm(cc.alt.start) + '</span>' : '') + '</div>';
+  }
+  html += '<div class="card answer-card mt12">'
+    + sectHead('三个问题', '先看结论', '<span class="sect-act" data-act="refresh">刷新</span>')
+    + answerRow(pt.exists ? '今晚能一起吗' : '今晚我有空吗', meal
+      ? (Math.floor(meal.start / MIN) === TODAY ? '今晚' : '明晚') + ' ' + hm(Math.max(meal.start, Math.floor(meal.start / MIN) * MIN + 1050)) + ' 之后有空'
+      : '这两天没有晚饭时段', meal ? endLabel(meal.start, meal.end) : '换个筛选看看更早的窗口',
+      'openWin', meal ? 'data-w="' + meal.start + '" data-e="' + meal.end + '"' : (w ? 'data-w="' + w.start + '" data-e="' + w.end + '"' : 'data-w="0"'))
+    + answerRow('下个完整同休日', full ? mdw(Math.floor(full.start / MIN)) : '视界内暂无',
+      full ? daysTxt(full) + ' · 双方零排班' : '', 'filter', 'data-f="FULL_DAY"')
+    + answerRow('最近能出行吗', trip ? mdw(Math.floor(trip.start / MIN)) + ' 起' : '暂无 ≥24 小时段',
+      trip ? '连着 ' + daysTxt(trip) : '', 'filter', 'data-f="GTE24H"')
+    + '</div>';
+  var free = 0;
+  for (var i = TODAY; i < TODAY + 7; i++) { free += CACHE.dayFree[i] || 0; }
+  html += '<div class="card mt12"><div class="row between"><div class="t13 b5">今天' + srcTag('HomeView.ets') + '</div>'
+    + '<span class="t11 c3">本周共同 ' + duration(free) + '</span></div>'
+    + busyLine('我', shiftTxt(shiftFor('ME', TODAY)), 'var(--my_busy)')
+    + (pt.exists ? busyLine(esc(pt.nick), shiftTxt(shiftFor('PARTNER', TODAY)), 'var(--partner_busy)') : '')
+    + '<div class="row gap6 mt10"><span class="chip" data-act="go" data-s="hub">改班表 / 加课程</span>'
+    + '<span class="chip" data-act="gotoNextFree">＋ 计划</span></div></div>';
+  return html + '</div></div>';
+}
+function busyLine(who, txt, color){
+  return '<div class="row mt8"><span style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block;flex:0 0 8px"></span>'
+    + '<span class="t12 c2" style="width:38px">' + who + '</span><span class="t12 c1">' + esc(txt) + '</span></div>';
+}
+function windowMiniRow(w){
+  var d = Math.floor(w.start / MIN), days = d - TODAY;
+  return '<div class="row mt8" data-act="openWin" data-w="' + w.start + '" data-e="' + w.end + '" style="cursor:pointer;padding:8px 10px;border-radius:12px;background:var(--fill_weakest)">'
+    + '<div class="col lw gap2" style="text-align:left"><div class="row gap6"><span class="t13 b5">' + mdw(d) + '</span>'
+    + '<span class="t11 c3">' + (days === 0 ? '今天' : days === 1 ? '明天' : days + '天后') + '</span></div>'
+    + winTagRow(w, 'row wrapf gap4') + '</div>'
+    + '<div class="col" style="align-items:flex-end;gap:2px"><span class="t14 b7 pink">' + duration(w.end - w.start) + '</span>'
+    + '<span class="t11 c3">' + hm(w.start) + '</span></div></div>';
+}
+
+/* ---- CoTimeView ---- */
+function scrCoTime(){
+  var html = '<div class="page"><div class="hd" style="padding-bottom:6px"><div class="col lw" style="gap:2px">'
+    + '<div class="t17 b7">共同时间' + srcTag('CoTimeView.ets') + '</div>'
+    + '<div class="t11 ' + (S.partner.exists ? 'pink' : 'c3') + '">'
+    + (S.partner.exists ? esc(S.partner.nick) : '单人模式') + ' · ' + horizonLabel(S.params.horizonDays) + '</div></div>'
+    + '</div><div class="body">'
+    + '<div class="seg" style="margin-bottom:8px"><button class="' + (S.seg === 'window' ? 'on' : '') + '" data-act="seg" data-v="window">窗口</button>'
+    + '<button class="' + (S.seg === 'plan' ? 'on' : '') + '" data-act="seg" data-v="plan">计划</button></div>';
+  if (S.seg === 'window') {
+    html += '<div class="seg slide" style="margin-bottom:10px"><i class="thumb"'
+      + (S.view === 'cal' ? ' style="transform:translateX(calc(100% + 3px))"' : '') + '></i>'
+      + '<button class="' + (S.view === 'list' ? 'on' : '') + '" data-act="setView" data-v="list">列表</button>'
+      + '<button class="' + (S.view === 'cal' ? 'on' : '') + '" data-act="setView" data-v="cal">' + '周历' + '</button></div>';
+    if (S.view === 'list') {
+      html += '<div class="row wrapf gap6" style="margin-bottom:10px">' + FILTERS.map(function(f){
+        return '<button class="chip' + (S.filter === f.k ? ' on' : '') + '" data-act="filter" data-f="' + f.k + '">' + f.n + '</button>';
+      }).join('') + '</div>';
+      var list = dayRows();
+      html += list.length ? list.slice(0, 60).map(function(w, i){ return windowCard(w) + '<div style="height:10px"></div>'; }).join('')
+        : '<div class="card empty">该筛选下暂无窗口<br>试试「全部」，或在控制台放宽最小段时长</div>';
+      if (list.length > 60) { html += '<div class="t11 ch" style="text-align:center;padding:10px">仅显示前 60 段（共 ' + list.length + '）</div>'; }
+    } else { html += coWeekGrid(); }
+  } else {
+    html += '<div class="row gap6" style="margin-bottom:10px"><span class="t12 c3">共 ' + S.plans.length + ' 条</span><div class="lw"></div>'
+      + '<span class="chip" data-act="gotoNextFree">＋ 在下一个窗口计划</span></div>' + plansList();
+  }
+  return html + '</div></div>';
+}
+function windowCard(w){
+  var d = Math.floor(w.start / MIN), days = d - TODAY;
+  var pct = Math.min(100, (w.end - w.start) / (36 * 60) * 100);
+  return '<div class="card" data-act="openWin" data-w="' + w.start + '" data-e="' + w.end + '" style="cursor:pointer">'
+    + '<div class="row between"><div class="row gap6"><span class="t15 b5">' + mdw(d) + '</span>'
+    + '<span class="t11 c3">' + (days === 0 ? '今天' : days === 1 ? '明天' : days + ' 天后') + '</span></div>'
+    + '<span class="t15 b7 pink">' + duration(w.end - w.start) + '</span></div>'
+    + '<div class="t11 c2 mt4">' + endLabel(w.start, w.end) + srcTag('WindowCard.ets') + '</div>'
+    + '<div class="track mt8"><i style="width:' + pct + '%"></i></div>'
+    + winTagRow(w, 'row wrapf gap6 mt8') + '</div>';
+}
+/* ---- 共同时间周视图：把「哪天有空」细化成课程表式的「几点到几点有空」 ---- */
+function dayClipIvs(list, ed){
+  var out = [];
+  list.forEach(function(w){
+    var s = Math.max(w.start, ed * MIN), e = Math.min(w.end, (ed + 1) * MIN);
+    if (e > s) { out.push({ start:s, end:e }); }
+  });
+  return out;
+}
+function dayFreeIvs(ed){ return dayClipIvs(CACHE.reg, ed); }
+function freeTone(mins){
+  if (mins >= 360) { return { bg:'var(--brand_pink)', fg:'#FFFFFF' }; }
+  if (mins >= 180) { return { bg:'var(--month_free_mid_bg)', fg:'#FFFFFF' }; }
+  return { bg:'var(--month_free_low_bg)', fg:'var(--month_free_low_fg)' };
+}
+function coWeekGrid(){
+  var ws = S.weekStart, curWeek = TODAY - (weekdayOf(TODAY) - 1), days = [], d, sum = 0;
+  var h0 = 6, h1 = 24;   /* 默认只画 06:00–24:00，有空闲落在外面才把坐标轴撑开 */
+  for (d = 0; d < 7; d++) {
+    var ed = ws + d, known = ed >= TODAY && ed < TODAY + S.params.horizonDays;
+    var ivs = known ? dayFreeIvs(ed) : [], trips = known ? dayClipIvs(CACHE.trip, ed) : [], total = 0;
+    ivs.forEach(function(i){
+      total += i.end - i.start;
+      h0 = Math.min(h0, Math.floor((i.start - ed * MIN) / 60));
+      h1 = Math.max(h1, Math.ceil((i.end - ed * MIN) / 60));
+    });
+    sum += total;
+    days.push({ ed:ed, known:known, ivs:ivs, trips:trips, total:total });
+  }
+  var hrs = h1 - h0, HOUR_H = Math.max(13, Math.min(30, Math.floor(452 / hrs))), GH = hrs * HOUR_H;
+  var head = '', cols = '', labels = '', step = HOUR_H >= 22 ? 2 : 3;
+  function y(minuteOfDay){ return ((minuteOfDay - h0 * 60) / 60) * HOUR_H; }
+  days.forEach(function(day, i){
+    var isT = day.ed === TODAY;
+    head += '<div' + (isT ? ' style="color:var(--brand_pink);font-weight:700"' : '') + '><span>' + WD[i] + '</span><b>' + dayParts(day.ed).d + '</b>'
+      + '<i>' + (day.known ? (day.total >= 60 ? Math.floor(day.total / 60) + (day.total % 60 >= 30 ? '.5' : '') + 'h' : (day.total > 0 ? day.total + 'm' : '—')) : '·')
+      + (day.trips.length ? '<u></u>' : '') + '</i></div>';
+    var blocks = '';
+    if (day.known) {
+      var sl = sleepBusy(day.ed, ownerParams('ME'));
+      if (S.partner.exists) { sl = sl.concat(sleepBusy(day.ed, ownerParams('PARTNER'))); }
+      mergeIv(sl).forEach(function(x){
+        var s0 = Math.max(Math.min(x.start - day.ed * MIN, h1 * 60), h0 * 60);
+        var e0 = Math.max(Math.min(x.end - day.ed * MIN, h1 * 60), h0 * 60);
+        if (e0 <= s0) { return; }
+        blocks += '<div class="cslp" style="top:' + y(s0) + 'px;height:' + ((e0 - s0) / 60 * HOUR_H) + 'px"></div>';
+      });
+      day.ivs.forEach(function(iv){
+        var mins = iv.end - iv.start, tone = freeTone(mins), hp = mins / 60 * HOUR_H;
+        blocks += '<div class="cblk" style="top:' + y(iv.start - day.ed * MIN) + 'px;height:' + Math.max(4, hp - 1)
+          + 'px;background:' + tone.bg + ';color:' + tone.fg + '">'
+          + (hp >= 30 ? hm(iv.start) + '<br>' + (mins >= 60 ? Math.floor(mins / 60) + (mins % 60 >= 30 ? '.5' : '') + 'h' : mins + 'm')
+            : (hp >= 15 ? hm(iv.start) : '')) + '</div>';
+      });
+    }
+    cols += '<div class="ccol' + (day.known ? '' : ' off') + '"' + (day.known ? ' data-act="openDay" data-d="' + day.ed + '"' : '') + '>'
+      + '<div class="cgrid' + (isT ? ' t' : '') + '"></div>' + blocks + '</div>';
+  });
+  for (d = h0; d < h1; d += step) { labels += '<span style="top:' + ((d - h0) * HOUR_H) + 'px' + (d === h0 ? ';transform:none' : '') + '">' + pad2(d % 24) + '</span>'; }
+  var note = ws < curWeek ? '这一周已经过去了，点日期可回到本周。'
+    : ws > TODAY + S.params.horizonDays ? '超出计算视界，到「我的」里放宽视界。'
+    : sum === 0 ? '本周没有 ≥' + Math.round(S.params.minSlotMin / 60) + ' 小时的共同空闲，试试放宽筛选或调整作息。'
+    : '点某一天看当日明细、临时改班。';
+  return '<div class="card"><div class="row between" style="margin-bottom:6px">'
+    + '<span class="chip" data-act="weekNav" data-k="-1">' + ic('chevL', 12) + '</span>'
+    + '<span class="t13 b5" data-act="weekToday" style="cursor:pointer">' + md(ws) + ' – ' + md(ws + 6) + srcTag('CoTimeView.ets') + '</span>'
+    + '<span class="chip" data-act="weekNav" data-k="1">' + ic('chevR', 12) + '</span></div>'
+    /* D-16 已落地的形状：纵轴说明与「本周」同排右对齐，压在星期行之上，不挤进那 7 列 */
+    + '<div class="row gap8" style="justify-content:flex-end;align-items:center;margin-bottom:2px">'
+    + '<span class="t10" style="color:var(--text_hint)">纵轴 ' + pad2(h0) + '–' + (h1 >= 24 ? '24' : pad2(h1)) + '</span>'
+    + '<span class="chip soft" data-act="weekToday">本周</span></div>'
+    + '<div class="row" style="margin-bottom:4px"><div style="width:26px;flex:0 0 26px"></div><div class="whead">' + head + '</div></div>'
+    + '<div style="display:flex;--hh:' + HOUR_H + 'px;--gh:' + GH + 'px"><div class="clabels">' + labels + '</div><div class="ccols">' + cols + '</div></div>'
+    + '<div class="row wrapf gap8 mt8" style="font-size:10px;color:var(--text_hint)">'
+    + toneLegend('var(--brand_pink)', '≥6h') + toneLegend('var(--month_free_mid_bg)', '3–6h') + toneLegend('var(--month_free_low_bg)', '<3h')
+    + toneLegend('var(--fill_soft)', '睡眠')
+    + '<span class="row gap4"><i style="width:6px;height:6px;border-radius:50%;background:var(--tag_trip);display:inline-block"></i>有可过夜窗口</span></div>'
+    + '<div class="t11 ch mt6">' + note + '粉块＝双方都清醒且都空闲，短于 ' + Math.round(S.params.minSlotMin / 60) + ' 小时的碎片不画。</div></div>';
+}
+function planStatus(pl){
+  if (pl.end <= NOW) { return { n:'已结束', c:'var(--text_hint)' }; }
+  if (pl.start <= NOW) { return { n:'进行中', c:'var(--success_green)' }; }
+  return { n:'待开始', c:'var(--info_blue)' };
+}
+function kindName(k){
+  /* 阶段 6R.4 口径：可创建的类型与"存过的 key 怎么念"是两张表——
+     旧 key 的历史计划仍要念出中文名，未知 key 原样显示。 */
+  for (var i = 0; i < PLAN_KINDS.length; i++) { if (PLAN_KINDS[i].k === k) { return PLAN_KINDS[i].n; } }
+  return KIND_LABEL[k] || k;
+}
+function plansList(){
+  if (!S.plans.length) {
+    return '<div class="card empty">还没有共同计划<br>在任一窗口点「创建计划」可写入系统日历<br>与班表/课程的冲突会自动标红</div>';
+  }
+  return S.plans.slice().sort(function(a,b){ return a.start - b.start; }).map(function(pl){
+    var c = CACHE.conflicts[pl.id], st = planStatus(pl);
+    return '<div class="card" style="box-shadow:inset 3px 0 0 ' + (c ? 'var(--danger_red)' : 'var(--success_green)') + ',0 4px 16px var(--shadow_soft)">'
+      + '<div class="row between"><div class="row gap6"><span class="t14 b5">' + esc(pl.title || kindName(pl.kind)) + '</span>'
+      + '<span class="tag" style="background:' + st.c + '">' + st.n + '</span></div>'
+      + (pl.title && pl.title !== kindName(pl.kind) ? '<span class="t11 c3">' + kindName(pl.kind) + '</span>' : '') + '</div>'
+      + '<div class="t12 c2 mt4">' + mdw(Math.floor(pl.start / MIN)) + ' · ' + endLabel(pl.start, pl.end) + ' · ' + duration(pl.end - pl.start) + srcTag('PlansView.ets') + '</div>'
+      + (c ? '<div class="mt8" style="padding:8px 10px;border-radius:10px;background:var(--danger_bg);border:1px solid var(--danger_border)">'
+        + '<div class="t12 red b5">与「' + (BUSY_LABEL[c.tag] || '忙碌') + '」重叠 ' + duration(c.overlap) + '</div>'
+        + '<div class="row gap6 mt8">'
+        + (c.alt ? '<span class="chip blue-on" data-act="reschedule" data-id="' + pl.id + '">改期到 ' + hm(c.alt.start) + '</span>'
+          : '<span class="t11 red">视界内无足够长的替代窗口</span>')
+        + '<span class="chip" data-act="pickPlan" data-id="' + pl.id + '">重新选窗口</span></div></div>' : '')
+      + '<div class="row gap8 mt8"><span class="chip" data-act="togglePlan" data-id="' + pl.id + '">'
+      + (c ? '重叠' : '无冲突') + ' · ' + (pl.enabled === false ? '已停用' : '启用中') + '</span><div class="lw"></div>'
+      + '<span class="t12 red" data-act="askCancelPlan" data-id="' + pl.id + '">取消计划</span></div></div>';
+  }).join('<div style="height:10px"></div>');
+}
+/* ---- ScheduleHub ---- */
+function scrHub(){
+  var html = '<div class="page">' + pageHead(ownerTitle('班表'), 'me', '');
+  html += '<div class="body"><div class="seg" style="margin-bottom:10px">'
+    + '<button class="' + (S.owner === 'ME' ? 'on' : '') + '" data-act="setOwner" data-o="ME">我的班表</button>'
+    + '<button class="' + (S.owner === 'PARTNER' ? 'on' : '') + '" data-act="setOwner" data-o="PARTNER">TA 的班表</button></div>';
+  if (S.owner === 'PARTNER' && !S.partner.exists) {
+    return html + '<div class="card empty">当前为单人模式<br>到「我的 · 伴侣」本机代录，或配对后自动同步</div></div></div>';
+  }
+  var t = S.templates[S.owner], has = t.seq.length > 0, work = 0, rest = 0;
+  for (var i = TODAY; i < TODAY + 30; i++) { if (shiftFor(S.owner, i)) { work++; } else { rest++; } }
+  html += '<div class="card"><div class="row between"><div class="t13 b5">当前模板' + srcTag('ScheduleHub.ets') + '</div>'
+    + '<span class="tag" style="background:' + (has ? 'var(--success_green)' : 'var(--tag_fallback)') + '">' + (has ? '已启用' : '未配置') + '</span></div>'
+    + '<div class="t11 c3 mt4">' + (has ? '循环长度 ' + t.seq.length + ' 天 · 锚点 ' + mdw(t.anchor) : '点「循环模板」配置排班序列') + '</div>'
+    + '<div class="row mt10 gap12"><div class="col"><div class="t16 b7 orange" style="color:var(--warn_orange)">' + work + '</div><div class="t11 c3">近30天上班</div></div>'
+    + '<div class="col"><div class="t16 b7" style="color:var(--success_green)">' + rest + '</div><div class="t11 c3">近30天休息</div></div>'
+    + '<div class="col"><div class="t16 b7" style="color:var(--info_blue)">' + Object.keys(S.overrides[S.owner]).length + '</div><div class="t11 c3">手动覆盖</div></div>'
+    + '<div class="col"><div class="t16 b7 pink">' + S.courses[S.owner].length + '</div><div class="t11 c3">课程</div></div></div></div>';
+  html += '<div class="card mt12">' + weekGrid() + '</div>';
+  /* 四条主入口逐字照抄 ScheduleHub.ets 的 MAIN_ENTRIES：班次类型 / 循环模板 / 课程表 / 临时调整。
+     副文案不掺动态参数（App 那句本身就是静态的「未来视界」）；第四条是日详情改班，不是整月涂抹页。 */
+  var entries = [
+    { s:'editor', i:'gear', t:'班次类型', d:'定义上下班时刻、通勤与夜班恢复' },
+    { s:'cycle', i:'cycle', t:'循环模板', d:'白白夜夜休休等序列 + 锚点，自动铺开未来视界内的每一天' },
+    { s:'course', i:'pencil', t:'课程表', d:'学生场景：粘贴课表文本或手动添加每周固定课程' },
+    { s:'month', i:'brush', t:'临时调整', d:'给某一天单独改班或请假，优先于循环模板',
+      src:'ScheduleHub.ets', nav:'data-act="openDay" data-d="' + TODAY + '"' }
+  ];
+  var liRow = function(x, first){
+    return '<div class="li' + (first ? ' mt10' : '') + '" ' + (x.nav || 'data-act="go" data-s="' + x.s + '"')
+      + '><div style="color:var(--brand_pink)">' + ic(x.i, 20) + '</div>'
+      + '<div class="col lw gap2" style="text-align:left"><div class="t14 b5">' + x.t + srcTag('pages/' + (x.src || x.s) + '.ets') + '</div>'
+      + '<div class="t11 c3">' + x.d + '</div></div><div style="color:var(--text_disabled)">' + ic('chevR', 16) + '</div></div>';
+  };
+  /* N-01：App 把这四条收进一张卡，卡头是 EditorialSection 的「MAIN / 四个主入口」。 */
+  html += '<div class="card mt12">' + sectHead('MAIN', '四个主入口')
+    + entries.map(function(x, i){ return liRow(x, i === 0); }).join('') + '</div>';
+  return html + '</div></div>';
+}
+/* WeekScheduleView 移植：HOUR_H=34 / 24 格 / LABEL_W=26 */
+function weekGrid(){
+  var HOUR_H = 34, ws = S.weekStart, head = '', cols = '', d;
+  for (d = 0; d < 7; d++) {
+    var ed = ws + d, isT = ed === TODAY;
+    head += '<div style="' + (isT ? 'color:var(--brand_pink);font-weight:700' : '') + '"><span>' + WD[d] + '</span><b>' + dayParts(ed).d + '</b></div>';
+    var blocks = '';
+    trueBusy(S.owner, ed).forEach(function(b){
+      var s0 = Math.max(b.start - ed * MIN, 0), e0 = Math.min(b.end - ed * MIN, MIN);
+      if (e0 <= s0) { return; }
+      var col = b.tag === 'WORK' ? (b.color || 'var(--my_busy)')
+        : b.tag === 'COURSE' ? COURSE_COLOR
+        : b.tag === 'PLAN' ? (CACHE.conflicts[b.pid] ? PLAN_CONFLICT_COLOR : PLAN_COLOR)
+        : b.tag === 'RECOVERY' ? RECOVERY_COLOR : (b.color || 'var(--my_busy)');
+      blocks += '<div class="wblk" style="top:' + (s0 / 60 * HOUR_H) + 'px;height:' + Math.max(14, (e0 - s0) / 60 * HOUR_H - 1)
+        + 'px;background:' + col + '">' + esc(b.name || '') + '</div>';
+    });
+    cols += '<div class="wcol" data-act="openDay" data-d="' + ed + '">'
+      + '<div class="wgrid"' + (isT ? ' style="background:var(--brand_pink_bg)"' : '') + '></div>' + blocks + '</div>';
+  }
+  var labels = '';
+  for (d = 0; d < 24; d++) { if (d % 2 === 0) { labels += '<span style="top:' + (d * HOUR_H) + 'px">' + pad2(d) + '</span>'; } }
+  return '<div class="row between" style="margin-bottom:6px">'
+    + '<span class="chip" data-act="weekNav" data-k="-1">' + ic('chevL', 12) + '</span>'
+    + '<span class="t13 b5">' + md(ws) + ' – ' + md(ws + 6) + srcTag('WeekScheduleView.ets') + '</span>'
+    + '<span class="chip" data-act="weekNav" data-k="1">' + ic('chevR', 12) + '</span></div>'
+    + '<div class="row" style="margin-bottom:4px"><div style="width:26px;flex:0 0 26px"></div><div class="whead">' + head + '</div></div>'
+    + '<div style="display:flex"><div class="wlabels">' + labels + '</div><div class="wcols">' + cols + '</div></div>'
+    + '<div class="row wrapf gap8 mt8" style="font-size:10px;color:var(--text_hint)">'
+    + toneLegend(S.shiftTypes[0] ? S.shiftTypes[0].color : '#E8833A', '班次') + toneLegend(COURSE_COLOR, '课程')
+    + toneLegend(PLAN_COLOR, '计划') + toneLegend(RECOVERY_COLOR, '夜班恢复') + '</div>'
+    + '<div class="t11 ch mt4">同一列叠加班次/课程/计划；红色计划块代表已被冲突检测命中。</div>';
+}
+
+/* ---- CycleEditor ---- */
+function scrCycle(){
+  var t = S.templates[S.owner];
+  var html = '<div class="page">' + pageHead(ownerTitle('循环模板'), 'hub', '<span data-act="clearTpl">清空</span>')
+    + '<div class="body col gap12">';
+  html += '<div class="card col gap8"><div class="t12 c3 w100">循环序列（点击下方班次追加，点序列中的项移除）' + srcTag('CycleEditor.ets') + '</div>'
+    + '<div class="row wrapf gap8">' + S.shiftTypes.map(function(st){
+      return '<span class="chip" style="background:' + st.color + ';color:#fff" data-act="seqAdd" data-id="' + st.id + '">' + esc(st.name) + '</span>';
+    }).join('') + '<span class="chip" style="background:#B8C4CE;color:#fff" data-act="seqAdd" data-id="' + REST_KEY + '">休息</span></div>'
+    + (t.seq.length === 0 ? '<div class="t13 ch w100" style="text-align:center;padding:12px">序列为空</div>'
+      : '<div class="row wrapf gap6">' + t.seq.map(function(id, idx){
+        return '<span class="chip" style="background:' + typeColor(id) + ';color:#fff;font-size:12px;padding:5px 8px" data-act="seqDel" data-i="' + idx + '">'
+          + (idx + 1) + '.' + esc(typeName(id)) + '</span>';
+      }).join('') + '</div>')
+    + '</div>';
+  html += '<div class="card col gap8"><div class="t12 c3">锚点：序列第 1 天对应的真实日期</div>'
+    + '<div class="row w100" style="padding:12px;border-radius:10px;background:var(--fill_weakest);cursor:pointer" data-act="openAnchor" data-which="anchor">'
+    + '<span class="t15 b5">' + mdw(t.anchor) + '</span><div class="lw"></div><span class="t13 pink">选择日期 ›</span></div></div>';
+  html += '<button class="btn big w100" data-act="saveTpl">' + (t.seq.length ? '更新模板' : '保存并展开班表') + '</button>';
+  html += '<div class="t11 ch">保存后自动展开未来 ' + S.params.horizonDays + ' 天；'
+    + '临时换班点周历里的某一天。' + '</div>';
+  return html + '</div></div>';
+}
+
+/* ---- CourseImport ---- */
+function parseCourseLines(text){
+  var out = [];
+  String(text || '').split('\n').forEach(function(raw){
+    var line = raw.trim();
+    if (!line) { return; }
+    var rest = line, wdM = rest.match(/周([一二三四五六日天])/);
+    if (!wdM) { out.push({ ok:false, rawLine:raw, error:'未找到「周X」' }); return; }
+    var wd = '一二三四五六日天'.indexOf(wdM[1]) + 1;
+    rest = rest.replace(wdM[0], ' ');
+    var secM = rest.match(/第?\s*(\d{1,2})\s*[-–,，~]\s*(\d{1,2})\s*节/) || rest.match(/第?\s*(\d{1,2})\s*节/);
+    if (!secM) { out.push({ ok:false, rawLine:raw, error:'未找到节次（如 第1-2节 / 3,4节）' }); return; }
+    var s1 = +secM[1], s2 = secM[2] ? +secM[2] : +secM[1];
+    rest = rest.replace(secM[0], ' ');
+    var wkM = rest.match(/(\d{1,2})\s*[-–~至]\s*(\d{1,2})\s*周/);
+    var w1 = wkM ? +wkM[1] : 1, w2 = wkM ? +wkM[2] : 16;
+    if (wkM) { rest = rest.replace(wkM[0], ' '); }
+    var parM = rest.match(/(单|双)周?/), par = parM ? (parM[1] === '单' ? 1 : 2) : 0;
+    if (parM) { rest = rest.replace(parM[0], ' '); }
+    var name = rest.replace(/\s+/g, ' ').trim();
+    if (!name) { out.push({ ok:false, rawLine:raw, error:'未识别到课程名' }); return; }
+    if (s2 < s1) { out.push({ ok:false, rawLine:raw, error:'结束节次早于开始节次' }); return; }
+    if (s2 > 16) { out.push({ ok:false, rawLine:raw, error:'节次超出 16 节上限' }); return; }
+    if (w2 > 30) { out.push({ ok:false, rawLine:raw, error:'周次超出 30 周上限' }); return; }
+    out.push({ ok:true, name:name, weekday:wd, sectionStart:s1, sectionEnd:s2, weekFrom:w1, weekTo:w2, parity:par, rawLine:raw });
+  });
+  return out;
+}
+function parsedRows(){
+  return _parsed.map(function(p){
+    return '<div class="row w100" style="padding:8px;border-radius:8px;background:var(--fill_weakest)">'
+      + '<span class="t13 ' + (p.ok ? 'green' : 'red') + '" style="width:20px">' + (p.ok ? '✓' : '✗') + '</span>'
+      + '<div class="col lw gap2" style="text-align:left"><span class="t13">'
+      + esc(p.ok ? p.name + ' · 周' + p.weekday + ' · 第' + p.sectionStart + '-' + p.sectionEnd + '节 · ' + p.weekFrom + '-' + p.weekTo + '周' : p.rawLine) + '</span>'
+      + (p.ok ? '' : '<span class="t11 red">' + esc(p.error) + '</span>') + '</div></div>';
+  }).join('');
+}
+function scrCourse(){
+  var html = '<div class="page">' + pageHead(ownerTitle('课程表导入'), 'hub', '') + '<div class="body col gap12">';
+  html += '<div class="card col gap8"><div class="t13 c3 w100">学期起点（第一周周一）</div>'
+    + '<div class="row w100" style="padding:10px;border-radius:10px;background:var(--fill_weakest);cursor:pointer" data-act="openAnchor" data-which="term">'
+    + '<span class="t15">' + (S.termStart ? mdw(S.termStart) + ' · 今天第 ' + (termWeekOf(TODAY) || '-') + ' 周' : '未设置') + '</span>'
+    + '<div class="lw"></div><span class="t13 pink">选择 ›</span></div>'
+    + '<div class="row w100" style="cursor:pointer" data-act="toggleSec"><span class="t13 c2">节次时间模板</span><div class="lw"></div>'
+    + '<span class="t13 pink">' + (S.showSections ? '收起 ›' : '编辑 ›') + '</span></div>'
+    + (S.showSections
+      ? '<textarea class="inp ta w100" id="f-sections" style="height:120px">' + esc(sectionsToText(S.sections)) + '</textarea>'
+        + '<div class="row gap10"><button class="btn blue sm" data-act="saveSections">保存节次</button>'
+        + '<button class="btn ghost sm" data-act="resetSections">恢复默认</button></div>'
+        + '<div class="t11 ch">第 N 节对应第 N 行；课程按「第 X-X 节」映射到这里的起止时间。</div>'
+      : '<div class="t11 ch">默认每节 45+10 分钟，08:00 / 14:00 / 19:00 起，共 12 节；点「编辑」可自定义。</div>')
+    + '</div>';
+  html += '<div class="card col gap8"><div class="t13 c3 w100">粘贴课表文本（每行一门：课程名 周X 第X-X节 周次 单/双周）</div>'
+    + '<textarea class="inp ta w100" id="f-paste" style="height:88px" placeholder="高等数学 周一 第1-2节 1-16周 单周&#10;大学英语 周三 3,4节"></textarea>'
+    + '<div class="row gap10"><button class="btn blue sm" data-act="doParse">解析预览</button>'
+    + '<button class="btn green sm" data-act="saveParsed">保存通过项</button></div>' + parsedRows() + '</div>';
+  html += '<div class="card col gap8"><div class="t13 c3 w100">手动添加</div>'
+    + '<input class="inp w100" id="f-mname" placeholder="课程名">'
+    + '<div class="row wrapf gap6">' + WD.map(function(w, i){
+      return '<span class="chip' + (_manualWd === i + 1 ? ' blue-on' : '') + '" data-act="mwd" data-i="' + (i + 1) + '">周' + w + '</span>';
+    }).join('') + '</div>'
+    + '<div class="row gap6 wrapf"><span class="t13">第</span><input class="inp" id="f-ms1" value="1" style="width:44px">'
+    + '<span class="t13">—</span><input class="inp" id="f-ms2" value="2" style="width:44px"><span class="t13">节</span>'
+    + '<span class="t13" style="margin-left:8px">周次</span><input class="inp" id="f-w1" value="1" style="width:48px">'
+    + '<span class="t13">—</span><input class="inp" id="f-w2" value="16" style="width:48px"></div>'
+    + '<div class="row gap6"><span class="chip' + (_manualPar === 0 ? ' on' : '') + '" data-act="mpar" data-p="0">全周</span>'
+    + '<span class="chip' + (_manualPar === 1 ? ' on' : '') + '" data-act="mpar" data-p="1">单周</span>'
+    + '<span class="chip' + (_manualPar === 2 ? ' on' : '') + '" data-act="mpar" data-p="2">双周</span></div>'
+    + '<button class="btn blue big w100" data-act="saveManual">添加课程</button></div>';
+  var cs = S.courses[S.owner];
+  html += '<div class="t13 c3">已添加课程（' + cs.length + '）' + srcTag('CourseImport.ets') + '</div>';
+  html += cs.length ? cs.map(function(c){
+    return '<div class="row w100" style="padding:10px;border-radius:10px;background:var(--fill_weakest)">'
+      + '<div class="col lw gap2" style="text-align:left"><span class="t14 b5">' + esc(c.name) + '</span>'
+      + '<span class="t11 c3">周' + c.weekday + ' · 第' + c.sectionStart + '-' + c.sectionEnd + '节 · ' + c.weekFrom + '-' + c.weekTo + '周'
+      + (c.parity === 1 ? ' · 单周' : c.parity === 2 ? ' · 双周' : '') + '</span></div>'
+      + '<span class="t13 red" data-act="delCourse" data-id="' + c.id + '">删除</span></div>';
+  }).join('') : '<div class="t12 ch" style="padding:6px 0">还没有课程。上班族留空即可。</div>';
+  return html + '</div></div>';
+}
+/* ---- ScheduleEditor ---- */
+function normalizeShift(st){
+  if (!st) {
+    return { id:null, persisted:false, name:'', startText:'09:00', endText:'18:00', commuteIn:'30',
+      commuteOut:'30', recovery:'0', nightIdx:0, color:PALETTE[0] };
+  }
+  return { id:st.id, persisted:true, name:st.name, startText:hm(st.startMin), endText:hm(st.endMin),
+    commuteIn:'' + st.commuteInMin, commuteOut:'' + st.commuteOutMin, recovery:'' + st.recoveryMin,
+    nightIdx:st.nightMode === 1 ? 1 : 0, color:st.color };
+}
+function scrEditor(){
+  var html = '<div class="page">' + pageHead(ownerTitle('班次类型'), 'hub', '<span data-act="newShift">+ 新增</span>')
+    + '<div class="body col gap10">';
+  S.shiftTypes.forEach(function(st){
+    html += '<div class="card row" data-act="editShift" data-id="' + st.id + '" style="cursor:pointer">'
+      + '<span style="width:14px;height:14px;border-radius:50%;background:' + st.color + ';display:inline-block;flex:0 0 14px"></span>'
+      + '<div class="col lw gap2" style="text-align:left"><span class="t15 b5">' + esc(st.name) + '</span>'
+      + '<span class="t11 c3">' + hm(st.startMin) + '–' + hm(st.endMin) + (st.endMin <= st.startMin ? '（次日）' : '')
+      + ' · 通勤 ' + st.commuteInMin + '/' + st.commuteOutMin + '分 · 恢复 ' + st.recoveryMin + '分</span></div>'
+      + '<span class="t13 red" data-act="delShift" data-id="' + st.id + '">删除</span></div>';
+  });
+  if (S.editShift) { html += editorForm(S.editShift); }
+  html += '<div class="t11 ch">夜班：自动档要班次时段与夜班窗口相交才算，跨天不等于夜班；「强制夜班」不看窗口、始终计入。</div>'
+    + '<div class="t11 ch">恢复块另需「夜班恢复(分)」大于 0；班次删空后，内置六个班次会重新种回。' + srcTag('ScheduleEditor.ets') + '</div>';
+  return html + '</div></div>';
+}
+function editorForm(e){
+  return '<div class="card col gap8" style="background:var(--fill_weakest)">'
+    + '<div class="t13 pink">' + (e.persisted ? '编辑：' + esc(e.name) : '新增班次') + srcTag('ScheduleEditor.ets') + '</div>'
+    + '<div class="row gap8"><span class="t13" style="flex:0 0 34px">名称</span><input class="inp lw" id="f-name" value="' + esc(e.name) + '"></div>'
+    + '<div class="row gap8 wrapf"><span class="t13" style="flex:0 0 34px">上班</span><input class="inp" id="f-start" value="' + esc(e.startText) + '" style="width:76px">'
+    + '<span class="t13">下班</span><input class="inp" id="f-end" value="' + esc(e.endText) + '" style="width:76px">'
+    + '<span class="t10 ch">跨天自动识别</span></div>'
+    + '<div class="row gap8 wrapf"><span class="t13">前通勤</span><input class="inp" id="f-ci" value="' + esc(e.commuteIn) + '" style="width:52px">'
+    + '<span class="t13">后通勤</span><input class="inp" id="f-co" value="' + esc(e.commuteOut) + '" style="width:52px">'
+    + '<span class="t13">恢复</span><input class="inp" id="f-rec" value="' + esc(e.recovery) + '" style="width:52px"></div>'
+    + '<div class="row gap8 wrapf"><span class="t13">夜班判定</span>'
+    + '<span class="chip' + (e.nightIdx === 0 ? ' on' : '') + '" data-act="nightIdx" data-i="0">自动识别</span>'
+    + '<span class="chip' + (e.nightIdx === 1 ? ' on' : '') + '" data-act="nightIdx" data-i="1">强制夜班</span></div>'
+    + '<div class="t10 c3">强制夜班：无论时段，下班后始终计入恢复时长</div>'
+    + '<div class="row wrapf gap10">' + PALETTE.map(function(c){
+      return '<span data-act="pickColor" data-c="' + c + '" style="width:26px;height:26px;border-radius:50%;cursor:pointer;background:' + c
+        + ';box-shadow:inset 0 0 0 2px ' + (c === e.color ? 'var(--text_primary)' : c) + '"></span>';
+    }).join('')
+    + '<span data-act="openColor" style="width:26px;height:26px;border-radius:50%;cursor:pointer;background:linear-gradient(135deg,#D24A7E,#3AA6E8 50%,#4E9A63);box-shadow:inset 0 0 0 2px var(--text_disabled)"></span>'
+    + '<span style="width:26px;height:26px;border-radius:50%;background:' + e.color + ';box-shadow:inset 0 0 0 2px var(--danger_red)" title="当前色"></span></div>'
+    + '<div class="row gap10"><button class="btn big lw" data-act="saveShift">保存班次</button>'
+    + '<button class="btn big lw ghost" data-act="' + (e.persisted ? 'delShift' : 'cancelShift') + '" data-id="' + (e.id || '') + '">'
+    + (e.persisted ? '删除' : '取消') + '</button></div></div>';
+}
+
+/* ---- MeView ---- */
+/* 「我的」：伴侣 + 一条配对流程（两级共享）+ 班表入口 + 3 个作息参数 + 数据 */
+function relTime(ts){
+  if (!ts) { return '尚未同步'; }
+  var m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (m < 1) { return '刚刚'; }
+  if (m < 60) { return m + ' 分钟前'; }
+  if (m < 1440) { return Math.floor(m / 60) + ' 小时前'; }
+  return Math.floor(m / 1440) + ' 天前';
+}
+function scrMe(){
+  var p = S.params, pt = S.partner;
+  var html = '<div class="page"><div class="body col gap12" style="padding-top:12px">'
+    + '<div class="hero" style="padding:14px 16px"><div class="row between"><div class="col gap4">'
+    + '<div style="font-size:19px;font-weight:700">' + (pt.exists ? '我 & ' + esc(pt.nick)
+      : S.pairState === 'PAIRED' ? '我 & 对方' : '我（单人模式）') + '</div>'
+    + '<div class="t12" style="opacity:.92">' + (S.pairState === 'PAIRED' ? '已配对 · 上次同步 ' + relTime(S.pairSyncedAt)
+      : S.pairState === 'WAITING' ? '等待对方输码 · ' + esc(S.inviteCode)
+      : !S.agcOn ? '本机代录 · 数据只写在本机的应用沙箱里' : '本机代录，或配对后自动同步') + '</div></div>'
+    + '<span class="chip" style="background:#ffffff2e;color:#fff" data-act="go" data-s="cotime">共同时间</span></div></div>';
+  html += '<div class="card col gap8">' + cdHead('伴侣', 'MeView.ets',
+    pt.exists ? '<span class="cd-act" data-act="editPartner">编辑</span>' : '<span class="cd-act" data-act="addPartner">+ 添加</span>');
+  if (pt.exists) {
+    html += '<div class="row gap8"><span class="t14 b5">' + esc(pt.nick) + '</span><div class="lw"></div>'
+      + '<span class="t12 c3">起床 ' + hm(pt.wakeMin) + ' · 就寝 ' + hm(pt.bedMin) + '</span></div>'
+      + '<div class="row gap8"><span class="chip" data-act="ownerP">录入 TA 的班表 ›</span>'
+      + '<span class="chip" data-act="askDelPartner">删除</span></div>';
+  } else {
+    html += '<div class="t12 c3">离线代录 TA 的作息与班表，无需联网、无需第二个账号。</div>'
+      + '<button class="btn blue big w100" data-act="addPartner">添加伴侣</button>';
+  }
+  html += '</div>';
+  /* 配对：一条流程 + 两档可见范围。AGC 未开通时按 MeView.ets 的真实行为——按钮照常，点下去 toast 降级 */
+  html += '<div class="card col gap8">' + cdHead('配对同步', 'MeView.ets',
+    S.pairState === 'PAIRED' ? '<span class="chip" data-act="syncNow">立即同步</span>' : '');
+  if (S.pairState === 'PAIRED') {
+    html += '<div class="row gap8"><span class="tag" style="background:var(--success_green)">已配对</span>'
+      + '<span class="t14 b5 lw">' + (S.partner.exists ? esc(S.partner.nick) : '对方') + '</span></div>'
+      + '<div class="t11 c3">上次同步 ' + relTime(S.pairSyncedAt) + ' · 班表在设备上加密后才上传，云端只存密文</div>'
+      + '<div class="hr-line" style="margin:2px 0"></div>'
+      + '<div class="t12 c2">TA 能看到</div><div class="row gap6">'
+      + [[1, '只有共同时间'], [2, '共同时间 + 我的班表']].map(function(x){
+        return '<span class="chip' + (S.shareLevel === x[0] ? ' on' : '') + '" data-act="shareLevel" data-l="' + x[0] + '">' + x[1] + '</span>';
+      }).join('') + '</div>'
+      + '<div class="t11 ch">' + (S.shareLevel === 1 ? '对方看不到我的班次类型与课程名。' : '对方可看到我的班次类型与忙碌段，看不到计划标题。') + '</div>'
+      + '<span class="t13 red" data-act="unpair" style="text-align:right">解除配对</span>';
+  } else if (S.pairState === 'WAITING') {
+    html += '<div class="t11 c2">把这 6 个数字发给 TA，TA 在自己的手机上进「我的 · 配对同步」输入同一个码。</div>'
+      + '<div class="b7" style="font-size:26px;letter-spacing:8px;text-align:center;margin:2px 0">' + esc(S.inviteCode) + '</div>'
+      + '<div class="row gap10 w100"><button class="btn green lw" data-act="completePair">完成配对</button>'
+      + '<button class="btn ghost lw" data-act="cancelPair">取消</button></div>';
+  } else {
+    html += '<div class="t11 c3" style="line-height:1.7">两台手机各装一份，输一次邀请码就能互算共同时间；'
+      + '不需要同一账号，也不上传姓名和位置。</div>'
+      + '<div class="row gap10"><button class="btn lw" data-act="genInvite">我生成邀请码</button>'
+      + '<button class="btn purple lw" data-act="toggleJoin">我有邀请码</button></div>'
+      + (S.showJoin ? '<div class="row gap8"><input class="inp lw" id="f-code" placeholder="6 位数字" maxlength="6">'
+        + '<button class="btn blue sm" data-act="joinPair">加入</button></div>' : '')
+      + '<div class="t11 ch">需开通 AGC 云服务；没开通时上面这卡点了只会提示改用本机代录。</div>';
+  }
+  html += '</div>';
+  html += '<div class="card col">'
+    + '<div class="li" data-act="go" data-s="hub"><div style="color:var(--brand_pink)">' + ic('calendar', 20) + '</div>'
+    + '<div class="col lw gap2" style="text-align:left"><div class="t14 b5">班表与班次</div>'
+    + '<div class="t11 c3">循环模板 · 单日改班 · 课程 · 班次时段与通勤</div></div>'
+    + '<span style="color:var(--text_disabled)">' + ic('chevR', 16) + '</span></div></div>';
+  /* D-19：与 App 的 MeView.rhythmCard 同构——三个主参数只读常驻，视界与最短共同时段收进
+     「高级设置」折叠，点卡头「编辑」才换成输入框。原型原来是整卡内联可编辑＋常驻「保存」，
+     比 App 多一层常态噪声，而且收整缓冲被写在"其余阈值"里，与 App 的三主参数口径矛盾。 */
+  var e = S.meEdit, dft = S.meDraft || {};
+  var val = function(k, dv){ return dft[k] !== undefined ? dft[k] : dv; };
+  var msel = +val('minSlotMin', p.minSlotMin);
+  var adv = '<div class="adv-head" data-act="toggleAdv"><span class="lw">高级设置（视界 / 最短时段）</span>'
+    + '<span class="cw">' + ic(S.advOpen ? 'chevU' : 'chevD', 14) + '</span></div>';
+  html += '<div class="card col gap10">' + cdHead('作息', 'MeView.ets', e ? '' : '<span class="cd-act" data-act="editParams">编辑</span>');
+  if (e) {
+    html += '<div class="row gap8 wrapf">'
+      + '<span class="row gap6"><span class="t13 c2">起床</span><input class="inp" id="f-wake" value="' + val('wake', hm(p.wakeMin)) + '" style="width:80px"></span>'
+      + '<span class="row gap6"><span class="t13 c2">就寝</span><input class="inp" id="f-bed" value="' + val('bed', hm(p.bedMin)) + '" style="width:80px"></span>'
+      + '<span class="row gap6"><span class="t13 c2">收整(分)</span><input class="inp" id="f-wind" value="' + val('wind', String(p.windDownMin)) + '" style="width:64px"></span></div>' + adv;
+    if (S.advOpen) {
+      html += '<div class="row gap8"><span class="t13 c2" style="flex:0 0 84px">计算视界(天)</span>'
+        + '<input class="inp" id="f-horizon" value="' + val('horizon', String(p.horizonDays)) + '" style="width:80px">'
+        + '<span class="t11 ch lw">未来多少天参与计算（7–366）</span></div>'
+        + '<div class="row gap6">' + [60, 120, 240].map(function(v){
+          return '<span class="chip' + (msel === v ? ' on' : '') + '" data-act="minSlot" data-v="' + v + '">' + minSlotLabel(v) + '</span>';
+        }).join('') + '</div>'
+        + '<div class="t11 ch">短于此段的共同空闲会被直接丢掉，不算成一个窗口。</div>';
+    }
+    html += '<div class="row gap10 w100"><button class="btn lw" data-act="saveParams">保存</button>'
+      + '<button class="btn ghost lw" data-act="cancelParams">取消</button></div>';
+  } else {
+    html += '<div class="stat-row"><div class="stat"><b>' + hm(p.wakeMin) + '</b><span>起床</span></div>'
+      + '<div class="stat"><b>' + hm(p.bedMin) + '</b><span>就寝</span></div>'
+      + '<div class="stat"><b>' + p.windDownMin + '分</b><span>收整</span></div></div>'
+      + (p.bedMin < p.wakeMin ? '<div class="t12 c2">就寝已过零点，按次日凌晨计入</div>' : '')
+      + '<div class="t12 ch">决定你的睡眠与收整如何参与计算，改完立刻重算共同时间。</div>' + adv;
+    if (S.advOpen) {
+      html += '<div class="t12 c2">视界 ' + p.horizonDays + ' 天 · 最短共同时段 ' + minSlotLabel(p.minSlotMin) + '</div>'
+        + '<div class="t11 ch">其余阈值（夜班窗口、半天/整日/可出行判定）用引擎默认值。</div>';
+    }
+  }
+  html += '</div>';
+  html += '<div class="card col gap10">' + cdHead('数据与隐私', 'MeView.ets')
+    + '<div class="row gap8" data-act="privacy" style="cursor:pointer"><div style="color:var(--success_green)">' + ic('shield', 18) + '</div>'
+    + '<span class="t14 lw">隐私政策</span><span style="color:var(--text_disabled)">' + ic('chevR', 15) + '</span></div>'
+    + '<div class="hr-line" style="margin:0"></div>'
+    + '<div class="row gap8" data-act="askClearAll" style="cursor:pointer"><div style="color:var(--danger_red)">' + ic('trash', 18) + '</div>'
+    + '<span class="t14 lw red">清空我的全部数据</span><span style="color:var(--text_disabled)">' + ic('chevR', 15) + '</span></div></div>';
+  html += '<div class="t11 ch" style="padding-bottom:8px">已去掉的通道：拍照识别课表、整月涂抹页、14 项引擎参数、8 个窗口标签、8 种计划类型；配对只留一条邀请码流程和两档可见范围。</div>';
+  return html + '</div></div>';
+}
+
+/* ---- RestCard2x2 预览 ---- */
+function scrCard(){
+  var w = nextWindow(NOW), days = w ? Math.floor(w.start / MIN) - TODAY : -1, body;
+  if (S.cardK === 0) {
+    body = '<div style="font-size:40px;font-weight:700">' + Math.max(0, days) + ' <span style="font-size:15px;font-weight:400">天后</span></div>'
+      + '<div style="font-size:12px;opacity:.92;margin-top:auto">' + (w ? mdw(Math.floor(w.start / MIN)) + ' · ' + duration(w.end - w.start) : '') + '</div>';
+  } else if (S.cardK === 1) {
+    body = '<div style="font-size:30px;font-weight:700;margin-top:14px">就是今天</div>'
+      + '<div style="font-size:12px;opacity:.92;margin-top:auto">' + (w ? endLabel(w.start, w.end) : '') + '</div>';
+  } else {
+    body = '<div style="font-size:20px;font-weight:600;margin-top:14px">暂无窗口</div>'
+      + '<div style="font-size:11px;opacity:.9;margin-top:auto;line-height:1.6">'
+      + (S.partner.exists ? '打开 App 录入双方课表后自动重算' : '打开 App 添加伴侣，解锁共同时间') + '</div>';
+  }
+  var html = '<div class="page">' + pageHead('桌面卡片 2×2', 'me', '') + '<div class="body col gap12">'
+    + '<div class="t11 c3">仅桌面入口：长按桌面 App 图标 → 服务卡片，或桌面空白处左滑进入卡片中心。App 内没有添加/预览页，工程里也没有调用 formBindingControl。</div>';
+  html += '<div class="card col gap10"><div class="t13 b5">FormAbility 推送的数据' + srcTag('RestCard2x2.ets') + '</div>'
+    + '<div class="row gap6 wrapf">' + ['days > 0', 'days === 0', '无窗口'].map(function(n, k){
+      return '<span class="chip' + (S.cardK === k ? ' on' : '') + '" data-act="cardK" data-k="' + k + '">' + n + '</span>';
+    }).join('') + '</div>'
+    + '<div class="row gap8"><span class="t12 c2">hasPartner</span>' + sw(S.partner.exists, 'togglePartner')
+    + '<span class="t11 c3">影响兜底文案</span></div></div>';
+  html += '<div class="row gap12 wrapf"><div class="card2x2"><div style="font-size:12px;opacity:.9">共同休时</div>' + body + '</div>'
+    + '<div class="card2x2" style="width:356px;height:170px;background:linear-gradient(135deg,#2B4C9B,#8A63D2)">'
+    + '<div style="font-size:12px;opacity:.9">4×2 变体（示意，项目未实现）</div>'
+    + '<div style="font-size:26px;font-weight:700;margin-top:6px">' + (days >= 0 ? days + ' 天后' : '—') + '</div>'
+    + '<div style="font-size:12px;opacity:.9;margin-top:auto">' + (w ? endLabel(w.start, w.end) : '') + '</div></div></div>';
+  html += '<div class="card t11 c3" style="line-height:1.8">真机卡片由 <b>FormAbility</b> 推送 title / days / dateText / windowText / hasPartner 五个 LocalStorageProp；'
+    + '点击卡片 postCardAction 跳 EntryAbility。窗口时长上限 36 小时（CARD_MAX_WINDOW_MIN）。</div>';
+  return html + '</div></div>';
+}
+/* ========== 6. 半模态 / 对话框 / 隐私 ========== */
+function sheetWin(){
+  var w = S.sheetWin, d = S.draft;
+  if (!w) { return ''; }
+  var dur = d.end - d.start, span = w.end - w.start;
+  var left = (d.start - w.start) / span * 100, wid = dur / span * 100;
+  return '<div class="handle"></div><div style="padding:8px 16px 0">'
+    + '<div class="hero" style="padding:14px"><div class="row between"><div class="t17 b7">' + mdw(Math.floor(w.start / MIN)) + '</div>'
+    + '<span class="t13" style="opacity:.92">' + duration(dur) + '</span></div>'
+    + '<div class="t13 mt4" style="opacity:.95">' + endLabel(w.start, w.end) + srcTag('WindowDetailSheet.ets') + '</div>'
+    + winTagRow(w, 'row wrapf gap6 mt8') + '</div>'
+    + '<div class="track mt12"><i style="width:' + wid + '%;left:' + left + '%"></i></div>'
+    + '<div class="row between t10 c3 mt4"><span>' + hm(w.start) + '</span><span>整段 ' + duration(span) + '</span><span>'
+    + (w.end % MIN === 0 ? '24:00' : hm(w.end)) + '</span></div>'
+    + '<div class="t12 c3 mt12">计划类型</div>'
+    + '<div class="row wrapf gap6 mt4">' + PLAN_KINDS.map(function(k){
+      return '<span class="chip' + (d.kind === k.k ? ' on' : '') + '" data-act="pickKind" data-k="' + k.k + '">' + k.n + '</span>';
+    }).join('') + '</div>'
+    + '<input class="inp mt12" id="f-dtitle" value="' + esc(d.title) + '" placeholder="标题（留空用类型名）" style="height:40px">'
+    + timeRow('开始', 'start', d.start, d.start - 15 >= w.start, d.start + 15 <= d.end - 15)
+    + timeRow('结束', 'end', d.end, d.end - 15 >= d.start + 15, d.end + 15 <= w.end)
+    + '<div class="t11 ch mt8">步进 15 分钟、最短 15 分钟、不可超出窗口边界；默认 2 小时。</div>'
+    + '<div class="row gap10 mt12"><button class="btn ghost big lw" data-act="closeSheet">取消</button>'
+    + '<button class="btn big lw" data-act="createPlan"' + (dur < 15 ? ' disabled' : '') + '>创建计划</button></div>'
+    + '<div class="t11 ch mt8" style="padding-bottom:14px">创建后可选写入系统日历（需日历权限），拒绝则仅本机提醒。</div></div>';
+}
+function timeRow(label, key, val, canMinus, canPlus){
+  return '<div class="row mt8"><span class="t13 c2" style="width:36px">' + label + '</span>'
+    + '<span class="t15 b5" style="width:56px;text-align:center">' + hm(val) + '</span>'
+    + '<button class="btn ghost sm" data-act="step" data-k="' + key + '" data-d="-15"' + (canMinus ? '' : ' disabled') + '>−15</button>'
+    + '<button class="btn ghost sm" data-act="step" data-k="' + key + '" data-d="15"' + (canPlus ? '' : ' disabled') + '>+15</button></div>';
+}
+function daySegs(o, pp){
+  var d = S.dayOpen, busy = mergeIv(withWind(trueBusy(o, d), pp.windDownMin).concat(sleepBusy(d, pp)));
+  var out = [], cur = d * MIN, end = (d + 1) * MIN;
+  busy.forEach(function(b){
+    var s = Math.max(b.start, cur), e = Math.min(b.end, end);
+    if (e <= s) { return; }
+    if (s > cur) { out.push({ gap:true, pct:(s - cur) / MIN * 100 }); }
+    out.push({ gap:false, pct:(e - s) / MIN * 100 });
+    cur = e;
+  });
+  if (cur < end) { out.push({ gap:true, pct:(end - cur) / MIN * 100 }); }
+  return out;
+}
+function busySummary(o){
+  var m = {}, ks;
+  trueBusy(o, S.dayOpen).forEach(function(b){ m[b.tag] = (m[b.tag] || 0) + (b.end - b.start); });
+  ks = Object.keys(m);
+  if (!ks.length) { return '全天空闲'; }
+  return ks.map(function(k){ return BUSY_LABEL[k] + ' ' + duration(m[k]); }).join(' · ');
+}
+function sheetDay(){
+  var d = S.dayOpen, ws = dayWindows(d);
+  return '<div class="handle"></div><div style="padding:8px 16px 16px">'
+    + '<div class="row between"><div class="t16 b7">' + mdw(d) + srcTag('DayDetailSheet.ets') + '</div>'
+    + '<span class="chip" data-act="editDay">改这天</span></div>'
+    + '<div class="t12 c3 mt4">当日共同窗口 ' + ws.length + ' 段 · 空闲 ' + (CACHE.dayFree[d] ? duration(CACHE.dayFree[d]) : '0分钟') + '</div>'
+    + (ws.length ? ws.map(windowMiniRow).join('') : '<div class="card t12 ch mt8" style="text-align:center">当日无 ≥ 最小段时长的共同窗口</div>')
+    + '<div class="card mt12 col gap6"><div class="t13 b5">我的忙碌（' + busySummary('ME') + '）</div>'
+    + '<div class="bar">' + daySegs('ME', ownerParams('ME')).map(function(s){
+      return '<i style="width:' + s.pct + '%;background:' + (s.gap ? 'transparent' : 'var(--my_busy)') + '"></i>';
+    }).join('') + '</div></div>'
+    + (S.partner.exists
+      ? '<div class="card mt10 col gap6"><div class="t13 b5">' + esc(S.partner.nick) + ' 的忙碌（' + busySummary('PARTNER') + '）</div>'
+        + '<div class="bar">' + daySegs('PARTNER', ownerParams('PARTNER')).map(function(s){
+          return '<i style="width:' + s.pct + '%;background:' + (s.gap ? 'transparent' : 'var(--partner_busy)') + '"></i>';
+        }).join('') + '</div>'
+        + '<div class="t11 c3">来源：本机代录（完整时段）</div></div>'
+      : '<div class="card mt10 t12 ch" style="text-align:center">暂无对方数据（当前为单人模式）</div>')
+    + '</div>';
+}
+/* 单日改班收进这个 sheet，App 里没有整月涂抹页 */
+function sheetEdit(){
+  var d = S.dayOpen, o = S.owner, cur = S.overrides[o][d], tpl = shiftFor(o, d);
+  var chips = S.shiftTypes.map(function(st){
+    var on = cur !== undefined ? cur === st.id : (!!(tpl && tpl.id === st.id));
+    return '<span class="chip' + (on ? ' on' : '') + '" data-act="setDayShift" data-id="' + st.id + '">' + esc(st.name) + '</span>';
+  }).join('');
+  chips += '<span class="chip' + (cur === REST_KEY || (cur === undefined && !tpl) ? ' on' : '')
+    + '" data-act="setDayShift" data-id="' + REST_KEY + '">休息</span>';
+  return '<div class="handle"></div><div class="col gap12" style="padding:8px 16px 20px">'
+    + '<div class="t16 b7">' + mdw(d) + ' 上什么班' + srcTag('PaintMonth.ets 的等价入口') + '</div>'
+    + '<div class="t12 c2">当前：' + (cur !== undefined ? '手动覆盖 · ' + typeName(cur)
+      : (S.templates[o].seq.length ? '循环模板推算 · ' + shiftTxt(tpl) : '未配置模板 · 休息')) + '</div>'
+    + '<div class="row wrapf gap6">' + chips + '</div>'
+    + '<div class="t11 ch">单日覆盖优先于循环模板；再点一次已选中的班次即清除。长期规律请用循环模板。</div>'
+    + '<div class="row gap10"><button class="btn ghost big lw" data-act="clearDayOv"' + (cur === undefined ? ' disabled' : '') + '>清除覆盖</button>'
+    + '<button class="btn big lw" data-act="closeSheet">完成</button></div>'
+    + '<div class="row gap6"><span class="chip" data-act="go" data-s="cycle">循环模板</span>'
+    + '<span class="chip" data-act="go" data-s="editor">班次时段与颜色</span>'
+    + '<span class="chip" data-act="go" data-s="course">课程表</span></div></div>';
+}
+function sheetAnchor(){
+  var which = S.anchorWhich;
+  var cur = which === 'term' ? (S.termStart || TODAY) : S.templates[S.owner].anchor;
+  return '<div class="handle"></div><div class="col gap12" style="padding:8px 20px 24px">'
+    + '<div class="t16 b5">' + (which === 'term' ? '选择学期起点（第一周周一）' : '选择锚点日期')
+    + srcTag(which === 'term' ? 'CourseImport.ets' : 'CycleEditor.ets') + '</div>'
+    + '<input type="date" class="inp" id="f-anchor" value="' + ymdOfEpoch(cur) + '" style="height:48px">'
+    + '<div class="t11 ch">原型用原生 date input 替代 DatePickerComponent（API 26 滚轮）。</div>'
+    + '<div class="row gap10"><button class="btn ghost big lw" data-act="closeSheet">取消</button>'
+    + '<button class="btn big lw" data-act="confirmAnchor">确定</button></div></div>';
+}
+function sheetPartner(){
+  var pt = S.partner, isNew = !pt.exists;
+  return '<div class="handle"></div><div class="col gap10" style="padding:8px 20px 24px">'
+    + '<div class="t16 b5">' + (isNew ? '添加伴侣（本机代录）' : '编辑伴侣') + srcTag('MeView.ets') + '</div>'
+    + '<div class="row gap8"><span class="t13" style="flex:0 0 62px">昵称</span><input class="inp lw" id="f-pnick" value="' + esc(pt.nick) + '"></div>'
+    + '<div class="row gap8"><span class="t13" style="flex:0 0 62px">起床</span><input class="inp" id="f-pwake" value="' + hm(pt.wakeMin) + '" style="width:80px">'
+    + '<span class="t13">就寝</span><input class="inp" id="f-pbed" value="' + hm(pt.bedMin) + '" style="width:80px"></div>'
+    + '<div class="row gap8"><span class="t13" style="flex:0 0 62px">收整(分)</span><input class="inp" id="f-pwind" value="' + pt.windDownMin + '" style="width:80px"></div>'
+    + '<div class="t11 ch">就寝需晚于起床；TA 的班表/课表到「班表 · TA 的班表」录入。</div>'
+    + '<div class="row gap10"><button class="btn ghost big lw" data-act="closeSheet">取消</button>'
+    + '<button class="btn big lw" data-act="savePartner">保存</button></div></div>';
+}
+function sheetColor(){
+  var cur = (S.editShift || { color:'#D24A7E' }).color, cells = '';
+  for (var i = 0; i < 70; i++) {
+    var h = (i * 17) % 360, l = 34 + Math.floor(i / 10) * 11, s = 45 + (i % 5) * 11;
+    cells += '<span data-act="pickColor" data-c="hsl(' + h + ',' + s + '%,' + l + '%)" style="height:26px;border-radius:6px;cursor:pointer;background:hsl(' + h + ',' + s + '%,' + l + '%)"></span>';
+  }
+  return '<div class="handle"></div><div class="col gap12" style="padding:8px 16px 20px">'
+    + '<div class="t16 b5">自定义取色' + srcTag('ScheduleEditor.ets · HdsColorPicker') + '</div>'
+    + '<div class="row gap8"><span style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;background:' + cur + ';box-shadow:inset 0 0 0 1px var(--divider)"></span>'
+    + '<input class="inp lw" id="f-hex" value="' + esc(cur) + '" style="height:44px">'
+    + '<button class="btn sm" data-act="applyHex">使用此色</button></div>'
+    + '<div class="t12 c3">常用（initialFavoriteColors）</div>'
+    + '<div class="row wrapf gap8">' + PALETTE.map(function(c){
+      return '<span data-act="pickColor" data-c="' + c + '" style="width:30px;height:30px;border-radius:50%;background:' + c + ';cursor:pointer'
+        + (c === cur ? ';box-shadow:0 0 0 2px var(--text_primary)' : '') + '"></span>';
+    }).join('') + '</div>'
+    + '<div class="t12 c3">网格 / 光谱（真机为 HdsColorPicker 三 tab）</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px">' + cells + '</div>'
+    + '<button class="btn ghost w100" data-act="closeSheet">关闭</button></div>';
+}
+function sheetBody(){
+  if (S.sheet === 'win') { return sheetWin(); }
+  if (S.sheet === 'day') { return sheetDay(); }
+  if (S.sheet === 'edit') { return sheetEdit(); }
+  if (S.sheet === 'anchor') { return sheetAnchor(); }
+  if (S.sheet === 'partner') { return sheetPartner(); }
+  if (S.sheet === 'color') { return sheetColor(); }
+  return '';
+}
+function privacyHtml(){
+  /* 与 entry/src/main/ets/component/PrivacyDialog.ets 的 privacyPoints() 同步（最终验收 R1 补第二条）：
+     下面五条 d 就是 app.string.privacy_point_* 的原文，改动要两边一起改。
+     仓库里的三份正式全文由 tools/test/copy-audit.mjs 逐字钉住；这份原型不参与该审计。 */
+  var pts = [
+    { i:'📋', t:'只在本机', d:'班表/课表只写进这台手机上的应用沙箱数据库，本应用不联网、不上传任何服务器' },
+    { i:'🔄', t:'系统备份', d:'系统备份、应用克隆或换机迁移会把这份数据带到你的其他设备——那条通道由系统管理，本应用不参与' },
+    { i:'📅', t:'日历', d:'共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理' },
+    { i:'📷', t:'照片', d:'照片仅用于本地识别课表（端侧 OCR），不联网、不保存原图' },
+    { i:'🔐', t:'云端', d:'云端配对当前未开放，这个安装包也没有联网权限；本应用自己不会把你的数据发出去' }
+  ];
+  return '<div class="col gap12" style="min-height:100%">'
+    + '<div style="font-size:40px;text-align:center">🤝</div>'
+    + '<div class="t17 b7" style="text-align:center">把时间对齐，而不是把生活上传</div>'
+    + '<div class="t12 c3" style="text-align:center">在你开始之前，请先了解我们如何对待你的数据</div>'
+    + pts.map(function(x){
+      return '<div class="row gap10" style="align-items:flex-start"><div style="font-size:18px">' + x.i + '</div>'
+        + '<div class="col lw gap2"><div class="t14 b5">' + x.t + '</div><div class="t11 c3" style="line-height:1.6">' + x.d + '</div></div></div>';
+    }).join('')
+    + '<div class="t12 blue" data-act="openPolicy">查看《隐私政策》全文 ›</div>'
+    + '<div class="t11 ch">上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准。</div>'
+    + '<div class="lw"></div>'
+    + '<div class="row gap10"><button class="btn big lw" data-act="agreePrivacy">同意并继续</button>'
+    + '<button class="btn big lw ghost" data-act="declinePrivacy">不同意并退出</button></div></div>';
+}
+function dlgHtml(){
+  var g = S.dlg;
+  if (!g) { return ''; }
+  return '<div class="dlg"><div class="t16 b7" style="text-align:center">' + esc(g.title) + '</div>'
+    + (g.message ? '<div class="t12 c2 mt8" style="line-height:1.7;text-align:center">' + esc(g.message) + '</div>' : '')
+    + '<div class="row gap10 mt16"><button class="btn ghost big lw" data-act="dlgCancel">' + esc(g.secondary || '取消') + '</button>'
+    + '<button class="btn big lw' + (g.danger ? ' red' : '') + '" data-act="dlgOk">' + esc(g.primary || '确定') + '</button></div></div>';
+}
+
+/* ========== 7. 交互 ========== */
+/* 3 tab：班表不是 tab，是「我的」下的子页 */
+var TABS = [{ s:'home', n:'同休', i:'house' }, { s:'cotime', n:'共同', i:'heart' }, { s:'me', n:'我的', i:'person' }];
+var TAB_OF = { home:0, cotime:1, me:2 };
+function toast(msg){
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ el.classList.remove('on'); }, 1800);
+}
+function ask(title, message, primary, onOk, danger){
+  S.dlg = { title:title, message:message, primary:primary, secondary:'取消', onOk:onOk, danger:!!danger };
+}
+function openWinSheet(w){
+  if (!w) { return; }
+  S.sheetWin = w;
+  var d = Math.min(120, w.end - w.start);
+  var s = Math.max(w.start, Math.min(w.end - d, NOW > w.start ? Math.ceil(NOW / 15) * 15 : w.start));
+  S.draft = { kind:'meal', start:s, end:s + d, title:'', touched:false };
+  S.sheet = 'win';
+}
+function syncDraft(){
+  S.draft.title = fv('dtitle', S.draft.title);
+}
+function commitShift(){
+  var e = S.editShift;
+  var name = fv('name', e.name).trim() || '未命名班次';
+  var sm = hhmmToMin(fv('start', e.startText), 540), em = hhmmToMin(fv('end', e.endText), 1080);
+  var st = { id:e.id || uid(), name:name, startMin:sm, endMin:em, crossDay:em <= sm,
+    commuteInMin:toInt(fv('ci', e.commuteIn), 0), commuteOutMin:toInt(fv('co', e.commuteOut), 0),
+    recoveryMin:toInt(fv('rec', e.recovery), 0), nightMode:e.nightIdx, color:e.color };
+  if (e.persisted) {
+    for (var i = 0; i < S.shiftTypes.length; i++) { if (S.shiftTypes[i].id === e.id) { S.shiftTypes[i] = st; } }
+  } else { S.shiftTypes.push(st); }
+  S.editShift = null;
+  recompute();
+  toast('班次已保存');
+}
+function delShift(id){
+  S.shiftTypes = S.shiftTypes.filter(function(s){ return s.id !== id; });
+  Object.keys(S.overrides).forEach(function(o){
+    Object.keys(S.overrides[o]).forEach(function(d){ if (S.overrides[o][d] === id) { delete S.overrides[o][d]; } });
+  });
+  Object.keys(S.templates).forEach(function(o){
+    S.templates[o].seq = S.templates[o].seq.filter(function(x){ return x !== id; });
+  });
+  S.editShift = null;
+  recompute();
+}
+function syncShift(){
+  var e = S.editShift;
+  if (!e) { return; }
+  e.name = fv('name', e.name); e.startText = fv('start', e.startText); e.endText = fv('end', e.endText);
+  e.commuteIn = fv('ci', e.commuteIn); e.commuteOut = fv('co', e.commuteOut); e.recovery = fv('rec', e.recovery);
+}
+var ACT = {
+  go:function(el){ S.screen = el.dataset.s; S.sheet = null; if (TAB_OF[S.screen] !== undefined) { S.tab = TAB_OF[S.screen]; } render(); },
+  tab:function(el){ S.screen = el.dataset.s; S.tab = +el.dataset.i; render(); },
+  viewPlans:function(){ S.screen = 'cotime'; S.seg = 'plan'; S.tab = 1; render(); },
+  /* D-19：档位芯片只活在「编辑 · 高级设置」里，所以先写草稿，保存才落全局并重算 */
+  minSlot:function(el){ if (S.meDraft) { S.meDraft.minSlotMin = +el.dataset.v; render(); } },
+  editParams:function(){
+    var p = S.params;
+    S.meDraft = { wake:hm(p.wakeMin), bed:hm(p.bedMin), wind:String(p.windDownMin),
+      horizon:String(p.horizonDays), minSlotMin:p.minSlotMin };
+    S.meEdit = true; render();
+  },
+  cancelParams:function(){ S.meEdit = false; S.meDraft = null; render(); },
+  toggleAdv:function(){ S.advOpen = !S.advOpen; render(); },
+  refresh:function(){ recompute(); render(); toast('已重算未来 ' + S.params.horizonDays + ' 天'); },
+  filter:function(el){ S.filter = el.dataset.f; S.seg = 'window'; S.screen = 'cotime'; S.view = 'list'; render(); },
+  seg:function(el){ S.seg = el.dataset.v; render(); },
+  setView:function(el){ S.view = el.dataset.v; render(); },
+  setOwner:function(el){ S.owner = el.dataset.o; render(); },
+  ownerP:function(){ S.owner = 'PARTNER'; S.screen = 'hub'; render(); },
+  weekNav:function(el){ S.weekStart += 7 * (+el.dataset.k); render(); },
+  weekToday:function(){ S.weekStart = TODAY - (weekdayOf(TODAY) - 1); render(); },
+  openWin:function(el){ openWinSheet(findWin(+el.dataset.w, el.dataset.e === undefined ? undefined : +el.dataset.e)); render(); },
+  openDay:function(el){ S.dayOpen = +el.dataset.d; S.sheet = 'day'; render(); },
+  closeSheet:function(){ S.sheet = null; render(); },
+  editDay:function(){ S.sheet = 'edit'; render(); },
+  setDayShift:function(el){
+    var d = S.dayOpen, o = S.owner, id = el.dataset.id;
+    if (S.overrides[o][d] === id) { delete S.overrides[o][d]; } else { S.overrides[o][d] = id; }
+    recompute(); render();
+  },
+  clearDayOv:function(){ delete S.overrides[S.owner][S.dayOpen]; recompute(); render(); toast('已按循环模板推算'); },
+  openAnchor:function(el){ S.anchorWhich = el.dataset.which; S.sheet = 'anchor'; render(); },
+  confirmAnchor:function(){
+    var ed = epochOfInput(fv('anchor', ''));
+    if (ed === null) { toast('请选择日期'); return; }
+    if (S.anchorWhich === 'term') { S.termStart = ed; } else { S.templates[S.owner].anchor = ed; }
+    S.sheet = null;
+    recompute(); render(); toast(S.anchorWhich === 'term' ? '学期起点已更新' : '锚点已更新');
+  },
+  step:function(el){
+    syncDraft();
+    var k = el.dataset.k, d = +el.dataset.d, w = S.sheetWin, dr = S.draft;
+    if (k === 'start') { dr.start = Math.max(w.start, Math.min(dr.start + d, dr.end - 15)); }
+    else { dr.end = Math.min(w.end, Math.max(dr.end + d, dr.start + 15)); }
+    dr.touched = true;
+    render();
+  },
+  pickKind:function(el){
+    syncDraft();
+    S.draft.kind = el.dataset.k;
+    /* 「其他」没有默认名，留空要求自填（阶段 6R.4）；不钉住 touched，切回「一起吃饭」时默认名要回得来 */
+    if (!S.draft.touched) {
+      S.draft.title = el.dataset.k === 'custom' ? '' : kindName(el.dataset.k);
+    }
+    render();
+  },
+  createPlan:function(){
+    syncDraft();
+    var w = S.sheetWin, dr = S.draft;
+    S.plans.push({ id:uid(), kind:dr.kind, title:dr.title || kindName(dr.kind), start:dr.start, end:dr.end, enabled:true });
+    S.sheet = null;
+    recompute(); render(); toast('计划已创建，并写入系统日历');
+  },
+  reschedule:function(el){
+    var pl = planById(el.dataset.id), c = pl && CACHE.conflicts[pl.id];
+    if (!c || !c.alt) { return; }
+    var dur = pl.end - pl.start;
+    pl.start = c.alt.start; pl.end = c.alt.start + dur;
+    recompute(); render(); toast('已改期到 ' + hm(pl.start));
+  },
+  pickPlan:function(){ S.seg = 'window'; S.filter = 'ALL'; render(); toast('请点一个窗口重新安排计划'); },
+  togglePlan:function(el){ var pl = planById(el.dataset.id); if (pl) { pl.enabled = pl.enabled === false; } recompute(); render(); },
+  askCancelPlan:function(el){
+    var id = el.dataset.id;
+    ask('取消计划？', '取消后该时段释放为共同时间，系统日历里的日程不会被自动删除。', '确认取消', function(){
+      S.plans = S.plans.filter(function(p){ return p.id !== id; });
+      recompute();
+    }, true);
+    render();
+  },
+  dlgOk:function(){ var g = S.dlg; S.dlg = null; if (g && g.onOk) { g.onOk(); } render(); },
+  dlgCancel:function(){ S.dlg = null; render(); },
+  dlgBackdrop:function(el, e){ if (e.target === el) { ACT.dlgCancel(); } },
+  closeDlg:function(){ S.dlg = null; render(); },
+  gotoNextFree:function(){ var w = nextWindow(NOW); if (!w) { toast('视界内无可用窗口'); render(); return; } openWinSheet(w); render(); },
+  /* 班表编辑 */
+  seqAdd:function(el){ S.templates[S.owner].seq.push(el.dataset.id); },
+  seqDel:function(el){ S.templates[S.owner].seq.splice(+el.dataset.i, 1); render(); },
+  saveTpl:function(){ recompute(); render(); toast(S.templates[S.owner].seq.length ? '已展开未来 ' + S.params.horizonDays + ' 天' : '序列为空，模板已清除'); },
+  clearTpl:function(){
+    ask('清空循环模板？', '已展开的班表会消失，手动覆盖仍保留。', '清空', function(){
+      S.templates[S.owner] = { seq:[], anchor:S.templates[S.owner].anchor };
+      recompute();
+    }, true);
+    render();
+  },
+  newShift:function(){ S.editShift = normalizeShift(null); render(); },
+  editShift:function(el){ S.editShift = normalizeShift(shiftOf(el.dataset.id)); render(); },
+  cancelShift:function(){ S.editShift = null; render(); },
+  nightIdx:function(el){ syncShift(); if (S.editShift) { S.editShift.nightIdx = +el.dataset.i; } render(); },
+  pickColor:function(el){
+    syncShift();
+    if (S.editShift) { S.editShift.color = el.dataset.c; }
+    if (S.sheet === 'color') { S.sheet = null; }
+    render();
+  },
+  openColor:function(){ syncShift(); if (!S.editShift) { S.editShift = normalizeShift(null); } S.sheet = 'color'; render(); },
+  applyHex:function(){
+    syncShift();
+    var v = fv('hex', '').trim();
+    if (S.editShift && v) { S.editShift.color = v; }
+    S.sheet = null;
+    render();
+  },
+  saveShift:function(){ commitShift(); },
+  delShift:function(el){
+    var id = el.dataset.id || (S.editShift && S.editShift.id);
+    ask('删除班次类型？', '引用该班次的循环序列与单日覆盖会一并移除，无法撤销。', '删除', function(){ delShift(id); }, true);
+    render();
+  },
+  /* 课程 */
+  toggleSec:function(){
+    if (S.showSections) { S.sections = textToSections(fv('sections', sectionsToText(S.sections))); }
+    S.showSections = !S.showSections;
+    recompute(); render();
+  },
+  saveSections:function(){
+    S.sections = textToSections(fv('sections', ''));
+    recompute(); render(); toast('节次模板已保存（' + S.sections.length + ' 节）');
+  },
+  resetSections:function(){ S.sections = defaultSections(); render(); toast('已恢复默认节次'); },
+  doParse:function(){ _parsed = parseCourseLines(fv('paste', '')); render(); },
+  saveParsed:function(){
+    var ok = _parsed.filter(function(p){ return p.ok; });
+    if (!ok.length) { toast('没有可保存的解析结果'); return; }
+    ok.forEach(function(p){ S.courses[S.owner].push({ id:uid(), name:p.name, weekday:p.weekday, sectionStart:p.sectionStart,
+      sectionEnd:p.sectionEnd, weekFrom:p.weekFrom, weekTo:p.weekTo, parity:p.parity }); });
+    _parsed = [];
+    recompute(); render(); toast('已导入 ' + ok.length + ' 门课程');
+  },
+  mwd:function(el){ _manualWd = +el.dataset.i; render(); },
+  mpar:function(el){ _manualPar = +el.dataset.p; render(); },
+  saveManual:function(){
+    var name = fv('mname', '').trim();
+    if (!name) { toast('请填写课程名'); return; }
+    var a = toInt(fv('ms1', '1'), 1), b = toInt(fv('ms2', '2'), 2);
+    if (b < a) { var t = a; a = b; b = t; }
+    if (b > S.sections.length) { toast('节次超出节次模板（' + S.sections.length + ' 节）'); return; }
+    S.courses[S.owner].push({ id:uid(), name:name, weekday:_manualWd, sectionStart:a, sectionEnd:b,
+      weekFrom:toInt(fv('w1', '1'), 1), weekTo:toInt(fv('w2', '16'), 16), parity:_manualPar });
+    recompute(); render(); toast('已添加：' + name);
+  },
+  delCourse:function(el){
+    S.courses[S.owner] = S.courses[S.owner].filter(function(c){ return c.id !== el.dataset.id; });
+    recompute(); render();
+  },
+  /* 我的 */
+  saveParams:function(){
+    var p = S.params;
+    var w = hhmmToMin(fv('wake', hm(p.wakeMin)), p.wakeMin), b = hhmmToMin(fv('bed', hm(p.bedMin)), p.bedMin);
+    var wind = toInt(fv('wind', String(p.windDownMin)), p.windDownMin);
+    var hz = toInt(fv('horizon', String(p.horizonDays)), p.horizonDays);
+    if (b === w) { toast('起床与就寝是同一时刻，算不出一天的清醒区间'); return; }
+    if (wind < 0) { toast('收整时长不能为负'); return; }
+    if (hz < 7 || hz > 366) { toast('计算视界需在 7–366 天之间'); return; }
+    S.params.wakeMin = w; S.params.bedMin = b; S.params.windDownMin = wind; S.params.horizonDays = hz;
+    if (S.meDraft) { S.params.minSlotMin = S.meDraft.minSlotMin; }
+    S.meEdit = false; S.meDraft = null;
+    syncSliders();
+    recompute(); render(); toast('作息参数已保存');
+  },
+  addPartner:function(){ S.sheet = 'partner'; render(); },
+  editPartner:function(){ S.sheet = 'partner'; render(); },
+  savePartner:function(){
+    var nick = fv('pnick', S.partner.nick).trim() || 'TA';
+    var w = hhmmToMin(fv('pwake', ''), 420), b = hhmmToMin(fv('pbed', ''), 1320), wind = toInt(fv('pwind', '20'), 20);
+    if (b === w) { toast('起床与就寝是同一时刻，算不出一天的清醒区间'); return; }
+    if (wind < 0) { toast('收整时长不能为负'); return; }
+    S.partner = { nick:nick, wakeMin:w, bedMin:b, windDownMin:wind, exists:true };
+    S.sheet = null;
+    syncSliders();
+    recompute(); render(); toast('伴侣信息已保存');
+  },
+  askDelPartner:function(){
+    ask('删除伴侣？', '将同时清除 TA 的全部班表/课表数据，并回退到单人模式。', '删除', function(){
+      S.partner.exists = false;
+      S.overrides.PARTNER = {}; S.courses.PARTNER = []; S.templates.PARTNER = { seq:[], anchor:TODAY };
+      if (S.owner === 'PARTNER') { S.owner = 'ME'; }
+      S.pairState = 'NONE';
+      recompute();
+    }, true);
+    render();
+  },
+  togglePartner:function(){
+    if (S.partner.exists) { ACT.askDelPartner(); }
+    else { S.partner = { nick:'阿明', wakeMin:420, bedMin:1320, windDownMin:20, exists:true }; recompute(); render(); }
+  },
+  genInvite:function(){
+    if (!S.agcOn) { toast('云端配对暂未开放（需开通 AGC 云服务），可先用本机代录'); return; }
+    S.inviteCode = String(Math.floor(100000 + Math.random() * 900000));
+    S.pairState = 'WAITING'; render(); toast('配对码已生成，发给 TA 吧');
+  },
+  toggleJoin:function(){ S.showJoin = !S.showJoin; render(); },
+  joinPair:function(){
+    var c = fv('code', '').trim();
+    if (!/^\d{6}$/.test(c)) { toast('请输入对方分享的 6 位配对码'); return; }
+    if (!S.agcOn) { toast('加入失败：云端配对暂未开放或配对码无效'); return; }
+    S.inviteCode = c; S.pairState = 'PAIRED'; S.showJoin = false; S.pairSyncedAt = Date.now();
+    render(); toast('配对成功，班表将按隐私等级加密同步');
+  },
+  completePair:function(){ S.pairState = 'PAIRED'; S.pairSyncedAt = Date.now(); render(); toast('已进入配对模式，班表变更将加密同步'); },
+  syncNow:function(){
+    if (!S.agcOn) { toast('同步失败：云端配对暂未开放'); return; }
+    S.pairSyncedAt = Date.now(); render(); toast('已上传我的快照、拉取对方快照（AES 密钥来自邀请码）');
+  },
+  cancelPair:function(){ S.pairState = 'NONE'; S.inviteCode = ''; render(); },
+  unpair:function(){
+    ask('解除配对？', '解除后需重新生成邀请码；TA 的班表数据保留在本机。', '解除', function(){ S.pairState = 'NONE'; S.inviteCode = ''; S.pairSyncedAt = 0; }, true);
+    render();
+  },
+  shareLevel:function(el){ S.shareLevel = +el.dataset.l; render(); },
+  askClearAll:function(){
+    ask('清空我的全部数据？', '班表、课表、计划、覆盖与配对状态都会回到初始值，此操作不可撤销。', '清空', function(){ reseedAll(); }, true);
+    render();
+  },
+  privacy:function(){ S.privacy = true; render(); },
+  agreePrivacy:function(){ S.privacy = false; render(); },
+  declinePrivacy:function(){ S.privacy = false; render(); toast('体验原型中「不同意」仅关闭弹窗'); },
+  openPolicy:function(){ toast('应用内《隐私政策》全文半模态（PrivacyPolicySheet，随包出厂；本包无 INTERNET，不走浏览器）'); },
+  cardK:function(el){ S.cardK = +el.dataset.k; render(); }
+};
+function planById(id){
+  for (var i = 0; i < S.plans.length; i++) { if (S.plans[i].id === id) { return S.plans[i]; } }
+  return null;
+}
+var SCREENS = { home:scrHome, cotime:scrCoTime, hub:scrHub, cycle:scrCycle,
+  course:scrCourse, editor:scrEditor, me:scrMe, card:scrCard };
+var NAV = [
+  ['home','同休（首页）','view/HomeView.ets · 三问答案式'],
+  ['cotime','共同时间','view/CoTimeView.ets · 周视图 + 筛选 5 / 标签 3'],
+  ['hub','班表','view/ScheduleHub.ets · 点日格改班'],
+  ['me','我的','view/MeView.ets · 配对 1 条流程 / 参数 3 项'],
+  ['cycle','循环模板','pages/CycleEditor.ets'],
+  ['course','课程表导入','pages/CourseImport.ets'],
+  ['editor','班次类型','pages/ScheduleEditor.ets'],
+  ['card','桌面卡片 2×2（仅桌面）','widget/RestCard2x2.ets']
+];
+var TOKENS = ['start_window_background','brand_pink','brand_pink_bg','brand_pink_border','brand_pink_muted','text_primary',  'text_secondary','text_tertiary','text_hint','text_disabled','card_bg','page_bg','page_bg_soft','page_bg_warm',
+  'border_weak','fill_weak','fill_weakest','fill_soft','divider','btn_neutral','sheet_handle','success_green','success_bg',
+  'danger_red','danger_bg','danger_border','info_blue','info_bg','accent_purple','warn_orange','warn_bg','tag_weekend',
+  'tag_trip','tag_fallback','month_free_none_bg','month_free_low_bg','month_free_mid_bg','month_free_none_fg',
+  'month_free_low_fg','bar_gap','my_busy','partner_busy','sunset_from','sunset_to',
+  'scene_warm','scene_rose','scene_blue','scene_veil_soft','scene_veil_strong',
+  'glass_strong','glass_soft','glass_border','glass_highlight','glass_shadow','glass_fallback'];
+
+function render(){
+  document.documentElement.dataset.theme = S.theme;
+  document.documentElement.dataset.glass = S.glass === 'solid' ? 'solid' : 'material';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-p^="glass-"]'), function(b){
+    b.classList.toggle('on', b.dataset.p === 'glass-' + document.documentElement.dataset.glass);
+  });
+  var phone = document.getElementById('phone');
+  var screenChanged = phone.dataset.screen !== S.screen;
+  phone.dataset.screen = S.screen;
+  document.getElementById('sb-time').textContent = pad2(_n.getHours()) + ':' + pad2(_n.getMinutes());
+  var scr = document.getElementById('screen');
+  scr.innerHTML = (SCREENS[S.screen] || scrHome)();
+  if (screenChanged) {
+    scr.scrollTop = 0;
+    scr.classList.remove('screen-enter');
+    void scr.offsetWidth;
+    scr.classList.add('screen-enter');
+  }
+  var tb = document.getElementById('tabbar');
+  var showTab = TAB_OF[S.screen] !== undefined && !S.privacy;
+  tb.className = 'tabbar' + (showTab ? '' : ' hide');
+  tb.innerHTML = TABS.map(function(t, i){
+    var on = S.screen === t.s;
+    return '<button class="t' + (on ? ' on' : '') + '" data-act="tab" data-s="' + t.s + '" data-i="' + i + '">'
+      + ic(t.i, 22, on ? 'var(--brand_pink)' : 'currentColor') + '<span>' + t.n + '</span></button>';
+  }).join('');
+  var sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim');
+  sheet.innerHTML = sheetBody();
+  sheet.classList.toggle('on', !!S.sheet);
+  scrim.classList.toggle('on', !!S.sheet);
+  var dw = document.getElementById('dlgwrap');
+  dw.innerHTML = dlgHtml();
+  dw.classList.toggle('on', !!S.dlg);
+  var pv = document.getElementById('privacy');
+  pv.innerHTML = privacyHtml();
+  pv.classList.toggle('on', !!S.privacy);
+  Array.prototype.forEach.call(document.querySelectorAll('#nav button'), function(b){
+    b.classList.toggle('on', b.dataset.s === S.screen);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.pbtn'), function(b){
+    var k = b.dataset.p;
+    if (k === 'inspect') { b.classList.toggle('on', S.inspect); }
+    if (k === 'theme-light') { b.classList.toggle('on', S.theme === 'light'); }
+    if (k === 'theme-dark') { b.classList.toggle('on', S.theme === 'dark'); }
+    if (k === 'partner') { b.textContent = '伴侣：' + (S.partner.exists ? '开' : '关'); }
+    if (k === 'agc') { b.textContent = 'AGC 云服务：' + (S.agcOn ? '已开通' : '未开通'); }
+    if (k === 'owner') { b.textContent = '录入对象：' + (S.owner === 'ME' ? '我' : 'TA'); }
+  });
+}
+document.addEventListener('click', function(e){
+  var el = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el) { return; }
+  var fn = ACT[el.dataset.act];
+  if (!fn) { return; }
+  e.preventDefault();
+  fn(el, e);
+});
+/* ---- 控制台 ---- */
+var SLIDERS = [
+  ['wakeMin','起床', 240, 720, 15, function(v){ return hm(v); }],
+  ['bedMin','就寝', 1080, 1440, 15, function(v){ return hm(v); }],
+  ['windDownMin','收整(分)', 0, 60, 5, function(v){ return v + "'"; }],
+  ['minSlotMin','最小段', 30, 300, 15, function(v){ return duration(v); }],
+  ['halfDayMin','半天阈值', 120, 480, 30, function(v){ return duration(v); }],
+  ['fullDayAvailMin','整日可用', 480, 900, 30, function(v){ return duration(v); }],
+  ['overnightMin','过夜阈值', 600, 1440, 60, function(v){ return duration(v); }],
+  ['horizonDays','视界(天)', 14, 366, 2, function(v){ return v + '天'; }]
+];
+function buildPanel(){
+  document.getElementById('sliders').innerHTML = SLIDERS.map(function(s){
+    return '<div class="pslider"><span>' + s[1] + '</span><input type="range" data-k="' + s[0]
+      + '" min="' + s[2] + '" max="' + s[3] + '" step="' + s[4] + '" value="' + S.params[s[0]] + '"><b>' + s[5](S.params[s[0]]) + '</b></div>';
+  }).join('');
+  document.getElementById('nav').innerHTML = NAV.map(function(x){
+    return '<button data-act="go" data-s="' + x[0] + '"><span style="color:inherit;font-size:11px">' + x[1] + '</span><span>' + x[2] + '</span></button>';
+  }).join('');
+  document.getElementById('scope-note').textContent = '当前：' + TABS.length + ' tab / ' + Object.keys(SCREENS).length + ' 页（+ 改班与窗口两个半模态）。';
+  var cs = getComputedStyle(document.documentElement);
+  document.getElementById('tok').innerHTML = TOKENS.map(function(t){
+    return '<div><i style="background:var(--' + t + ')"></i>' + t + '</div>';
+  }).join('');
+}
+function syncSliders(){
+  Array.prototype.forEach.call(document.querySelectorAll('#sliders input'), function(el){
+    var k = el.dataset.k, s = SLIDERS.filter(function(x){ return x[0] === k; })[0];
+    el.value = S.params[k];
+    el.nextElementSibling.textContent = s[5](S.params[k]);
+  });
+}
+document.addEventListener('input', function(e){
+  var el = e.target;
+  if (!el.dataset || el.dataset.k === undefined || el.type !== 'range') {
+    /* D-19：展开/收起高级设置会整段重画，手改过的输入框要先存进草稿，否则一折叠就回到旧值 */
+    var mk = { 'f-wake':'wake', 'f-bed':'bed', 'f-wind':'wind', 'f-horizon':'horizon' }[el.id];
+    if (mk && S.meEdit && S.meDraft) { S.meDraft[mk] = el.value; }
+    return;
+  }
+  S.params[el.dataset.k] = +el.value;
+  el.nextElementSibling.textContent = (SLIDERS.filter(function(x){ return x[0] === el.dataset.k; })[0] || [,,,'',,function(v){ return v; }])[5](+el.value);
+  recompute();
+  render();
+});
+document.addEventListener('click', function(e){
+  var el = e.target.closest ? e.target.closest('[data-p]') : null;
+  if (!el) { return; }
+  var k = el.dataset.p;
+  if (k === 'glass-material' || k === 'glass-solid') {
+    S.glass = (k === 'glass-solid') ? 'solid' : 'material';
+    render(); return;
+  }
+  if (k === 'theme-light') { S.theme = 'light'; }
+  if (k === 'theme-dark') { S.theme = 'dark'; }
+  if (k === 'inspect') { S.inspect = !S.inspect; }
+  if (k === 'privacy') { S.privacy = true; }
+  if (k === 'partner') { ACT.togglePartner(); return; }
+  if (k === 'owner') { S.owner = S.owner === 'ME' ? 'PARTNER' : 'ME'; }
+  if (k === 'agc') { S.agcOn = !S.agcOn; }
+  if (k === 'reset') {
+    reseedAll();
+    buildPanel(); render(); return;
+  }
+  if (k === 'default-params') { S.params = defaultParams(); syncSliders(); recompute(); }
+  render();
+});
+
+/* ---- 启动 ---- */
+buildPanel();
+render();
+</script>
+</body>
+</html>

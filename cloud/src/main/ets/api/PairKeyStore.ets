@@ -1,6 +1,6 @@
 import { huks } from '@kit.UniversalKeystoreKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { Logger } from 'commons';
+import { Logger, PlanConnectionFailure } from 'commons';
 import { EncryptedPayload, SnapshotCrypto } from './SnapshotCrypto';
 
 /**
@@ -78,13 +78,7 @@ function finishProperties(pairAlias: string): huks.HuksParam[] {
     param(huks.HuksTag.HUKS_TAG_DERIVED_AGREED_KEY_STORAGE_FLAG,
       huks.HuksKeyStorageType.HUKS_STORAGE_ONLY_USED_IN_HUKS),
     param(huks.HuksTag.HUKS_TAG_IS_KEY_ALIAS, true),
-    param(huks.HuksTag.HUKS_TAG_ALGORITHM, huks.HuksKeyAlg.HUKS_ALG_AES),
-    param(huks.HuksTag.HUKS_TAG_KEY_SIZE, huks.HuksKeySize.HUKS_AES_KEY_SIZE_256),
-    param(huks.HuksTag.HUKS_TAG_PURPOSE,
-      huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT | huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT),
-    param(huks.HuksTag.HUKS_TAG_DIGEST, huks.HuksKeyDigest.HUKS_DIGEST_NONE),
-    param(huks.HuksTag.HUKS_TAG_PADDING, huks.HuksKeyPadding.HUKS_PADDING_NONE),
-    param(huks.HuksTag.HUKS_TAG_BLOCK_MODE, huks.HuksCipherMode.HUKS_MODE_GCM),
+    ...aesGcmKeyProperties(),
     param(huks.HuksTag.HUKS_TAG_KEY_ALIAS, SnapshotCrypto.encodeText(pairAlias))
   ];
 }
@@ -108,7 +102,104 @@ function gcmProperties(purpose: huks.HuksKeyPurpose, iv: Uint8Array, aad: string
   return properties;
 }
 
+/** 独立生成的 AES-GCM 密钥与 ECDH 派生密钥共用同一套算法规格。 */
+function aesGcmKeyProperties(): huks.HuksParam[] {
+  return [
+    param(huks.HuksTag.HUKS_TAG_ALGORITHM, huks.HuksKeyAlg.HUKS_ALG_AES),
+    param(huks.HuksTag.HUKS_TAG_KEY_SIZE, huks.HuksKeySize.HUKS_AES_KEY_SIZE_256),
+    param(huks.HuksTag.HUKS_TAG_PURPOSE,
+      huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT | huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT),
+    param(huks.HuksTag.HUKS_TAG_DIGEST, huks.HuksKeyDigest.HUKS_DIGEST_NONE),
+    param(huks.HuksTag.HUKS_TAG_PADDING, huks.HuksKeyPadding.HUKS_PADDING_NONE),
+    param(huks.HuksTag.HUKS_TAG_BLOCK_MODE, huks.HuksCipherMode.HUKS_MODE_GCM)
+  ];
+}
+
+function publicKeyProperties(): huks.HuksParam[] {
+  return [param(huks.HuksTag.HUKS_TAG_KEY_TYPE, huks.HuksImportKeyType.HUKS_KEY_TYPE_PUBLIC_KEY)];
+}
+
 export class PairKeyStore {
+  private static planAlias(slot: string, identity: boolean): string {
+    if (!/^[a-f0-9]{64}$/.test(slot)) throw new Error('Invalid plan key slot');
+    return (identity ? 'ft-plan-id-' : 'ft-plan-pair-') + slot;
+  }
+
+  /** Independent namespace. Only public bytes leave HUKS; no legacy key is touched. */
+  static async planPublicKey(slot: string, allowCreate: boolean): Promise<Uint8Array> {
+    const alias = PairKeyStore.planAlias(slot, true);
+    let exists: boolean;
+    try { exists = await aliasExists(alias); }
+    catch (error) { throw new PlanConnectionFailure('key.identity.lookup', error as Object, 'PLAN_IDENTITY_LOOKUP_FAILED'); }
+    if (!exists) {
+      if (!allowCreate) throw new Error('PLAN_IDENTITY_MISSING');
+      try { await PairKeyStore.generateKey(alias, identityProperties()); }
+      catch (error) { throw new PlanConnectionFailure('key.identity.generate', error as Object, 'PLAN_IDENTITY_GENERATION_FAILED'); }
+    }
+    try {
+      const result = await huks.exportKeyItem(alias, options(publicKeyProperties()));
+      if (result.outData === undefined) throw new Error('PLAN_PUBLIC_KEY_MISSING');
+      return result.outData;
+    } catch (error) {
+      throw new PlanConnectionFailure('key.identity.export', error as Object, 'PLAN_PUBLIC_KEY_EXPORT_FAILED');
+    }
+  }
+
+  static async agreePlanKey(identitySlot: string, pairSlot: string, peer: Uint8Array): Promise<void> {
+    const identityAlias = PairKeyStore.planAlias(identitySlot, true);
+    const pairAlias = PairKeyStore.planAlias(pairSlot, false);
+    let handle: number | undefined;
+    let stage = 'key.agree.lookup';
+    try {
+      if (!await aliasExists(identityAlias)) throw new Error('PLAN_IDENTITY_MISSING');
+      // Existing secure bindings have immutable peer keys. Never delete a live derived key on refresh.
+      if (await aliasExists(pairAlias)) return;
+      stage = 'key.agree.init';
+      const session = await huks.initSession(identityAlias, { properties: agreeProperties(), inData: new Uint8Array([]) });
+      handle = session.handle;
+      stage = 'key.agree.update';
+      await huks.updateSession(handle, { properties: agreeProperties(), inData: peer });
+      stage = 'key.agree.finish';
+      await huks.finishSession(handle, options(finishProperties(pairAlias)));
+      handle = undefined;
+      stage = 'key.agree.available';
+      if (!await aliasExists(pairAlias)) throw new Error('PLAN_KEY_UNAVAILABLE');
+    } catch (error) {
+      if (handle !== undefined) {
+        try { await huks.abortSession(handle, options([])); } catch { /* Preserve the original failure. */ }
+      }
+      throw new PlanConnectionFailure(stage, error as Object, 'PLAN_AGREEMENT_FAILED');
+    }
+  }
+
+  static async hasPlanKey(slot: string): Promise<boolean> { return aliasExists(PairKeyStore.planAlias(slot, false)); }
+  static async sealPlan(slot: string, aad: string, plain: string): Promise<EncryptedPayload> {
+    return PairKeyStore.sealWithAlias(PairKeyStore.planAlias(slot, false), aad, plain);
+  }
+  static async openPlan(slot: string, aad: string, payload: EncryptedPayload): Promise<string | null> {
+    return PairKeyStore.openWithAlias(PairKeyStore.planAlias(slot, false), aad, payload);
+  }
+  private static planProofAlias(slot: string): string {
+    if (!/^[a-f0-9]{64}$/.test(slot)) throw new Error('Invalid plan proof slot');
+    return 'ft-plan-proof-' + slot;
+  }
+  static async sealPlanProof(slot: string, aad: string, secret: string): Promise<EncryptedPayload> {
+    const alias = PairKeyStore.planProofAlias(slot);
+    if (!await aliasExists(alias)) await PairKeyStore.generateKey(alias, aesGcmKeyProperties());
+    return PairKeyStore.sealWithAlias(alias, aad, secret);
+  }
+  static async openPlanProof(slot: string, aad: string, payload: EncryptedPayload): Promise<string | null> {
+    const alias = PairKeyStore.planProofAlias(slot);
+    if (!await aliasExists(alias)) return null;
+    return PairKeyStore.openWithAlias(alias, aad, payload);
+  }
+  static async dropPlanProof(slot: string): Promise<void> {
+    await PairKeyStore.deleteAlias(PairKeyStore.planProofAlias(slot));
+  }
+  static async dropPlanKey(slot: string): Promise<void> {
+    await PairKeyStore.deleteAlias(PairKeyStore.planAlias(slot, false));
+  }
+
   /** 别名里只留稳定字符，别的（含分隔符）一律折成下划线：别名可读，也不会撞出奇怪字符。 */
   private static slot(raw: string): string {
     let out = '';
@@ -128,6 +219,40 @@ export class PairKeyStore {
     return 'crd-pair-' + PairKeyStore.slot(pairId);
   }
 
+  static inviteProofAliasOf(pairId: string): string {
+    return 'crd-invite-' + PairKeyStore.slot(pairId);
+  }
+
+  /** 只有创建邀请的设备会调用；Preferences 只能拿到这个密文信封，拿不到确认凭据。 */
+  static async sealInviteProof(pairId: string, token: string): Promise<EncryptedPayload> {
+    if (pairId === '' || token.length < 22) {
+      throw new Error('invite proof malformed');
+    }
+    const alias = PairKeyStore.inviteProofAliasOf(pairId);
+    if (!await aliasExists(alias)) {
+      await PairKeyStore.generateKey(alias, aesGcmKeyProperties());
+    }
+    return PairKeyStore.sealWithAlias(alias, 'crd-invite-proof-v1|' + pairId, token);
+  }
+
+  /** 仅在邀请方按下确认时打开；损坏/缺失时失败关闭，绝不退化成用六码确认。 */
+  static async openInviteProof(pairId: string, payload: EncryptedPayload): Promise<string | null> {
+    if (pairId === '' || payload.algorithm !== 'AES-256-GCM' || !SnapshotCrypto.isWellFormed(payload)) {
+      return null;
+    }
+    const alias = PairKeyStore.inviteProofAliasOf(pairId);
+    if (!await aliasExists(alias)) {
+      return null;
+    }
+    return PairKeyStore.openWithAlias(alias, 'crd-invite-proof-v1|' + pairId, payload);
+  }
+
+  static async dropInviteProof(pairId: string): Promise<void> {
+    if (pairId !== '') {
+      await PairKeyStore.deleteAlias(PairKeyStore.inviteProofAliasOf(pairId));
+    }
+  }
+
   /**
    * 确保本机静态身份密钥就绪，返回可上传云端的公钥（base64）。
    * 已存在就只导出，不重新生成——换一次配对码不该换掉本机身份。
@@ -135,12 +260,10 @@ export class PairKeyStore {
   static async ensureIdentity(uid: string): Promise<string> {
     const alias = PairKeyStore.identityAliasOf(uid);
     if (!await aliasExists(alias)) {
-      await huks.generateKeyItem(alias, options(identityProperties()));
+      await PairKeyStore.generateKey(alias, identityProperties());
       Logger.info(TAG, 'identity key created');
     }
-    const exported = await huks.exportKeyItem(alias, options([
-      param(huks.HuksTag.HUKS_TAG_KEY_TYPE, huks.HuksImportKeyType.HUKS_KEY_TYPE_PUBLIC_KEY)
-    ]));
+    const exported = await huks.exportKeyItem(alias, options(publicKeyProperties()));
     const publicKey = exported.outData;
     if (publicKey === undefined || publicKey.length === 0) {
       throw new Error('identity public key is empty');
@@ -206,13 +329,31 @@ export class PairKeyStore {
 
   /** 加密快照。nonce 每次新生成，tag 从 HUKS 返回值尾部切出来单独成字段。 */
   static async seal(pairId: string, aad: string, plain: string): Promise<EncryptedPayload> {
+    return PairKeyStore.sealWithAlias(PairKeyStore.pairAliasOf(pairId), aad, plain);
+  }
+
+  /** 日程快照与邀请确认凭据只共享 GCM 机械过程，不共享 HUKS 别名或 AAD。 */
+  private static async sealWithAlias(alias: string, aad: string, plain: string): Promise<EncryptedPayload> {
     const iv = SnapshotCrypto.randomIv();
     const properties = gcmProperties(huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT, iv, aad);
-    const session = await huks.initSession(PairKeyStore.pairAliasOf(pairId), options(properties));
-    const result = await huks.finishSession(session.handle, {
-      properties: properties, inData: SnapshotCrypto.encodeText(plain)
-    });
-    const output = result.outData;
+    let handle: number | undefined;
+    let stage = 'key.seal.init';
+    let output: Uint8Array | undefined;
+    try {
+      const session = await huks.initSession(alias, options(properties));
+      handle = session.handle;
+      stage = 'key.seal.finish';
+      const result = await huks.finishSession(handle, {
+        properties: properties, inData: SnapshotCrypto.encodeText(plain)
+      });
+      handle = undefined;
+      output = result.outData;
+    } catch (error) {
+      if (handle !== undefined) {
+        try { await huks.abortSession(handle, options([])); } catch { /* Preserve original diagnostic. */ }
+      }
+      throw new PlanConnectionFailure(stage, error as Object, 'HUKS_ENCRYPT_FAILED');
+    }
     const tagLen = SnapshotCrypto.tagLen();
     if (output === undefined || output.length <= tagLen) {
       throw new Error('HUKS GCM produced no ciphertext');
@@ -228,6 +369,10 @@ export class PairKeyStore {
 
   /** 解密快照。密钥失配 / tag 或 AAD 被改 / 格式非法一律返回 null，由调用方降级。 */
   static async open(pairId: string, aad: string, payload: EncryptedPayload): Promise<string | null> {
+    return PairKeyStore.openWithAlias(PairKeyStore.pairAliasOf(pairId), aad, payload);
+  }
+
+  private static async openWithAlias(alias: string, aad: string, payload: EncryptedPayload): Promise<string | null> {
     try {
       if (payload.algorithm !== 'AES-256-GCM' || !SnapshotCrypto.isWellFormed(payload)) {
         return null;
@@ -236,7 +381,7 @@ export class PairKeyStore {
       const authTag = SnapshotCrypto.fromB64(payload.authTag);
       const ciphertext = SnapshotCrypto.fromB64(payload.ciphertext);
       const properties = gcmProperties(huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT, iv, aad, authTag);
-      const session = await huks.initSession(PairKeyStore.pairAliasOf(pairId), {
+      const session = await huks.initSession(alias, {
         properties: properties, inData: ciphertext
       });
       let plain: Uint8Array | undefined;
@@ -257,6 +402,10 @@ export class PairKeyStore {
       Logger.warn(TAG, 'open degraded: ' + (e as Error).message);
       return null;
     }
+  }
+
+  private static async generateKey(alias: string, properties: huks.HuksParam[]): Promise<void> {
+    await huks.generateKeyItem(alias, options(properties));
   }
 
   private static async deleteAlias(alias: string): Promise<void> {

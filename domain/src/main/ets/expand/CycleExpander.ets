@@ -1,4 +1,20 @@
-import { CycleTemplate, MIN_PER_DAY, ScheduleOverride, ShiftInstance } from '../model/Types';
+import { CycleTemplate, ScheduleOverride, ShiftInstance } from '../model/Types';
+
+export const CYCLE_ALL_DAYS: number = 127;
+
+/** 旧模板缺字段与非法存量值回到每天；0 保留为无选中，由保存入口拦住。 */
+export function cycleWeekdaysMask(mask?: number): number {
+  return mask != null && Number.isInteger(mask) && mask >= 0 && mask <= CYCLE_ALL_DAYS
+    ? mask : CYCLE_ALL_DAYS;
+}
+
+export function cycleWeekday(epochDay: number): number {
+  return ((epochDay + 3) % 7 + 7) % 7 + 1;
+}
+
+export function cycleAppliesOn(tpl: CycleTemplate, epochDay: number): boolean {
+  return (cycleWeekdaysMask(tpl.weekdaysMask) & (1 << (cycleWeekday(epochDay) - 1))) !== 0;
+}
 
 /**
  * 循环展开：模板序列 + 单日覆盖 → 未来若干天的班次实例。
@@ -14,7 +30,6 @@ export function expandCycle(tpl: CycleTemplate, overrides: ScheduleOverride[],
   for (let i = 0; i < overrides.length; i++) {
     ovMap.set(overrides[i].epochDay, overrides[i].shiftTypeId);
   }
-  const len = tpl.seq.length;
   for (let i = 0; i < days; i++) {
     const d = startEpochDay + i;
     if (ovMap.has(d)) {
@@ -24,12 +39,8 @@ export function expandCycle(tpl: CycleTemplate, overrides: ScheduleOverride[],
       }
       continue;
     }
-    if (len === 0) {
-      continue;
-    }
-    const idx = ((d - tpl.anchorEpochDay) % len + len) % len;
-    const typeId = tpl.seq[idx];
-    if (typeId != null && typeId !== '') {
+    const typeId = cycleShiftAt(tpl, d);
+    if (typeId != null) {
       res.push(mkInstance(d, typeId));
     }
   }
@@ -44,7 +55,7 @@ function mkInstance(epochDay: number, typeId: string): ShiftInstance {
 /** 某日按模板应为何班（不含覆盖）；无模板返回 null。 */
 export function cycleShiftAt(tpl: CycleTemplate, epochDay: number): string | null {
   const len = tpl.seq.length;
-  if (len === 0) {
+  if (len === 0 || !cycleAppliesOn(tpl, epochDay)) {
     return null;
   }
   const idx = ((epochDay - tpl.anchorEpochDay) % len + len) % len;

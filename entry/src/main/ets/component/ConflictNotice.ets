@@ -94,7 +94,8 @@ export struct ConflictNotice {
     .transition(this.reduceMotion
       ? TransitionEffect.IDENTITY
       : TransitionEffect.OPACITY
-        .combine(TransitionEffect.translate({ y: DesignTokens.enterOffset }))
-        .animation({ duration: DesignTokens.motionItem, curve: DesignTokens.curve }))
+        .combine(TransitionEffect.translate({ y: -6 }))
+        .combine(TransitionEffect.scale({ x: 1, y: 0.96, centerY: 0 }))
+        .animation({ duration: 180, curve: Curve.EaseOut }))
   }
 }

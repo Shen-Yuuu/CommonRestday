@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="224" height="128" viewBox="0 0 224 128" fill="none">
+  <title>布布和休休并肩坐着，小手轻轻碰在一起</title>
+  <g id="bubu" stroke="#D9A06B" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="bubu-body" fill="#FFE3C2">
+      <ellipse cx="66" cy="98" rx="25" ry="22"/>
+      <ellipse cx="53" cy="118" rx="12" ry="6.5"/>
+      <ellipse cx="81" cy="118" rx="12" ry="6.5"/>
+      <ellipse cx="66" cy="100" rx="13" ry="12" fill="#FFF6EA" stroke="none"/>
+    </g>
+    <g id="bubu-head" transform="rotate(5 67 63)">
+      <g id="bubu-ears" fill="#FFE3C2">
+        <circle cx="42" cy="33" r="11"/>
+        <circle cx="91" cy="33" r="11"/>
+        <circle cx="42" cy="33" r="5" fill="#F4C99D" stroke="none"/>
+        <circle cx="91" cy="33" r="5" fill="#F4C99D" stroke="none"/>
+      </g>
+      <ellipse id="bubu-face" cx="67" cy="61" rx="35" ry="30" fill="#FFE3C2"/>
+      <g id="bubu-eyes" stroke="#5C4750" stroke-width="2.8">
+        <path d="M49 59q3.5-4 7 0"/>
+        <path d="M77 59q3.5-4 7 0"/>
+      </g>
+      <g id="bubu-cheeks" fill="#FFC7A8" stroke="none">
+        <ellipse cx="45" cy="69" rx="5.5" ry="3.5"/>
+        <ellipse cx="88" cy="69" rx="5.5" ry="3.5"/>
+      </g>
+      <g id="bubu-muzzle">
+        <ellipse cx="67" cy="71" rx="11" ry="8" fill="#FFF6EA" stroke="none"/>
+        <ellipse cx="67" cy="67" rx="3.6" ry="2.6" fill="#5C4750" stroke="none"/>
+        <path d="M67 70v2m0 0q-3 3.5-6 0m6 0q3 3.5 6 0" stroke="#5C4750" stroke-width="1.9"/>
+      </g>
+    </g>
+    <path id="bubu-outer-arm" d="M46 90q-8 4-8 12q1 5 5 3l7-6" fill="#FFE3C2"/>
+    <path id="bubu-inner-arm" d="M86 89q9 1 18 7q3 2 7 1q4-1 5 3q0 5-5 6q-12 0-24-8" fill="#FFE3C2"/>
+  </g>
+  <g id="xiuxiu" stroke="#E890A8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="xiuxiu-body" fill="#FFFFFF">
+      <ellipse cx="155" cy="99" rx="24" ry="21"/>
+      <ellipse cx="142" cy="118" rx="11.5" ry="6.5"/>
+      <ellipse cx="169" cy="118" rx="11.5" ry="6.5"/>
+      <ellipse cx="155" cy="102" rx="11" ry="10" fill="#FFF4F7" stroke="none"/>
+    </g>
+    <g id="xiuxiu-head" transform="rotate(-6 155 64)">
+      <g id="xiuxiu-left-ear">
+        <path d="M141 43C132 31 130 10 138 7C148 3 155 27 153 40" fill="#FFFFFF"/>
+        <path d="M142 33C138 24 137 15 139 14C142 13 146 25 147 33" fill="#FFD2E0" stroke="none"/>
+      </g>
+      <g id="xiuxiu-right-ear">
+        <path d="M162 39C163 24 173 7 180 10C189 14 179 35 172 44" fill="#FFFFFF"/>
+        <path d="M168 33C170 24 175 16 177 17C180 19 175 29 172 35" fill="#FFD2E0" stroke="none"/>
+      </g>
+      <ellipse id="xiuxiu-face" cx="155" cy="65" rx="34" ry="29" fill="#FFFFFF"/>
+      <g id="xiuxiu-eyes" stroke="#5C4750" stroke-width="2.8">
+        <path d="M138 64q3.5-4 7 0"/>
+        <path d="M165 64q3.5-4 7 0"/>
+      </g>
+      <g id="xiuxiu-cheeks" fill="#FFC7D8" stroke="none">
+        <ellipse cx="134" cy="73" rx="5.4" ry="3.6"/>
+        <ellipse cx="177" cy="73" rx="5.4" ry="3.6"/>
+      </g>
+      <path id="xiuxiu-mouth" d="M151 72q2 2.8 4 0q2 2.8 4 0" stroke="#5C4750" stroke-width="2"/>
+    </g>
+    <path id="xiuxiu-outer-arm" d="M174 91q8 3 8 10q0 5-4 4l-7-5" fill="#FFFFFF"/>
+    <path id="xiuxiu-inner-arm" d="M135 92q-8 1-15 6q-3 1-5 0q-4-1-5 3q0 4 5 5q10 1 21-7" fill="#FFFFFF"/>
+  </g>
+</svg>

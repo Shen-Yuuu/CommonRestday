@@ -1,0 +1,7 @@
+{
+  "handler": "dateplan.DatePlan",
+  "functionType": 1,
+  "triggers": [{ "type": "http", "properties": {
+    "enableUrlDecode": true, "authFlag": "true", "authAlgor": "HDA-SYSTEM", "authType": "apigw-client"
+  } }]
+}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>两人份 · 信息文字对比样张</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 36px 18px; background: #f1e9e7; font: 15px/1.6 "HarmonyOS Sans SC", "PingFang SC", sans-serif; color: #5c4750; }
+    main { max-width: 1080px; margin: auto; }
+    h1 { margin: 0; font-size: 29px; letter-spacing: -.04em; }
+    p { margin: 5px 0 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(290px,1fr)); gap: 20px; }
+    .phone { padding: 24px; border-radius: 36px; min-height: 590px; box-shadow: 0 22px 60px #5c475020; }
+    .light { background: linear-gradient(#fff0e7,#fff6f3); --card:#fff; --fill:#fbeff3; --primary:#5c4750; --secondary:#705760; --tertiary:#785f68; --hint:#806670; --accent:#5c4750; --brand:#ff7ea5; }
+    .dark { background: linear-gradient(#2e2445,#1b1430); --card:#2c2340; --fill:#332848; --primary:#f2e6ec; --secondary:#c9b2c2; --tertiary:#a08ca0; --hint:#7e6e85; --accent:#ff9bbb; --brand:#ff9bbb; }
+    .phone h2 { margin: 4px 0 24px; font-size: 28px; color: var(--primary); }
+    .card { padding: 22px; background: var(--card); border-radius: 28px 28px 28px 14px; }
+    .eyebrow { color: var(--accent); font-weight: 750; font-size: 12px; letter-spacing: .06em; }
+    .answer { margin: 8px 0; font-size: 24px; font-weight: 800; color: var(--primary); }
+    .secondary { color: var(--secondary); }
+    .tertiary { color: var(--tertiary); }
+    .hint { color: var(--hint); }
+    .action { color: var(--accent); font-weight: 750; }
+    .row { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 15px; background: var(--fill); border-radius: 18px; }
+    .swatches { display: flex; gap: 9px; margin: 25px 0; }
+    .swatches span { height: 12px; flex: 1; border-radius: 8px; }
+    .note { margin-top: 26px; font-size: 12px; color: var(--secondary); }
+    .brand { color: var(--brand); }
+    .phone > .brand { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>信息文字，和品牌粉分工</h1>
+    <p>2026-09-29 样张。浅色重要小字以深墨承载，粉色仍保留给色块与图形；原型主页面未改。</p>
+    <div class="grid">
+      <section class="phone light">
+        <div class="brand">●  浅色档 · 粉是标记</div>
+        <h2>今天，留给两个人</h2>
+        <div class="card">
+          <div class="eyebrow">共同时间</div>
+          <div class="answer">就在今天</div>
+          <div class="secondary">下一段空闲从 19:30 开始</div>
+          <div class="row"><span class="tertiary">完整同休 · 适合慢慢安排</span><span class="action">查看 ›</span></div>
+          <p class="hint">提示文字也要能被读到，不能退成背景。</p>
+          <div class="action">编辑作息</div>
+        </div>
+        <div class="swatches"><span style="background:#5c4750"></span><span style="background:#705760"></span><span style="background:#785f68"></span><span style="background:#806670"></span><span style="background:#ff7ea5"></span></div>
+        <div class="note">白卡对比度依次为 8.49 / 6.52 / 5.78 / 5.18；最右品牌粉不作为浅色小字墨。</div>
+      </section>
+      <section class="phone dark">
+        <div class="brand">●  深色档 · 粉可读</div>
+        <h2>今天，留给两个人</h2>
+        <div class="card">
+          <div class="eyebrow">共同时间</div>
+          <div class="answer">就在今天</div>
+          <div class="secondary">下一段空闲从 19:30 开始</div>
+          <div class="row"><span class="tertiary">完整同休 · 适合慢慢安排</span><span class="action">查看 ›</span></div>
+          <p class="hint">深色旧令牌保持原样，冷启动七页仍待设备复看。</p>
+          <div class="action">编辑作息</div>
+        </div>
+        <div class="note">这张样张只展示文字层级；真实玻璃材质与 ChipV2 实时换档需设备截图。</div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

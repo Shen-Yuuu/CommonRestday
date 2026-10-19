@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { Course, OWNER_ME, ScheduleOverride } from 'domain';
+import { Course, CycleTemplate, OWNER_ME, ScheduleOverride } from 'domain';
 import { RECOMPUTE_COUNT_KEY, ScheduleCommandResult, ScheduleCommandService } from 'feature';
 
 /**
@@ -27,6 +27,15 @@ function override(epochDay: number, shiftTypeId: string | null): ScheduleOverrid
 
 export default function scheduleCommandServiceTest() {
   describe('scheduleCommandService', () => {
+    it('empty_weekdays_do_not_write_or_recompute', 0, async () => {
+      const before = recomputes();
+      const tpl: CycleTemplate = { id: 'main', name: 'test', seq: ['day'],
+        anchorEpochDay: 20000, weekdaysMask: 0 };
+      const r = await ScheduleCommandService.saveTemplate(tpl, OWNER_ME);
+      expect(r.changed).assertFalse();
+      expect(r.errorCode).assertEqual('INVALID_WEEKDAYS');
+      expect(recomputes()).assertEqual(before);
+    });
 
     it('set_day_shift_writes_once_and_recomputes_once', 0, async () => {
       const before = recomputes();

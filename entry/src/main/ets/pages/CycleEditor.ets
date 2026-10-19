@@ -1,314 +1,55 @@
-import { LengthMetrics, router } from '@kit.ArkUI';
-import { OWNER_ME, CycleTemplate, ShiftType, todayEpochDay } from 'domain';
-import { ScheduleRepo } from 'data';
-import { DateLabel } from 'commons';
-import { cycleExpandHint, ScheduleCommandService, SettingsStoreParams, ScheduleUseCase } from 'feature';
-import { ownerFromParams } from '../model/RouteParams';
+import { router } from '@kit.ArkUI';
+import { OWNER_ME } from 'domain';
+import { ownerFromParams, ownerParam } from '../model/RouteParams';
+import { WeeklyRosterView } from '../component/WeeklyRosterView';
 import { DesignTokens } from '../theme/DesignTokens';
-import { toastCommand } from '../util/CommandToast';
-import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
+import { appToast } from '../util/AppToast';
+import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 
-/**
- * 锚点可选范围。DatePicker 是稳定组件（API 8）：API 26 的 DatePickerComponent
- * 官方目录仍标 Beta，P0 不把它当唯一入口（改造文档 Task 5.2 规则）。
- */
-const ANCHOR_RANGE_START: Date = new Date(2020, 0, 1);
-const ANCHOR_RANGE_END: Date = new Date(2030, 11, 31);
-const MS_PER_DAY: number = 86400000;
-/** 序列里的"休"用空串表示：CycleExpander 对空串不生成班次实例，与单日覆盖清空同一口径。 */
-const REST_IN_SEQ: string = '';
-
-/** 循环模板编辑：班次序列 + 锚点日期（owner 双侧复用）。 */
 @Entry
 @Component
 struct CycleEditor {
   @State owner: string = OWNER_ME;
-  @State types: ShiftType[] = [];
-  @State seq: string[] = [];
-  @State anchor: number = todayEpochDay();
-  @State hasTemplate: boolean = false;
-  /**
-   * 提交闩（D-52）。这里的模板主键是固定的 `'main'`，但 `saveTemplate` 是"先删后插"两条独立的 SQL：
-   * 连点两下会排成 delete→delete→insert→insert，后一次 insert 撞上前一次刚建好的那一行，
-   * 于是命令层回 `WRITE_FAILED`——一次其实已经落库的保存被念成"保存失败"。
-   */
-  @State private submitting: boolean = false;
-  /**
-   * 保存之后引擎真正会铺开多少天（D-63）。这一句以前抄出厂默认（先是 commons 的
-   * `AppConst.HORIZON_DAYS`，D-59 之后是 domain 的 `HORIZON_DEFAULT_DAYS`），于是用户把
-   * 「往后算的天数」改成 30 之后，保存按钮底下仍然承诺 120 天。读数走 `SettingsStoreParams()`
-   * ——它是 H4 白名单里那个"刚离开存储就收界"的口子，念出来的天数不会超过引擎真正会展开的上限。
-   */
-  @State private horizonDays: number = SettingsStoreParams().horizonDays;
-  // 锚点日期 sheet（稳定 DatePicker，API 8）：sheet 内的临时选择值，确认才落锚
-  @State anchorSheetVisible: boolean = false;
-  @State anchorPick: Date = new Date();
-
-  aboutToAppear(): void {
-    this.owner = ownerFromParams(router.getParams());
-    ScheduleUseCase.ensureSeeded(this.owner).then(() => {
-      return ScheduleRepo.listShiftTypes(this.owner);
-    }).then((list: ShiftType[]) => {
-      this.types = list;
-      return ScheduleRepo.getTemplate(this.owner);
-    }).then((tpl: CycleTemplate | null) => {
-      if (tpl != null) {
-        this.seq = tpl.seq.slice();
-        this.anchor = tpl.anchorEpochDay;
-        this.hasTemplate = true;
-      }
-    }).catch(() => {
-    });
+  @State private dirty: boolean = false;
+  @State private busy: boolean = false;
+  @StorageProp('crd_senior_mode') senior: boolean = false;
+  aboutToAppear(): void { this.owner = ownerFromParams(router.getParams()); }
+  private leave(): void {
+    if (this.busy) { appToast('正在保存，请稍候'); return; }
+    if (this.dirty) askConfirm(this.getUIContext(), { message: '本周还有未保存的修改。放弃草稿并返回？',
+      confirmText: '放弃草稿', onConfirm: () => { if (!this.busy) { this.dirty=false; router.back(); } } });
+    else router.back();
   }
-
-  typeName(id: string): string {
-    if (id === REST_IN_SEQ) {
-      return '休息';
-    }
-    for (let i = 0; i < this.types.length; i++) {
-      if (this.types[i].id === id) {
-        return this.types[i].name;
-      }
-    }
-    return '?';
-  }
-
-  typeColor(id: string): string {
-    if (id === REST_IN_SEQ) {
-      return DesignTokens.swatchRest;
-    }
-    for (let i = 0; i < this.types.length; i++) {
-      if (this.types[i].id === id) {
-        return this.types[i].color;
-      }
-    }
-    return DesignTokens.swatchUnknown;
-  }
-
-  async save(): Promise<void> {
-    if (this.submitting) {
-      return;
-    }
-    if (this.seq.length === 0) {
-      appToast('请至少加入一天班次');
-      return;
-    }
-    const tpl: CycleTemplate = {
-      id: 'main', name: this.owner === OWNER_ME ? '我的循环' : '伴侣循环',
-      seq: this.seq.slice(), anchorEpochDay: this.anchor
-    };
-    this.submitting = true;
-    const r = await ScheduleCommandService.saveTemplate(tpl, this.owner);
-    this.submitting = false;
-    if (r.changed) {
-      this.hasTemplate = true;
-    }
-    toastCommand(r, '已保存，班表自动铺好了');
-  }
-
-  /** 清空：已保存过模板时真删 DB（循环展开随之消失），并触发重算；未保存过仅重置编辑区。 */
-  async clearTemplate(): Promise<void> {
-    this.seq = [];
-    if (!this.hasTemplate) {
-      this.anchor = todayEpochDay();
-      appToast('已重置编辑区');
-      return;
-    }
-    askConfirm(this.getUIContext(), {
-      message: '删掉循环模板？由它铺开的班表也会一起消失。',
-      confirmText: '删除',
-      onCancel: () => {
-        this.reloadTemplate();
-      },
-      onConfirm: () => {
-        this.doClearTemplate();
-      }
-    });
-  }
-
-  async doClearTemplate(): Promise<void> {
-    const r = await ScheduleCommandService.removeTemplate(this.owner);
-    if (r.changed) {
-      this.hasTemplate = false;
-      this.anchor = todayEpochDay();
-    } else {
-      this.reloadTemplate();
-    }
-    toastCommand(r, '循环模板已删除');
-  }
-
-  /** 重新载入已保存模板（取消删除时恢复编辑区现场）。 */
-  reloadTemplate(): void {
-    ScheduleRepo.getTemplate(this.owner).then((tpl: CycleTemplate | null) => {
-      if (tpl != null) {
-        this.seq = tpl.seq.slice();
-        this.anchor = tpl.anchorEpochDay;
-        this.hasTemplate = true;
-      }
-    }).catch(() => {
-    });
-  }
-
-  /** epochDay → 本地 Date：先按 UTC 拆出年月日，再按本地年月日建，避免时区把日期挪一天。 */
-  private dateOf(ep: number): Date {
-    const p = DateLabel.ymd(ep);
-    return new Date(p.y, p.m - 1, p.d);
-  }
-
-  /** 本地 Date → epochDay：只取用户看到的年月日，按 UTC 归一，不受夏令时影响。 */
-  private epochOf(d: Date): number {
-    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY);
-  }
-
-  /** 打开锚点日期 sheet：稳定 DatePicker 滚轮选值，确认才落锚。 */
-  pickAnchor(): void {
-    this.anchorPick = this.dateOf(this.anchor);
-    this.anchorSheetVisible = true;
-  }
-
-  /** 确认锚点：把 sheet 中的临时选择值写回。 */
-  confirmAnchor(): void {
-    this.anchor = this.epochOf(this.anchorPick);
-    this.anchorSheetVisible = false;
-  }
-
+  onBackPress(): boolean { if (this.dirty || this.busy) { this.leave(); return true; } return false; }
   build() {
     Column() {
-      Row() {
-        Row({ space: 2 }) {
-          SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
-        }.onClick(() => router.back())
-        Blank()
-        Text(this.owner === OWNER_ME ? '循环模板' : '伴侣的循环模板')
-          .fontSize(17).fontWeight(FontWeight.Bold)
-        Blank()
-        Text('清空').fontSize(15).fontColor($r('app.color.text_tertiary')).onClick(() => this.clearTemplate())
+      Stack({ alignContent: Alignment.Center }) {
+        Text(this.owner === OWNER_ME ? '周班表' : 'TA 的周班表')
+          .fontSize(17).fontWeight(FontWeight.Bold).fontColor(DesignTokens.textPrimary)
+          .hitTestBehavior(HitTestMode.None)
+        Row() {
+          Row({ space: 2 }) {
+            SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([DesignTokens.primary])
+              .accessibilityLevel('no')
+            Text('返回').fontSize(15).fontColor(DesignTokens.textAccent)
+          }.constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true).accessibilityGroup(true).accessibilityText('返回上一页')
+            .onClick(() => this.leave())
+          Blank()
+          Text('常用班次').fontSize(14).fontColor(DesignTokens.textAccent)
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .focusable(true).accessibilityText('管理常用班次').enabled(!this.busy)
+            .onClick(() => router.pushUrl({ url: 'pages/ScheduleEditor', params: ownerParam(this.owner) }))
+        }.width('100%')
       }.width('100%').padding(12)
-
       Scroll() {
-        Column({ space: 12 }) {
-          Column({ space: 8 }) {
-            Text('循环序列：点班次加进去，点序列里的项移除')
-              .fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
-            Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
-              ForEach(this.types, (st: ShiftType) => {
-                Text(st.name)
-                  .fontSize(13).fontColor(DesignTokens.foregroundOn(st.color))
-                  .fontWeight(FontWeight.Bold)
-                  .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                  .borderRadius(DesignTokens.radiusPill).backgroundColor(st.color)
-                  .clickEffect(DesignTokens.tapChip())
-                  .onClick(() => this.seq.push(st.id))
-              }, (st: ShiftType) => st.id)
-              // 休息不在班次类型表里，但「白白休」这类循环必须能直接排出来
-              Text('休息')
-                .fontSize(13).fontColor(DesignTokens.foregroundOn(DesignTokens.swatchRest))
-                .fontWeight(FontWeight.Bold)
-                .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                .borderRadius(DesignTokens.radiusPill).backgroundColor(DesignTokens.swatchRest)
-                .clickEffect(DesignTokens.tapChip())
-                .onClick(() => this.seq.push(REST_IN_SEQ))
-            }.width('100%')
-
-            if (this.seq.length === 0) {
-              Text('序列为空').fontSize(13).fontColor($r('app.color.text_disabled'))
-                .width('100%').textAlign(TextAlign.Center).padding(12)
-            } else {
-              Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
-                ForEach(this.seq, (id: string, idx: number) => {
-                  Text((idx + 1) + '.' + this.typeName(id))
-                    .fontSize(12).fontColor(DesignTokens.foregroundOn(this.typeColor(id)))
-                    .fontWeight(FontWeight.Bold)
-                    .padding({ left: 8, right: 8, top: 5, bottom: 5 })
-                    .borderRadius(DesignTokens.radiusPill).backgroundColor(this.typeColor(id))
-                    .clickEffect(DesignTokens.tapChip())
-                    .onClick(() => this.seq.splice(idx, 1))
-                }, (id: string, idx: number) => idx + '-' + id)
-              }.width('100%')
-            }
-          }
-          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
-          .backgroundColor($r('app.color.card_bg'))
-          .shadow(DesignTokens.cardShadow())
-
-          Column({ space: 8 }) {
-            Text('起点：序列第 1 天对应哪一天').fontSize(12).fontColor($r('app.color.text_tertiary')).width('100%')
-            Row() {
-              Text(DateLabel.mdw(this.anchor)).fontSize(15).fontWeight(FontWeight.Medium)
-              Blank()
-              Text('选择日期 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
-            }
-            .width('100%').padding(12).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
-            .clickEffect(DesignTokens.tapButton())
-            .onClick(() => this.pickAnchor())
-          }
-          .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(true))
-          .backgroundColor($r('app.color.card_bg'))
-          .shadow(DesignTokens.cardShadow())
-
-          Button(this.hasTemplate ? '更新模板' : '保存并展开班表')
-            .width('100%').height(44).borderRadius(22).backgroundColor($r('app.color.brand_pink'))
-            .fontWeight(FontWeight.Bold)
-            .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-            .enabled(!this.submitting)
-            .onClick(() => this.save())
-
-          Text(cycleExpandHint(this.horizonDays))
-            .fontSize(11).fontColor($r('app.color.text_hint'))
-        }
-        .padding(12).width('100%')
-      }
-      .layoutWeight(1)
-      // D-09：Scroll 内容短于视口时按默认对齐摆放，首屏会空出上半部；显式顶对齐。
-      .align(Alignment.TopStart)
-    }
-    // D-38：根容器扩绘制区到状态栏/导航条之下，消掉顶底两条窗口默认底色。
-    .width('100%').height('100%').linearGradient(DesignTokens.pageGradient())
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .bindSheet($$this.anchorSheetVisible, this.anchorSheet(), {
-      detents: [SheetSize.MEDIUM],
-      dragBar: false,
-      showClose: false,
-      // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
-      radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-      blurStyle: BlurStyle.Thick,
-      maskColor: DesignTokens.scrim
-    })
-  }
-
-  /** 锚点日期 sheet：稳定 DatePicker（API 8）滚轮 + 确认/取消。 */
-  @Builder
-  anchorSheet() {
-    Column({ space: 12 }) {
-      Text('选择起点日期').fontSize(16).fontWeight(FontWeight.Medium)
-      DatePicker({
-        start: ANCHOR_RANGE_START,
-        end: ANCHOR_RANGE_END,
-        selected: this.anchorPick
-      })
-        .width('100%')
-        .onDateChange((d: Date) => {
-          this.anchorPick = d;
-        })
-      Row({ space: 10 }) {
-        Button('取消').layoutWeight(1).height(42).borderRadius(21)
-          .backgroundColor($r('app.color.btn_neutral'))
-          .fontWeight(FontWeight.Bold)
-          .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
-          .onClick(() => {
-            this.anchorSheetVisible = false;
-          })
-        Button('确定').layoutWeight(1).height(42).borderRadius(21)
-          .backgroundColor($r('app.color.brand_pink'))
-          .fontWeight(FontWeight.Bold)
-          .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-          .onClick(() => this.confirmAnchor())
-      }.width('100%')
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 16, bottom: 28 })
-    .backgroundColor($r('app.color.page_bg_warm'))
+        WeeklyRosterView({ owner: this.owner, onDirty: (dirty: boolean) => { this.dirty=dirty; },
+          onBusy: (busy: boolean) => { this.busy=busy; } })
+      }.layoutWeight(1).width('100%').padding({ left: 20, right: 20, bottom: 24 })
+        .align(Alignment.Top).scrollBar(BarState.Off)
+    }.width('100%').height('100%')
+      .linearGradient(DesignTokens.pageGradient())
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

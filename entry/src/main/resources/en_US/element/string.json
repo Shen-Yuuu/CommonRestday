@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "For Two main module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "For Two: find time together"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "For Two"
+    }
+  ]
+}

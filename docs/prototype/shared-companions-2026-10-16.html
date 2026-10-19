@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>两人份 · 双角色页头静态预览</title>
+  <style>
+    :root{color-scheme:light;--page:#fff3ef;--card:#fff;--ink:#5c4750;--secondary:#705760;--pink:#f0568c;--weak:#fcf0f5;--line:#f0e1e5;--paper:#f7f4f2;--hint:#866c76}
+    *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",sans-serif;-webkit-font-smoothing:antialiased}
+    body.dark{color-scheme:dark;--page:#241c2c;--card:#322637;--ink:#f6e5ef;--secondary:#d0b6c5;--pink:#ff9bbb;--weak:#422d3c;--line:#5a3a4c;--paper:#1d1820;--hint:#ba9fae}
+    button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid var(--pink);outline-offset:4px}button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+    .review{max-width:1120px;margin:auto;padding:34px 36px 42px}.review-top{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:1px solid var(--line);padding-bottom:23px}
+    .brand{font-size:15px;font-weight:750;letter-spacing:.05em}.label{font-size:11px;color:var(--hint);letter-spacing:.08em}.controls{display:flex;gap:8px}.controls button{border:1px solid var(--line);background:transparent;color:var(--secondary);border-radius:99px;padding:9px 14px;font-size:12px;min-height:38px}.controls button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+    main{display:grid;grid-template-columns:420px 1fr;gap:70px;padding-top:28px;align-items:start}.phone-column{display:flex;flex-direction:column;align-items:center;gap:14px}.caption{font-size:12px;color:var(--hint);margin:0;text-align:center}
+    .phone{width:390px;max-width:100%;background:var(--page);border:1px solid var(--line);border-radius:38px;padding:13px 8px 8px;overflow:hidden;box-shadow:0 20px 60px #4b23300c;transition:width .2s}
+    .phone.narrow{width:360px}.status{height:33px;display:flex;align-items:center;justify-content:space-between;padding:0 19px;font-size:13px;font-weight:700}.status span:last-child{font-size:11px;letter-spacing:.06em}.app{position:relative;min-height:625px;padding:18px 17px 82px}
+    .header{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:56px}.heading{min-width:0}.heading h1{margin:0 0 3px;font-size:27px;line-height:1.2;font-weight:850;letter-spacing:-.035em;white-space:nowrap}.heading p{margin:0;font-size:13px;color:var(--secondary);line-height:20px}.duo{display:block;width:112px;height:56px;flex:0 0 112px;object-fit:contain}
+    .tabs{display:flex;gap:4px;padding:4px;background:var(--weak);border-radius:25px;margin-top:18px;height:46px;align-items:stretch}.tabs span{flex:1;display:grid;place-items:center;font-size:14px;font-weight:700}.tabs .selected{background:var(--card);color:var(--pink);border-radius:22px}
+    .count{margin:16px 0 13px;text-align:right;font-size:12px;color:var(--hint)}.filters{display:flex;gap:8px;margin-bottom:17px}.filters span{padding:10px 12px;background:var(--weak);border-radius:22px;font-size:12px;white-space:nowrap}.filters .selected{background:#ff7ea5;color:#fff}.window{background:var(--card);border-radius:25px;padding:18px 17px;margin-bottom:13px}.window-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-weight:750;font-size:14px}.window-top small{font-size:11px;color:var(--hint);font-weight:400;margin-left:6px}.window>p{font-size:12px;color:var(--secondary);margin:7px 0 14px}.bar{height:14px;background:linear-gradient(90deg,#ffb7cc,#ff7ea5);border-radius:20px}.tags{display:flex;gap:6px;margin-top:12px}.tag{padding:3px 8px;background:var(--weak);color:var(--secondary);font-size:10px;border-radius:12px}.tag.lilac{color:#9471b0}.tag.blue{color:#6499c7}.demo-note{font-size:11px;color:var(--hint);text-align:center;margin-top:20px}
+    .dock{position:absolute;left:16px;right:16px;bottom:18px;display:flex;background:var(--card);border:1px solid var(--line);border-radius:25px;height:55px;padding:4px;opacity:.96}.dock-item{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;font-size:10px;font-weight:700;color:var(--secondary)}.dock-item svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.7;fill:none}.dock-item.current{color:var(--pink);background:var(--weak);border-radius:22px}.dock-item.current svg{fill:currentColor;stroke:none}.home-indicator{width:110px;height:4px;background:var(--ink);opacity:.14;border-radius:4px;margin:0 auto 4px}
+    .details{padding-top:15px}.details h2{font-size:32px;line-height:1.3;letter-spacing:-.035em;margin:13px 0 15px;font-weight:750}.lead{font-size:14px;line-height:1.9;color:var(--secondary);max-width:390px;margin:0}.artboard{margin:30px 0 0;border-top:1px solid var(--line);padding-top:22px}.large-duo{height:183px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line);margin-top:12px}.large-duo img{width:286px;height:164px;display:block}.traits{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:24px}.traits h3{font-size:13px;margin:0 0 6px;font-weight:700}.traits p{font-size:12px;line-height:1.8;color:var(--hint);margin:0}.sizes{display:flex;align-items:center;gap:24px;margin-top:26px}.size-box{padding:15px 20px;background:var(--page);border-radius:18px;display:flex;align-items:center}.size-box img{display:block;width:112px;height:56px}.sizes p{font-size:11px;line-height:1.8;color:var(--hint);margin:0}.next{border-top:1px solid var(--line);margin-top:25px;padding-top:20px;font-size:12px;line-height:1.9;color:var(--secondary)}.next strong{font-weight:700;color:var(--ink)}.footnote{font-size:11px;color:var(--hint);line-height:1.8;margin-top:24px}
+    @media(max-width:900px){.review{padding:22px 20px}main{grid-template-columns:minmax(320px,390px) 1fr;gap:28px}.details h2{font-size:27px}.traits{grid-template-columns:1fr;gap:16px}.sizes{flex-wrap:wrap;gap:12px}.phone{width:100%}}
+    @media(max-width:700px){.review{padding:18px 12px}.review-top{align-items:flex-start;gap:12px}.controls{gap:5px}.controls button{padding:8px 9px;font-size:11px}.brand{font-size:13px}main{display:flex;flex-direction:column;align-items:center;gap:28px}.phone-column{width:100%}.phone{width:390px}.details{width:min(100%,390px);padding:0 8px}.large-duo{height:175px}.traits{grid-template-columns:1fr 1fr}.footnote{margin-bottom:15px}}
+  </style>
+</head>
+<body>
+  <div class="review">
+    <header class="review-top"><div><div class="brand">两人份 · 角色静态评审</div><p class="label">布布 &amp; 休休 / 第一稿</p></div><div class="controls"><button id="theme" aria-pressed="false">深色背景</button><button id="width" aria-pressed="false">360 窄屏</button></div></header>
+    <main>
+      <section class="phone-column" aria-label="共同休时页头占位预览">
+        <div class="phone" id="phone">
+          <div class="status"><span>09:41</span><span>••• ▰ 100</span></div>
+          <div class="app">
+            <header class="header"><div class="heading"><h1>共同休时</h1><p>TA · 未来 4 个月</p></div><img class="duo" src="assets/shared-companions-v1.svg" alt="布布和休休并肩坐着，小手轻碰"></header>
+            <div class="tabs" aria-label="示意切换栏"><span class="selected">列表</span><span>周历</span><span>计划</span></div>
+            <p class="count">共 2 段</p>
+            <div class="filters"><span class="selected">全部</span><span>≥2小时</span><span>完整同休</span><span>周末</span></div>
+            <article class="window"><div class="window-top"><span>10月17日 周六<small>明天</small></span><span>5小时</span></div><p>17:30 – 22:30</p><div class="bar"></div><div class="tags"><span class="tag">晚餐时光</span><span class="tag lilac">周末</span></div></article>
+            <article class="window"><div class="window-top"><span>10月18日 周日</span><span>15小时30分</span></div><p>07:00 – 22:30</p><div class="bar"></div><div class="tags"><span class="tag">完整同休日</span><span class="tag blue">可出行</span></div></article>
+            <p class="demo-note">日程为演示数据，仅用于查看页头比例</p>
+            <div class="dock" aria-label="示意底栏"><div class="dock-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-8 9 8M5 9v12h5v-7h4v7h5V9"/></svg><span>两人份</span></div><div class="dock-item current"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22C-5 10 2-2 12 7 22-2 29 10 12 22Z"/></svg><span>共同</span></div><div class="dock-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3Z"/></svg><span>我的</span></div></div>
+          </div><div class="home-indicator"></div>
+        </div>
+        <p class="caption">页头角色占位 112 × 56 · HTML 静态构图预览</p>
+      </section>
+      <section class="details" aria-label="双角色放大细节">
+        <span class="label">静态基准姿态</span><h2>把空闲留给彼此。</h2>
+        <p class="lead">布布和休休并肩坐着，轻轻靠近，小手碰在一起。沿用应用现有的暖杏色小熊与粉耳白兔，动作开始与结束都可以回到这一帧。</p>
+        <div class="artboard"><span class="label">放大看造型</span><div class="large-duo"><img src="assets/shared-companions-v1.svg" alt="双角色透明矢量稿放大图"></div></div>
+        <div class="traits"><div><h3>布布 · 暖杏色</h3><p>圆耳、奶油色鼻口区。保留原来的弧形笑眼与浅橘腮红。</p></div><div><h3>休休 · 粉耳白兔</h3><p>长耳轻轻倾斜，白色身体配粉色轮廓，表情安静柔和。</p></div></div>
+        <div class="sizes"><div class="size-box"><img src="assets/shared-companions-v1.svg" alt="112乘56实际占位"></div><p>实际占位<br>透明底 · 无边框 · 无投影</p></div>
+        <div class="next"><strong>确认造型后再制作动作</strong><br>日常眨眼 → 轻轻碰头 → 开心击掌<br>这一轮不播放动画，也没有修改正式 App 页面。</div>
+        <p class="footnote">这是 HTML 构图预览，不是 ArkUI 真机截图。页头文字、角色占位与原页层级保持一致；其余卡片仅作视觉参照。</p>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.getElementById('theme').addEventListener('click', function(){const active=document.body.classList.toggle('dark');this.setAttribute('aria-pressed',String(active));this.textContent=active?'浅色背景':'深色背景';});
+    document.getElementById('width').addEventListener('click', function(){const active=document.getElementById('phone').classList.toggle('narrow');this.setAttribute('aria-pressed',String(active));this.textContent=active?'390 标准宽':'360 窄屏';});
+  </script>
+</body>
+</html>

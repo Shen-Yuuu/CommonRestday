@@ -1,9 +1,11 @@
-import { HORIZON_DEFAULT_DAYS, OWNER_ME, PairLink, PairOffer } from 'domain';
-import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING } from 'data';
+import { hhmmToMin, HORIZON_DEFAULT_DAYS, minToHHmm, OWNER_ME } from 'domain';
+import { PAIRED, PAIR_NONE, PAIR_PENDING, PAIR_WAITING, SettingsStore } from 'data';
 import {
-  FeatureFlags, HORIZON_MAX, HORIZON_MIN, InviteResult, isCrossMidnight, MyRhythm,
-  PairChannels, PairingShareGateway, PairOpResult, PartnerInput, ProfileSettingsService,
-  ScanOutcome, ScanResult, SettingsResult, SHARE_LEVEL_UNKNOWN, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState,
+  canManuallyRetry, FeatureFlags, HORIZON_MAX, HORIZON_MIN, InviteResult, isCrossMidnight, MyRhythm,
+  unifiedPairing, UnifiedPairingResult,
+  secureCloudCleanup, secureCleanupSummary,
+  PairCodeClipboard, PartnerInput, ProfileSettingsService,
+  ScheduleUseCase, SettingsResult, SHARE_LEVEL_UNKNOWN, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState,
   syncStateNoteOf, syncStateTitleOf, syncTroubleOf
 } from 'feature';
 import { PrivacyPolicySheet } from '../component/PrivacyPolicySheet';
@@ -12,21 +14,19 @@ import { NavRoutes } from '../navigation/NavRoutes';
 import { ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
+import { SyncFeedbackButton } from '../component/SyncFeedbackButton';
+import { UnifiedPairingStatus } from '../component/UnifiedPairingStatus';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { appToast } from '../util/AppToast';
 import { askConfirm } from '../util/AppConfirm';
 import { syncOnPull } from '../util/PullRefresh';
+import { LatestLanding } from '../util/LatestLanding';
+import { FadingScrollViewport, ScrollHeaderState, StickyPageHeader } from '../component/FadingHeader';
 
 /** 最短共同时段的常用档：碎片小于 1 小时几乎安排不了事，大于 4 小时又太难得。 */
 const MIN_SLOT_STEPS: number[] = [60, 120, 240];
-
-/** @Builder 传两个及以上参数时不参与动态渲染（ArkUI 限制），所以一格合成一个对象字面量按引用传。 */
-interface ParamStatArg {
-  value: string;
-  label: string;
-}
 
 /** 卡内小标题的入参：`action` 由父页状态算出来（编辑态要收起"编辑"这颗），必须跟着换（D-46 第二形）。 */
 interface CardHeadArg {
@@ -35,31 +35,24 @@ interface CardHeadArg {
   onAction: () => void;
 }
 
-/**
- * 我的页：四段收纳——伴侣与同步、我的日程、作息、数据与隐私。
- * - 作息只摆起床/就寝/收整三个主参数，视界与最短共同时段收进「高级设置」；
- * - 班表录入不再是底部 Tab，这里给一条直达入口；我这侧与代录 TA 那侧是同一个页面的两个视图，
- *   所以只给一颗，进去后用页首的「我的班表 / TA 的班表」分段切侧；
- * - 首发零通知：本页不摆任何通知/提醒开关，到点报时全部交给系统日历（D-20）；
- * - 云端配对关闭时这一页不摆任何云入口（生成/输码/扫码/分享/等级一起收），只留本机代录与退出通道。
- */
+/** 我的页只展示摘要，完整设置在详情面板中。 */
 @Component
 export struct MeView {
+  @Prop @Watch('onActiveChanged') active: boolean = true;
+  private mounted: boolean = false;
+  private landing: LatestLanding = new LatestLanding();
   /** 打开路由（班表页并指定录哪一侧），由 AppNavigator 注入：路由种类只有壳层知道。 */
   onOpenRoute: (name: string, params?: Object) => void = (name: string, params?: Object) => {
   };
   @State private shareLevel: number = SHARE_LEVEL_UNKNOWN;
   @State private pairState: string = PAIR_NONE;
-  /**
-   * 云同步三态（协议 §3.4 末行）：默认「已同步」= 提示条不出。
-   * 只在进这一页时读一次——它是后台推送/拉取失败时写的，没有理由为一条提示条挂监听。
-   */
+  /** 云同步三态（协议 §3.4 末行）：默认「已同步」= 提示条不出。 */
   @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
-  /**
-   * 云上还剩几份加密快照是这台手机**删不掉**的（云端已给终局判定，批次 AO·AO3）。
-   * 它不走 `syncTrouble()` 那道闸：关闭态那道闸故意返回 false，而这笔账多半就是关闭态欠下的。
-   */
+  /** 云上还剩几份加密快照是这台手机**删不掉**的（云端已给终局判定，批次 AO·AO3）。 */
   @State private undeletableCloud: number = 0;
+  @State private secureCleanupNote: string = '';
+  @State private secureCleanupBusy: boolean = false;
+  private cleanupRead: number = 0;
   // 伴侣档案
   @State private partnerExists: boolean = false;
   @State private partnerEditing: boolean = false;
@@ -69,46 +62,53 @@ export struct MeView {
   @State private pWind: string = '20';
   // 云端配对
   @State private pairingBusy: boolean = false;
+  @State private syncRetryBusy: boolean = false;
+  @State private syncFeedback: string = '';
+  @State private syncOrigin: string = '';
+  private feedbackPairId: string = '';
   @State private showJoinInput: boolean = false;
   @State private myCode: string = '';
   @State private joinCode: string = '';
-  /**
-   * 一次性确认凭据（协议 §4.2 下发给加入方，由加入方交回发起方，§4.3 才转 ACTIVE）。
-   * 只活在进程里：冷启动回来就没了，那时这一侧只剩「检查配对状态」可点——§4.4 要不要把凭据
-   * 回传给发起方，是开闸前必须定的协议修订项（记在批次 U 的欠账里）。
-   * 6 位配对码不进二维码，所以没有凭据就没有链接可画，页面退回"突出短码"。
-   */
-  @State private pairToken: string = '';
-  /** 扫码/分享入口由能力探测决定，不在页面里硬编机型。 */
-  @State private channels: PairChannels = { scan: false, share: false, emphasizeCode: true };
+  /** 确认凭据只在邀请方本机密封保存；页面只需要知道这一侧能否确认。 */
+  @State private isInviter: boolean = false;
   // 我的作息参数
   @State private myEditing: boolean = false;
-  @State private advanced: boolean = false;
+  @State private mySaving: boolean = false;
   @State private myWake: string = '07:00';
   @State private myBed: string = '22:30';
   @State private myWind: string = '20';
-  // 回填前的占位值：loadMyRhythm() 落地之前输入框念的是出厂默认，所以这个数必须跟着 domain 的
-  // 那一家走，不能自己抄一份 '120'（D-63：这一份是默认天数的第三份抄写）。
   @State private myHorizon: string = '' + HORIZON_DEFAULT_DAYS;
   @State private myMinSlot: number = 120;
+  private rhythmTimeRequest: number = 0;
   @State private clearing: boolean = false;
   /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
   @State private refreshing: boolean = false;
-  /** 《隐私政策》全文半模态（与首启弹窗同一个组件，随包出厂、离线可读）。 */
+  /** 离线隐私全文与托管版链接。 */
   @State private policyOpen: boolean = false;
+  @State private detailsOpen: boolean = false;
+  @State private unifiedPhase: string = 'CONNECTING';
+  @State private detailKind: string = 'partner';
+  @State private cloudName: string = 'TA';
+  @State private nameDraft: string = '';
+  @State private nameSaving: boolean = false;
+  @State private nameError: string = '';
+  private namePairId: string = '';
   /** 本页容器宽度档位：expanded 把卡片区并成两列，其余档位与改造前一致。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
+  private pageScroller: Scroller = new Scroller();
+  @State private headerVisual: ScrollHeaderState = new ScrollHeaderState();
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   // 保存动作 → 重算广播：伴侣侧数据或参数变了，摘要文案要跟着走
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
-  // 一次性配对请求到达（扫到的或从配对链接拉起本机的）：确认页在这页弹
-  @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
-
   aboutToAppear(): void {
+    this.mounted = true;
     this.reload();
-    // 深链可能比本页早到：请求由网关暂存，挂载后补取一次，不丢冷启动的那一条
-    this.takePendingOffer();
+  }
+  aboutToDisappear(): void { this.mounted = false; this.cleanupRead++; this.landing.invalidate(); }
+  onActiveChanged(): void {
+    if (!this.active) { this.cleanupRead++; this.landing.invalidate(); return; }
+    if (this.mounted) this.reload();
   }
 
   onRecomputeChanged(): void {
@@ -121,88 +121,138 @@ export struct MeView {
     this.refreshing = false;
   }
 
-  onPairOffer(): void {
-    this.takePendingOffer();
-  }
+  // ---------- 六位短码 / 邀请方本机确认 ----------
 
-  takePendingOffer(): void {
-    const offer: PairOffer | null = PairingShareGateway.peekOffer();
-    if (offer !== null) {
-      this.confirmPair(offer);
+  copyPairCode(): void {
+    if (this.myCode === '') {
+      appToast('还没有配对码，先点「生成配对码」');
+      return;
     }
+    PairCodeClipboard.copy(this.myCode).then((message: string) => {
+      appToast(message);
+    });
   }
 
-  /** 二维码/分享链接的唯一内容源：没有一次性凭据就没有链接。 */
-  pairLink(): string {
-    return PairLink.build(this.pairToken, 0);
+  /** 输码只提交申请；邀请方看到云端待确认状态后在本机点头。 */
+  confirmPair(): void {
+    askConfirm(this.getUIContext(), {
+      title: '确认配对请求',
+      message: 'TA 已输入你分享的 6 位配对码。确认后会连接班表同步与共同计划；每个计划仍需对方同意，通知另行开启。',
+      cancelText: '忽略',
+      confirmText: '确认配对',
+      onConfirm: () => this.acceptPendingJoin()
+    });
   }
 
-  // ---------- 扫码 / 分享 / 确认（Task 4.1：能力探测 + 不自动绑定） ----------
-
-  startPairScan(): void {
+  acceptPendingJoin(): void {
     if (this.pairingBusy) {
       return;
     }
     this.pairingBusy = true;
-    PairingShareGateway.offerFromScan().then((res: ScanResult) => {
+    ProfileSettingsService.confirmPendingJoin().then((res: SettingsResult) => {
       this.pairingBusy = false;
-      if (res.outcome === ScanOutcome.OFFER && res.offer !== null) {
-        this.confirmPair(res.offer);
-        return;
-      }
-      if (res.message !== '') {
-        appToast(res.message);
-      }
-    });
-  }
-
-  sharePairLink(): void {
-    PairingShareGateway.shareLink(this.pairLink()).then((res: PairOpResult) => {
+      this.pairState = ProfileSettingsService.getPairState();
+      this.isInviter = ProfileSettingsService.hasLocalInviteProof();
       appToast(res.message);
-    });
-  }
-
-  copyPairCode(): void {
-    if (this.myCode === '') {
-      appToast('还没有配对码，先点「生成邀请码」');
-      return;
-    }
-    PairingShareGateway.copyText(this.myCode).then((res: PairOpResult) => {
-      appToast(res.message);
-    });
-  }
-
-  /**
-   * 确认页：点开链接不直接绑，先让用户看清"这是谁的哪一次请求"（协议 §4.3 由发起方按确认）。
-   * token 只露首尾，整条凭据不进屏幕文本、不进日志。
-   */
-  confirmPair(offer: PairOffer): void {
-    askConfirm(this.getUIContext(), {
-      title: '确认配对请求',
-      message: 'TA 已经输入你的配对码（确认号 ' + PairLink.mask(offer.token)
-        + '）。你确认后两边才开始同步。',
-      cancelText: '忽略',
-      confirmText: '确认配对',
-      onCancel: () => {
-        PairingShareGateway.ignoreOffer();
-      },
-      onConfirm: () => this.acceptPairOffer()
-    });
-  }
-
-  acceptPairOffer(): void {
-    PairingShareGateway.acceptOffer().then((res: PairOpResult) => {
-      appToast(res.message);
+      this.reload();
     });
   }
 
   reload(): void {
+    if (!this.active || !this.mounted) return;
     this.shareLevel = ProfileSettingsService.getShareLevel();
     this.pairState = ProfileSettingsService.getPairState();
     this.syncState = ProfileSettingsService.getCloudSyncState();
+    // 配对变化或故障恢复后，不保留上一轮的重试反馈。
+    if (!this.syncRetryBusy && (this.feedbackPairId !== SettingsStore.getPairId()
+      || (this.syncTrouble() && this.syncFeedback !== '' && this.syncFeedback !== '同步未成功')
+      || (!this.syncTrouble() && this.syncFeedback === '同步未成功'))) {
+      this.syncOrigin = '';
+      this.syncFeedback = '';
+    }
     this.undeletableCloud = ProfileSettingsService.undeletableCloudSnapshots();
-    this.pairToken = ProfileSettingsService.getOutboundToken();
-    this.channels = PairingShareGateway.channels();
+    const cleanupRead = ++this.cleanupRead;
+    const token = this.landing.begin();
+    unifiedPairing().local().then((state: UnifiedPairingResult) => {
+      if (this.landing.isCurrent(token)) this.unifiedPhase = state.phase;
+    }).catch(() => {
+      if (this.landing.isCurrent(token)) this.unifiedPhase = 'FAILED';
+    });
+    secureCleanupSummary().then((note: string) => {
+      if (cleanupRead === this.cleanupRead && this.landing.isCurrent(token)) this.secureCleanupNote = note;
+    }).catch(() => {
+      if (cleanupRead === this.cleanupRead && this.landing.isCurrent(token)) this.secureCleanupNote = '暂时无法读取安全连接的云端清理状态';
+    });
+    this.isInviter = ProfileSettingsService.hasLocalInviteProof();
+    this.reloadPartner();
+    this.reloadMyParams();
+    this.cloudName = SettingsStore.getCloudPartnerName() || 'TA';
+    if (FeatureFlags.cloudPairing && this.pairState === PAIRED && this.unifiedPhase === 'READY' && !SettingsStore.isCloudPartnerNamePrompted()
+      && this.detailKind !== 'name') {
+      this.editCloudName();
+    }
+  }
+
+  private openDetails(kind: string): void {
+    if (kind === 'rhythm') {
+      this.startEditMyParams();
+    }
+    this.detailKind = kind;
+    this.detailsOpen = true;
+  }
+
+  private partnerSheetHeight(): string {
+    if (this.detailKind === 'name') {
+      return '44%';
+    }
+    return this.partnerEditing || this.showJoinInput || this.pairState === PAIR_WAITING
+      || this.pairState === PAIR_PENDING ? '85%' : '70%';
+  }
+
+  private editCloudName(): void {
+    this.namePairId = SettingsStore.getPairId();
+    this.nameDraft = SettingsStore.getCloudPartnerName();
+    this.nameError = '';
+    this.openDetails('name');
+  }
+
+  private async finishCloudName(cancel: boolean): Promise<void> {
+    if (this.nameSaving) {
+      return;
+    }
+    this.nameSaving = true;
+    const name = cancel ? SettingsStore.getCloudPartnerName() : this.nameDraft.trim();
+    try {
+      await SettingsStore.saveCloudPartnerName(this.namePairId, name);
+      this.cloudName = name || 'TA';
+      this.detailKind = 'partner';
+      this.detailsOpen = false;
+      const tick = Number(AppStorage.get<number>('recomputeCount') || 0);
+      AppStorage.setOrCreate('recomputeCount', tick + 1);
+    } catch (e) {
+      this.nameError = (e as Error).message;
+      appToast(this.nameError);
+      if (SettingsStore.getPairId() === this.namePairId && this.pairState === PAIRED) {
+        this.detailsOpen = true;
+      }
+    } finally {
+      this.nameSaving = false;
+    }
+  }
+
+  private closeDetails(): void {
+    if (this.detailKind === 'name') {
+      if (SettingsStore.getPairId() !== this.namePairId || this.pairState !== PAIRED) {
+        this.detailKind = 'partner';
+        this.detailsOpen = false;
+        return;
+      }
+      this.finishCloudName(true);
+      return;
+    }
+    this.detailsOpen = false;
+    this.partnerEditing = false;
+    this.myEditing = false;
     this.reloadPartner();
     this.reloadMyParams();
   }
@@ -280,13 +330,13 @@ export struct MeView {
 
   pairStateText(): string {
     if (this.pairState === PAIRED) {
-      return FeatureFlags.cloudPairing ? '已配对' : '已标记配对';
+      return FeatureFlags.cloudPairing ? (this.unifiedPhase === 'READY' ? '已配对' : '连接待完成') : '已标记配对';
     }
     if (this.pairState === PAIR_WAITING) {
       return '等待 TA 输码';
     }
     if (this.pairState === PAIR_PENDING) {
-      return '等待确认';
+      return this.isInviter ? '待你确认' : '等待 TA 确认';
     }
     return '未配对';
   }
@@ -294,41 +344,52 @@ export struct MeView {
   /** 「已配对」不许说成"正在同步"：云端开关关着时它只是本机状态（验收清单 §9.5 的偏离口径）。 */
   pairedNote(): string {
     if (FeatureFlags.cloudPairing) {
-      return '已配对：班表改动会按你选的共享等级加密同步给 TA。';
+      return this.unifiedPhase === 'READY' ? '班表加密同步，共同计划需双方确认。'
+        : '正在完成共同计划连接。';
     }
-    return '云端还没开通，TA 的班表不会自动同步。想现在就算，用上方「伴侣（本机代录）」。';
+    return '云同步暂不可用，可先使用本机代录。';
   }
 
-  /**
-   * 云同步现在是不是坏消息（待重试 / 已停止）。「已同步」与从未试过都不算。
-   * 两处读它：身份卡那一行与配对卡里的提示条——同一件事不能在页上两种说法。
-   * 判据本身在 `syncTroubleOf`，首页与共同时间页用的是同一条，这里只加本页的两道闸。
-   * 关闭态一律不出：那一档压根没有同步通路，`pairedNote()` 已经说了"云端未开通"，
-   * 而偏好里残留的降级结论讲的是上一版开通时的事，挂出来只会让页上同时存在两种说法。
-   */
+  /** 云同步现在是不是坏消息（待重试 / 已停止）。「已同步」与从未试过都不算。 */
   syncTrouble(): boolean {
     return FeatureFlags.cloudPairing && syncTroubleOf(this.syncState);
   }
 
-  /**
-   * 等待态的一句现况：这一侧到底在等什么，只由"手上有什么"决定——
-   * 有确认凭据说明本机是加入方（要把链接交回去），只有短码说明本机是发起方（还在等对方输码）。
-   * 不另存"我是发起方还是加入方"这一位：云端 §4.4 认得成员表，本机跟着它给的进度说就够了。
-   */
-  waitingNote(): string {
-    if (this.pairLink() !== '') {
-      return '把这条链接发给 TA：TA 点开后按「确认配对」，两边才开始同步。';
+  /** 云故障唯一的用户重试入口；结果读真实的推、拉两段，不靠清提示伪造成功。 */
+  retrySync(origin: string): void {
+    if (this.syncRetryBusy || this.pairState !== PAIRED || !canManuallyRetry(this.syncState)) {
+      return;
     }
-    if (this.pairState === PAIR_PENDING) {
-      return '还差 TA 点一次确认。没收到链接就请 TA 重新分享一次。';
-    }
-    return 'TA 输完配对码不会自动往下走，点「检查配对状态」同步一次进度。';
+    this.syncOrigin = origin;
+    this.feedbackPairId = SettingsStore.getPairId();
+    this.syncFeedback = '';
+    this.syncRetryBusy = true;
+    ScheduleUseCase.retryCloudSync().then((ok: boolean) => {
+      this.syncRetryBusy = false;
+      this.reload();
+      this.syncFeedback = ok ? '' : '同步未成功';
+      appToast(ok ? '已同步最新班表' : '同步仍未成功，请查看下方原因后再试');
+    }).catch((e: Error) => {
+      this.syncRetryBusy = false;
+      this.reload();
+      this.syncFeedback = this.syncTrouble() ? '同步未成功' : '云端已恢复，请刷新共同时间';
+      appToast(this.syncTrouble()
+        ? '同步仍未成功，本机数据已保留'
+        : '云同步已恢复，但共同时间暂未刷新；请下拉重新计算');
+    });
   }
 
-  /**
-   * 配对码的朗读文案：逐位分开报，避免 "384106" 被读成一个数值。
-   * 只处理自己生成的 6 位短码，不含任何长期凭据。
-   */
+  /** 只靠六码传递邀请；加入方不再把任何凭据交回邀请方。 */
+  waitingNote(): string {
+    if (this.pairState === PAIR_PENDING) {
+      return this.isInviter
+        ? 'TA 已输码，请检查并确认配对。'
+        : '申请已送达，等待 TA 确认。';
+    }
+    return this.myCode === '' ? '配对码已生成；忘记可取消后重新生成。' : '把配对码告诉 TA，加入后由你确认。';
+  }
+
+  /** 配对码的朗读文案：逐位分开报，避免 "384106" 被读成一个数值。 */
   codeRead(): string {
     let s = '配对码 ';
     for (let i = 0; i < this.myCode.length; i++) {
@@ -354,6 +415,7 @@ export struct MeView {
         this.joinCode = '';
         this.showJoinInput = false;
         this.pairState = PAIR_WAITING;
+        this.isInviter = true;
       }
     });
   }
@@ -368,9 +430,9 @@ export struct MeView {
       this.pairingBusy = false;
       appToast(res.message);
       if (res.ok) {
-        // 输码不等于配对：协议 §4.2 之后还要 §4.3，本机先落在"等待确认"
+        // 输码只提交加入申请；邀请方确认并且云端 ACTIVE 后才显示已配对。
         this.pairState = PAIR_PENDING;
-        this.pairToken = ProfileSettingsService.getOutboundToken();
+        this.isInviter = false;
         this.showJoinInput = false;
         this.joinCode = '';
       }
@@ -386,8 +448,13 @@ export struct MeView {
     ProfileSettingsService.reconcilePair().then((res: SettingsResult) => {
       this.pairingBusy = false;
       this.pairState = ProfileSettingsService.getPairState();
-      this.pairToken = ProfileSettingsService.getOutboundToken();
-      appToast(res.message);
+      this.isInviter = ProfileSettingsService.hasLocalInviteProof();
+      if (res.approvalRequired === true) {
+        this.confirmPair();
+      } else {
+        appToast(res.message);
+      }
+      this.reload();
     });
   }
 
@@ -396,21 +463,11 @@ export struct MeView {
     ProfileSettingsService.cancelWaiting().then(() => {
       this.pairState = PAIR_NONE;
       this.myCode = '';
+      this.isInviter = false;
     });
   }
 
-  /**
-   * 动手之前那句「云上会怎么样」（批次 AP·Task 3）。
-   *
-   * 三个数各说各的，混成一个就是假话：还删得动的（`cloudSnapshotsAtRisk`，含上一轮没补删的旧账）、
-   * 因为开关关着所以这一趟一份都不会去碰的，以及云端已经判死、这台手机永远删不掉的那几份
-   * （`undeletableCloudSnapshots`，它**不在**前一个数里）。
-   *
-   * 过去这两句确认文案只看 `cloudPairing && pairState`：账上有好几笔时仍然念"云上那份"，
-   * 而已经判死的那一笔被一并说成"下次联网会再试"——那是一句兑现不了的承诺。
-   * `keepsLocalOnFail` 是解除配对与清空数据真实的分岔：前者云端删不动就不清本机标记（重试的凭据
-   * 就是这一屏本身），后者本机一定清得掉，只把欠账留给下一次。
-   */
+  /** 动手之前那句「云上会怎么样」（批次 AP·Task 3）。 */
   cloudWipeClause(keepsLocalOnFail: boolean): string {
     const atRisk = ProfileSettingsService.cloudSnapshotsAtRisk();
     const dead = ProfileSettingsService.undeletableCloudSnapshots();
@@ -429,12 +486,7 @@ export struct MeView {
     return parts.length === 0 ? '' : parts.join('；') + '。';
   }
 
-  /**
-   * 解除配对（二次确认）：云端删成功才清本机标记（协议 §4.5 批次 U·U5）。
-   *
-   * 确认框里要把"这一步要联网、云上那份是硬删除"说在操作现场：过去这里只说"不再同步"，
-   * 而云端删失败时又照清本机标记，用户读到的是"已解除配对"，看到的却是一份永远删不掉的密文。
-   */
+  /** 解除配对（二次确认）：云端删成功才清本机标记（协议 §4.5 批次 U·U5）。 */
   askUnpair(): void {
     askConfirm(this.getUIContext(), {
       message: '解除后不再同步 TA 的数据，本机代录的内容会留着。' + this.cloudWipeClause(true),
@@ -451,23 +503,13 @@ export struct MeView {
         this.pairState = PAIR_NONE;
         this.myCode = '';
       }
-      // 成败都要重读欠账：fail-closed 那一支会把云端判死的那一笔记进队列，
-      // 数据卡里那句「还剩 N 份删不掉」不能还停在动手之前（批次 AP·Task 3）
       this.undeletableCloud = ProfileSettingsService.undeletableCloudSnapshots();
     });
   }
 
   // ---------- 数据管理 ----------
 
-  /**
-   * 清空我的全部数据（二次确认）：先清系统侧投影（受管日程 +「同休日」日历），再删 8 张 RDB 表与全部设置；
-   * 隐私同意标记保留（避免重启重复弹窗）。
-   *
-   * 云上有没有东西要被牵动，读的是**队列与当前会话本身**而不是"现在配着对没有"：清空会把还删得动
-   * 的那几份一起删掉，而这一步删不成本机也照清，只留下凭据等下次补删（批次 U·U5）；已经判死的那几份
-   * 则要在这里单说一句，因为下面那句"自动再试"对它们不成立（批次 AP·Task 3）。
-   * 隐私政策里那句"先解除配对"替代不了操作现场的告知。
-   */
+  /** 清空我的全部数据（二次确认）：先清系统侧投影（受管日程 +「同休日」日历），再删 8 张 RDB 表与全部设置； */
   askClearAll(): void {
     if (this.clearing) {
       return;
@@ -497,7 +539,7 @@ export struct MeView {
     });
   }
 
-  // ---------- 我的作息参数（起床/就寝/收整；视界与最短时段在高级设置） ----------
+  // ---------- 我的作息与计算参数 ----------
 
   reloadMyParams(): void {
     if (this.myEditing) {
@@ -513,81 +555,102 @@ export struct MeView {
 
   startEditMyParams(): void {
     this.reloadMyParams();
+    this.rhythmTimeRequest++;
     this.myEditing = true;
   }
 
   cancelMyEdit(): void {
     this.myEditing = false;
-    this.advanced = false;
     this.reloadMyParams();
   }
 
   /** 解析、校验与重算都在 ProfileSettingsService：就寝早于起床按次日凌晨计入。 */
   saveMyParams(): void {
+    if (this.mySaving) {
+      return;
+    }
+    this.mySaving = true;
     const input: MyRhythm = {
       wakeText: this.myWake, bedText: this.myBed, windText: this.myWind,
       horizonText: this.myHorizon, minSlotMin: this.myMinSlot
     };
     ProfileSettingsService.saveMyRhythm(input).then((res: SettingsResult) => {
+      this.mySaving = false;
       appToast(res.message);
       if (!res.ok) {
         return;
       }
       this.myEditing = false;
-      this.advanced = false;
+      this.detailsOpen = false;
       this.reloadMyParams();
+    }).catch((e: Error) => {
+      this.mySaving = false;
+      appToast('保存未成功，请再试一次');
     });
   }
 
+  private pickRhythmTime(bed: boolean): void {
+    if (!this.detailsOpen || this.detailKind !== 'rhythm' || !this.myEditing || this.mySaving) {
+      return;
+    }
+    const minutes = hhmmToMin(bed ? this.myBed : this.myWake);
+    if (minutes < 0) {
+      appToast('时间没读出来，请关闭作息设置后再试');
+      return;
+    }
+    const selected = new Date();
+    selected.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    const token = ++this.rhythmTimeRequest;
+    try {
+      this.getUIContext().showTimePickerDialog({
+        selected: selected,
+        useMilitaryTime: true,
+        dateTimeOptions: { hour: '2-digit', minute: '2-digit' },
+        selectedTextStyle: { color: DesignTokens.textAccent },
+        acceptButtonStyle: { fontColor: DesignTokens.textAccent },
+        onAccept: (result: TimePickerResult) => {
+          if (!this.detailsOpen || this.detailKind !== 'rhythm' || !this.myEditing || this.mySaving
+            || token !== this.rhythmTimeRequest) {
+            return;
+          }
+          if (!Number.isInteger(result.hour) || !Number.isInteger(result.minute)
+            || result.hour < 0 || result.hour > 23 || result.minute < 0 || result.minute > 59) {
+            return;
+          }
+          const text = minToHHmm(result.hour * 60 + result.minute);
+          if (bed) {
+            this.myBed = text;
+          } else {
+            this.myWake = text;
+          }
+        }
+      });
+    } catch (e) {
+      appToast('时间选择暂时打不开，请再试一次');
+    }
+  }
+
   private pickMinSlot(v: number): void {
-    if (this.myMinSlot === v) {
+    if (this.mySaving || this.myMinSlot === v) {
       return;
     }
     this.myMinSlot = v;
   }
 
   private minSlotLabel(v: number): string {
-    return '≥ ' + (v % 60 === 0 ? '' + (v / 60) + ' 小时' : v + ' 分钟');
+    return v % 60 === 0 ? '' + (v / 60) + '小时' : v + '分钟';
   }
 
   // ---------- 身份卡文案 ----------
 
   private identityTitle(): string {
+    if (this.pairState === PAIRED) {
+      return '我 & ' + this.cloudName;
+    }
     if (this.partnerExists) {
       return '我 & ' + this.pNick;
     }
-    if (this.pairState === PAIRED) {
-      return '我 & TA';
-    }
-    return '我（单人模式）';
-  }
-
-  private identitySub(): string {
-    if (this.pairState === PAIR_WAITING) {
-      return '等待 TA 输入配对码';
-    }
-    if (this.pairState === PAIR_PENDING) {
-      return '已加入 · 还差 TA 确认，尚未同步';
-    }
-    if (this.pairState === PAIRED) {
-      if (!FeatureFlags.cloudPairing) {
-        return '本机标记已配对 · 云端未开通，未同步';
-      }
-      // 同步已经死了还在顶上那一行写"加密同步"，就是协议 §8 明令禁止的那种假态；
-      // 三态的名字在这里念一次，配对卡里的提示条才是同一句话的展开。
-      if (this.syncTrouble()) {
-        return '已配对 · ' + syncStateTitleOf(this.syncState);
-      }
-      // 读数没落地就说"按 L2 加密同步"，是替用户挑了一档他没选过的隐私口径（批次 AO·AO4）
-      if (this.shareLevel === SHARE_LEVEL_UNKNOWN) {
-        return '已配对 · 共享等级暂不可确认';
-      }
-      return '已配对 · 按' + this.levelTitle(this.shareLevel) + '加密同步';
-    }
-    if (this.partnerExists) {
-      return '本机代录 · 数据只写在本机的应用沙箱里';
-    }
-    return '数据只写在本机的应用沙箱里 · 单人模式只算我的空闲';
+    return '单人模式';
   }
 
   // ---------- 隐私共享等级（L1/L2/L3 切换 + 持久化） ----------
@@ -595,27 +658,24 @@ export struct MeView {
   /** 各等级 TA 能看到多少。 */
   levelDesc(level: number): string {
     if (level === 1) {
-      return 'TA 只看得到你有空还是在忙，看不到原因和具体时间';
+      return 'TA 看得到你有空还是在忙';
     }
     if (level === 2) {
-      return 'TA 看得到你在做什么（比如上课、上班），看不到几点到几点';
+      return 'TA 看得到你在做什么';
     }
-    return 'TA 看得到你完整的忙碌时段，共同时间算得最准';
+    return 'TA 看得到你完整的忙碌时段';
   }
 
-  /**
-   * 等级的名字。旧写法是"不是 1 也不是 2 就叫 L3"，于是任何脏值（NaN、0、9）都会被念成
-   * 共享得最多的那一档——那是把读数失败说成隐私暴露最大，正方向错得最狠的一格（批次 AO·AO4）。
-   */
+  /** 等级的名字。旧写法是"不是 1 也不是 2 就叫 L3"，于是任何脏值（NaN、0、9）都会被念成 */
   levelTitle(level: number): string {
     if (level === 1) {
-      return 'L1 忙闲状态';
+      return '忙闲状态';
     }
     if (level === 2) {
-      return 'L2 班次类型';
+      return '班次类型';
     }
     if (level === 3) {
-      return 'L3 完整时间';
+      return '完整时间';
     }
     return '共享等级暂不可确认';
   }
@@ -638,54 +698,89 @@ export struct MeView {
 
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
-      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-        Scroll() {
-          if (Breakpoints.isExpanded(this.bp)) {
-            // 宽屏两列：伴侣/日程一列，作息/数据一列，读屏顺序仍是先左后右自上而下
-            Row({ space: DesignTokens.space4 }) {
-              Column({ space: DesignTokens.space3 }) {
-                this.identityCard()
-                this.partnerSyncCard()
-                this.scheduleCard()
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
+      Column() {
+        StickyPageHeader({
+          title: '我的', subtitle: '日程、作息与两人的设置',
+          visual: this.headerVisual, horizontalPadding: Breakpoints.hPadding(this.bp),
+          maxContentWidth: Breakpoints.contentMaxWidth(this.bp)
+        })
+        .hitTestBehavior(HitTestMode.Transparent)
+        Column() {
+          FadingScrollViewport({ fadeHeight: 16, visual: this.headerVisual }) {
+            Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+              Scroll(this.pageScroller) {
+                if (Breakpoints.isExpanded(this.bp)) {
+                  // 宽屏两列：伴侣/日程一列，作息/数据一列，读屏顺序仍是先左后右自上而下
+                  Row({ space: DesignTokens.space4 }) {
+                    Column({ space: DesignTokens.space3 }) {
+                      this.identityCard()
+                      this.partnerSummaryCard()
+                      this.scheduleCard()
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
 
-              Column({ space: DesignTokens.space3 }) {
-                this.rhythmCard()
-                this.dataCard()
+                    Column({ space: DesignTokens.space3 }) {
+                      this.rhythmSummaryCard()
+                      this.dataCard()
+                    }
+                    .layoutWeight(1)
+                    .alignItems(HorizontalAlign.Start)
+                  }
+                  .width('100%')
+                  .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+                  .alignItems(VerticalAlign.Top)
+                  .padding(this.contentPadding())
+                } else {
+                  Column({ space: DesignTokens.space3 }) {
+                    this.identityCard()
+                    this.partnerSummaryCard()
+                    this.scheduleCard()
+                    this.rhythmSummaryCard()
+                    this.dataCard()
+                  }
+                  .width('100%')
+                  .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+                  .padding(this.contentPadding())
+                }
               }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
+              .width('100%')
+              .height('100%')
+              .align(Alignment.Top)
+              .scrollBar(BarState.Off)
+              .onAppear(() => { this.headerVisual.update(this.pageScroller.currentOffset().yOffset); })
+              .onDidScroll(() => {
+                this.headerVisual.update(this.pageScroller.currentOffset().yOffset);
+              })
+              .bindSheet($$this.detailsOpen, this.detailsSheet(), {
+                height: this.detailKind === 'rhythm' ? '46%' : this.partnerSheetHeight(),
+                preferType: SheetType.BOTTOM,
+                dragBar: false, showClose: false,
+                backgroundColor: Color.Transparent, blurStyle: BlurStyle.NONE,
+                maskColor: DesignTokens.scrim,
+                onDisappear: () => this.closeDetails(),
+                onWillDismiss: (action: DismissSheetAction) => {
+                  if (!this.mySaving && !this.nameSaving) {
+                    action.dismiss();
+                  }
+                }
+              })
             }
+            .onRefreshing(() => {
+              this.onRefresh();
+            })
             .width('100%')
-            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-            .alignItems(VerticalAlign.Top)
-            .padding(this.contentPadding())
-          } else {
-            Column({ space: DesignTokens.space3 }) {
-              this.identityCard()
-              this.partnerSyncCard()
-              this.scheduleCard()
-              this.rhythmCard()
-              this.dataCard()
-            }
-            .width('100%')
-            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-            .padding(this.contentPadding())
+            .height('100%')
+            .bindSheet($$this.policyOpen, this.policySheet(), {
+              detents: [SheetSize.LARGE], dragBar: false, showClose: false,
+              backgroundColor: Color.Transparent, blurStyle: BlurStyle.NONE,
+              maskColor: DesignTokens.scrim
+            })
           }
         }
-        .width('100%')
-        .height('100%')
-        .align(Alignment.Top)
-        .scrollBar(BarState.Off)
+        .width('100%').layoutWeight(1)
       }
-      .onRefreshing(() => {
-        this.onRefresh();
-      })
-      .width('100%')
-      .height('100%')
-      // 页面底画在 Refresh 上而不是 Scroll 上：下拉时 Scroll 整体平移，底跟着走会露出一条空白
+      .width('100%').height('100%')
       .linearGradient(DesignTokens.pageGradient())
     }
   }
@@ -693,7 +788,128 @@ export struct MeView {
   /** 留白在滚动内容上而不是 Scroll 上：底部留白要跟着内容一起滚，不占死视口。 */
   private contentPadding(): Padding {
     const h: number = Breakpoints.hPadding(this.bp);
-    return { left: h, right: h, top: DesignTokens.space5, bottom: DesignTokens.dockClearance };
+    return { left: h, right: h, top: 8, bottom: DesignTokens.dockClearance };
+  }
+
+  @Builder
+  partnerSummaryCard() {
+    Column({ space: 8 }) {
+      EditorialCard({ hero: false, cutTopLeft: true, tappable: true,
+        onTapCard: () => this.openDetails('partner') }) {
+        Column({ space: DesignTokens.space2 }) {
+          this.cardHead({ title: '伴侣与同步', action: '', onAction: () => {} })
+          Text((this.pairState === PAIRED ? this.cloudName : (this.partnerExists ? this.pNick : 'TA'))
+            + ' · ' + (this.partnerExists && this.pairState === PAIR_NONE ? '本机代录' : this.pairStateText()))
+            .fontSize(DesignTokens.fontBody).fontColor(DesignTokens.textPrimary)
+        }.width('100%').alignItems(HorizontalAlign.Start)
+      }
+      // 重试是卡片的兄弟节点，不落在可点卡内，避免重试顺便打开详情。
+      if (this.syncTrouble()) {
+        NoticeBar({
+          tone: this.syncState.outcome === SYNC_STATE_BLOCKED ? NoticeTone.ERROR : NoticeTone.WARN,
+          title: syncStateTitleOf(this.syncState), body: syncStateNoteOf(this.syncState)
+        })
+      }
+      this.syncButton('summary')
+    }.width('100%')
+  }
+
+  @Builder
+  syncButton(origin: string) {
+    if (this.pairState === PAIRED && FeatureFlags.cloudPairing
+      && (canManuallyRetry(this.syncState) || (this.syncRetryBusy && this.syncOrigin === origin))) {
+      SyncFeedbackButton({
+        busy: this.syncOrigin === origin && this.syncRetryBusy,
+        result: this.syncOrigin === origin ? this.syncFeedback : '',
+        disabled: this.syncRetryBusy || !canManuallyRetry(this.syncState),
+        onRetry: () => this.retrySync(origin)
+      })
+    }
+  }
+
+  @Builder
+  rhythmSummaryCard() {
+    EditorialCard({ hero: false, cutTopLeft: true, tappable: true,
+      onTapCard: () => this.openDetails('rhythm') }) {
+      Column({ space: DesignTokens.space2 }) {
+        this.cardHead({ title: '作息', action: '', onAction: () => {} })
+        Text('起床 ' + this.myWake + ' · 就寝 ' + this.myBed)
+          .fontSize(DesignTokens.fontBody).fontColor(DesignTokens.textPrimary)
+      }.width('100%').alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  @Builder
+  detailsSheet() {
+    if (this.detailKind === 'rhythm') {
+      this.rhythmSheet()
+    } else {
+      Column({ space: DesignTokens.space3 }) {
+        Row() {
+          Text(this.detailKind === 'name' ? '为 TA 取一个名字吧！' : '伴侣与同步')
+            .fontSize(DesignTokens.fontTitle)
+            .fontColor(DesignTokens.textPrimary).layoutWeight(1)
+          Button(this.detailKind === 'name' ? '暂不取名' : '关闭')
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textSecondary)
+            .enabled(!this.nameSaving && !this.mySaving).onClick(() => this.closeDetails())
+        }.width('100%')
+        Scroll() {
+          Column({ space: DesignTokens.space3 }) {
+            if (this.detailKind === 'name') {
+              Text('仅本机可见，可随时修改。')
+                .fontSize(DesignTokens.fontBody).fontColor(DesignTokens.textSecondary)
+              TextInput({ text: this.nameDraft, placeholder: '不填写时显示 TA' })
+                .fontSize(DesignTokens.fontBody).maxLength(20)
+                .accessibilityText('伴侣称呼，最多 20 个字符')
+                .onChange((value: string) => { this.nameDraft = value; })
+              if (this.nameError !== '') {
+                Text(this.nameError).fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.danger)
+              }
+              Button(this.nameSaving ? '保存中…' : '保存称呼')
+                .width('100%').constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+                .backgroundColor(DesignTokens.primary).fontColor(DesignTokens.heroText)
+                .enabled(!this.nameSaving).onClick(() => { this.finishCloudName(false); })
+            } else if (this.detailKind === 'partner') {
+              if (this.pairState === PAIRED) {
+                this.navRow($r('sys.symbol.square_and_pencil'), '对 TA 的称呼', this.cloudName, false,
+                  () => this.editCloudName())
+              }
+              this.partnerSyncCard()
+            }
+          }.width('100%').alignItems(HorizontalAlign.Start)
+        }.width('100%').layoutWeight(1).scrollBar(BarState.Off)
+      }
+      .width('100%').height('100%').padding(20)
+      .backgroundColor(DesignTokens.card)
+      .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })
+      .clip(true)
+    }
+  }
+
+  @Builder
+  rhythmSheet() {
+    Column({ space: 10 }) {
+      Text('作息设置').fontSize(DesignTokens.fontTitle).fontWeight(FontWeight.Bold)
+        .fontFamily(DesignTokens.fontRound).fontColor(DesignTokens.textPrimary).width('100%')
+      Scroll() {
+        this.rhythmForm()
+      }.width('100%').layoutWeight(1).align(Alignment.TopStart).scrollBar(BarState.Off)
+      Row({ space: 10 }) {
+        Button('取消').layoutWeight(1).fontSize(DesignTokens.fontBody)
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.textSecondary)
+          .enabled(!this.mySaving).onClick(() => this.closeDetails())
+        Button(this.mySaving ? '保存中…' : '保存').layoutWeight(1).fontSize(DesignTokens.fontBody)
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .backgroundColor(DesignTokens.primary).fontColor(DesignTokens.heroText)
+          .enabled(!this.mySaving).onClick(() => this.saveMyParams())
+      }.width('100%')
+    }
+    .width('100%').height('100%').padding({ left: 20, right: 20, top: 20, bottom: 24 })
+    .backgroundColor(DesignTokens.card)
+    .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet })
+    .clip(true)
   }
 
   /** 卡内小标题：衬线标题 + 可选的右侧操作文字（编辑/收起等）。 */
@@ -709,7 +925,7 @@ export struct MeView {
       if (row.action !== '') {
         Text(row.action)
           .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.primary)
+          .fontColor(DesignTokens.textAccent)
           .textAlign(TextAlign.End)
           .padding({ left: DesignTokens.space2, top: DesignTokens.space1, bottom: DesignTokens.space1 })
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -768,8 +984,6 @@ export struct MeView {
     EditorialCard({ hero: true, cutTopLeft: true, tappable: false }) {
       Row({ space: DesignTokens.space3 }) {
         Column() {
-          // 「我」字徽标只是装饰，标题文案已经说明了同一件事。no 挂在 Text 自己身上才摘得掉——
-          // 挂在外层 Column 上只摘容器，这枚字照样进读屏树（D-29）
           Text('我')
             .fontSize(DesignTokens.fontBody)
             .fontFamily(DesignTokens.fontRound)
@@ -789,10 +1003,6 @@ export struct MeView {
             .fontFamily(DesignTokens.fontRound)
             .fontWeight(FontWeight.Bolder)
             .fontColor(DesignTokens.heroText)
-          Text(this.identitySub())
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.heroText)
-            .opacity(0.82)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
@@ -819,10 +1029,7 @@ export struct MeView {
     }
   }
 
-  /**
-   * 伴侣与同步：本机代录（离线，无需第二个账号）与云端配对（两台手机）并列，
-   * 代录是保底路径，配对未开通时不影响它。
-   */
+  /** 伴侣与同步：本机代录（离线，无需第二个账号）与云端配对（两台手机）并列， */
   @Builder
   partnerSyncCard() {
     EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
@@ -836,7 +1043,7 @@ export struct MeView {
           Blank()
           Text(this.pairStateText())
             .fontSize(DesignTokens.fontCaption)
-            .fontColor(this.pairState === PAIRED ? DesignTokens.primary : DesignTokens.textTertiary)
+            .fontColor(this.pairState === PAIRED ? DesignTokens.textAccent : DesignTokens.textTertiary)
             .padding({ left: DesignTokens.space2, right: DesignTokens.space2 })
             .constraintSize({ minHeight: DesignTokens.hitMin })
             .borderRadius(DesignTokens.radiusPill)
@@ -867,7 +1074,7 @@ export struct MeView {
   @Builder
   partnerBlock() {
     Column({ space: DesignTokens.space3 }) {
-      Text('伴侣（本机代录）')
+      Text('本机代录')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
 
@@ -916,7 +1123,7 @@ export struct MeView {
             .accessibilityGroup(true)
 
             Row({ space: DesignTokens.space2 }) {
-              Text('收整(分)').fontSize(DesignTokens.fontCaption)
+              Text('睡前准备(分)').fontSize(DesignTokens.fontCaption)
               TextInput({ text: this.pWind })
                 .constraintSize({ minWidth: 56, minHeight: DesignTokens.hitMin })
                 .type(InputType.Number)
@@ -932,7 +1139,7 @@ export struct MeView {
           }
           .width('100%')
 
-          Text('时间按 HH:MM 填。TA 的作息单独参与计算，就寝早于起床就算第二天。')
+          Text('时间格式 07:00；凌晨就寝按次日计算。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textHint)
           Row({ space: DesignTokens.space3 }) {
@@ -951,9 +1158,6 @@ export struct MeView {
         }
         .width('100%')
       } else if (!this.partnerExists) {
-        Text('还没有伴侣。添加后就能替 TA 在这台手机上记班表和课表，一起算共同时间。')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textSecondary)
         Button('添加伴侣（本机代录）')
           .width('100%')
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -968,7 +1172,7 @@ export struct MeView {
               .fontSize(DesignTokens.fontBody)
               .fontWeight(FontWeight.Medium)
               .fontColor(DesignTokens.textPrimary)
-            Text('起床 ' + this.pWake + ' · 就寝 ' + this.pBed + ' · 收整 ' + this.pWind + ' 分钟')
+            Text('起床 ' + this.pWake + ' · 就寝 ' + this.pBed + ' · 睡前准备 ' + this.pWind + ' 分钟')
               .fontSize(DesignTokens.fontCaption)
               .fontColor(DesignTokens.textTertiary)
             if (this.bedNote(this.pWake, this.pBed) !== '') {
@@ -982,7 +1186,7 @@ export struct MeView {
 
           Text('编辑')
             .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.primary)
+            .fontColor(DesignTokens.textAccent)
             .padding(DesignTokens.space2)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .focusable(true)
@@ -1006,20 +1210,18 @@ export struct MeView {
   @Builder
   pairingBlock() {
     Column({ space: DesignTokens.space3 }) {
-      Text('两台手机配对同步')
+      Text('云配对')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
 
       if (!FeatureFlags.cloudPairing) {
-        // 关闭态一格云入口都不摆（阶段 6R.2，验收报告 B1）：没有生成邀请码、没有输码、没有扫码、
-        // 没有二维码也没有分享。真正的拒绝在 ProfileSettingsService 那一层，这里只是不给人试探的机会。
+        // 关闭态一格云入口都不摆；真正的拒绝仍在 service 层。
         Text(FeatureFlags.cloudClosedMessage)
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
         Text('想现在就算，请用上方「伴侣（本机代录）」。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
-        // 退出通道留着：上一版原型可能在单机上留下 WAITING/PENDING/PAIRED 标记，藏了入口就不能再撤了
         if (this.pairState === PAIRED) {
           Button('解除配对')
             .width('100%')
@@ -1043,12 +1245,6 @@ export struct MeView {
         Text(this.pairedNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textSecondary)
-        // 三态里唯一的坏消息出口（协议 §3.4 末行）：待重试用警示色 ↻，已停止用错误色 !。
-        // 刻意不给「立即重试」这颗按钮：§3.3 明写端侧没有自动退避重试，手动重试也不在 §7 的触发时机里，
-        // 给了等于让用户自己按一次就烧一次免费档的按天配额。
-        // 两种结论走 if / else if 两个分支而不是同一个节点：门槛与句子一一对得上，读页面的人不用推。
-        // （句子本身跟着状态换是靠 NoticeBar 的说法字段是 @Prop——普通成员只在构造时赋值一次，
-        //  同格里换个 code 就换不了那一句，见 D-46。）
         if (this.syncTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
           NoticeBar({
             tone: NoticeTone.ERROR,
@@ -1062,6 +1258,7 @@ export struct MeView {
             body: syncStateNoteOf(this.syncState)
           })
         }
+        this.syncButton('sheet')
         Button('解除配对')
           .width('100%')
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -1071,50 +1268,16 @@ export struct MeView {
           .fontColor(DesignTokens.danger)
           .onClick(() => this.askUnpair())
       } else if (this.pairState === PAIR_WAITING || this.pairState === PAIR_PENDING) {
-        if (this.pairLink() !== '') {
-          // 二维码只画一次性链接：黑白固定对比色，不随深浅色反转，保证扫码可读
-          Row() {
-            QRCode(this.pairLink())
-              .width(128)
-              .height(128)
-              .color('#1A1A1A')
-              .backgroundColor('#FFFFFF')
-              .padding(10)
-              .borderRadius(8)
-              // 读屏用户扫不到屏上的码，这里把替代路径说出来
-              .accessibilityText('配对二维码。扫不了就改用配对码或分享链接')
-          }
-          .width('100%')
-          .justifyContent(FlexAlign.Center)
-
-          Text('把这条链接发给 TA：TA 点开后按「确认配对」，两边才开始同步。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-            .textAlign(TextAlign.Center)
-            .width('100%')
-          Button('分享配对链接')
-            .width('100%')
-            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .backgroundColor(DesignTokens.primary)
-            .fontWeight(FontWeight.Bold)
-            .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-            .onClick(() => this.sharePairLink())
-        } else if (this.myCode !== '') {
-          // 没有一次性凭据就没有二维码可画：6 位短码抬成主路径（Task 4.1「不支持时突出短码」）
+        if (this.myCode !== '') {
           Text(this.myCode)
             .fontSize(34)
             .fontWeight(FontWeight.Bold)
-            .fontColor(DesignTokens.primary)
+            .fontColor(DesignTokens.textAccent)
             .letterSpacing(6)
             .width('100%')
             .textAlign(TextAlign.Center)
             // 视觉上是"384106"，朗读必须逐位报数，否则会被读成"三十八万四千一百零六"
             .accessibilityText(this.codeRead())
-          Text('让 TA 在「我的 · 伴侣与同步」里输入这 6 位码，之后 TA 会发回一条确认链接。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-            .textAlign(TextAlign.Center)
-            .width('100%')
           Button('复制配对码')
             .width('100%')
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
@@ -1123,15 +1286,9 @@ export struct MeView {
             .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
             .fontColor(DesignTokens.textSecondary)
             .onClick(() => this.copyPairCode())
-        } else {
-          Text(this.pairState === PAIR_PENDING
-            ? '这台手机重启过，确认信息丢了：让 TA 再发一次，或点「检查配对状态」。'
-            : '配对码已经生成，但这次没显示出来。TA 没收到的话可以重新生成。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
         }
         Row({ space: DesignTokens.space3 }) {
-          Button(this.pairingBusy ? '检查中…' : '检查配对状态').layoutWeight(1)
+          Button(this.pairingBusy ? '检查中…' : (this.isInviter ? '检查并确认配对' : '检查配对状态')).layoutWeight(1)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor(DesignTokens.primary)
             .fontWeight(FontWeight.Bold)
@@ -1145,17 +1302,13 @@ export struct MeView {
             .onClick(() => this.cancelWaiting())
         }.width('100%')
 
-        // 这条按钮从前叫「本机标记已配对」，点了就把本机写成已配对——云端还停在 WAITING，
-        // 界面上"正在同步"就是句谎话（协议 §8 记的偏离）。现在它只查一次 §4.4，进度跟着云端走。
+        // 只查询真实云端状态；邀请方见到待确认申请时在本机弹确认框。
         Text(this.waitingNote())
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       } else {
-        Text('一台手机生成 6 位配对码，另一台输入，之后按你选的等级加密同步。')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textSecondary)
         Row({ space: DesignTokens.space3 }) {
-          Button(this.pairingBusy ? '生成中…' : '生成邀请码').layoutWeight(1)
+          Button(this.pairingBusy ? '生成中…' : '生成配对码').layoutWeight(1)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
             .backgroundColor(DesignTokens.primary)
             .fontWeight(FontWeight.Bold)
@@ -1173,24 +1326,6 @@ export struct MeView {
               this.showJoinInput = !this.showJoinInput;
             })
         }.width('100%')
-
-        if (this.channels.scan) {
-          Button(this.pairingBusy ? '扫码中…' : '扫码配对')
-            .width('100%')
-            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .backgroundColor(DesignTokens.fillWeak)
-            .fontWeight(FontWeight.Bold)
-            .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
-            .fontColor(DesignTokens.primary)
-            .enabled(!this.pairingBusy)
-            .onClick(() => this.startPairScan())
-        }
-
-        if (this.channels.emphasizeCode) {
-          Text('这台手机不能扫码，让 TA 手动输入 6 位配对码。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-        }
 
         if (this.showJoinInput) {
           Row({ space: DesignTokens.space2 }) {
@@ -1216,10 +1351,15 @@ export struct MeView {
           }.width('100%')
         }
 
-        Text('配对同步需要云服务能力。没开通时这里只会提示改用本机代录，不影响上面的功能。')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textHint)
       }
+      UnifiedPairingStatus({ active: this.active && this.detailsOpen && this.detailKind === 'partner',
+        legacyState: this.pairState, onState: (phase: string): void => {
+          const completed = phase === 'READY' && this.unifiedPhase !== 'READY';
+          this.unifiedPhase = phase;
+          this.pairState = ProfileSettingsService.getPairState();
+          this.isInviter = ProfileSettingsService.hasLocalInviteProof();
+          if (completed) this.reload();
+        } })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -1228,31 +1368,22 @@ export struct MeView {
   @Builder
   levelBlock() {
     Column({ space: DesignTokens.space2 }) {
-      Text('共享等级（配对后 TA 能看到多少）')
+      Text('分享哪些信息')
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
       if (this.shareLevel === SHARE_LEVEL_UNKNOWN) {
         // 三行都不勾：勾上任何一档都是把"没读到"说成"用户选的"。这一句说的是事实，不猜等级。
-        Text('还没读到手机上存的共享等级，所以三行都没勾。退出这一页再进来会再读一次；'
-          + '在那之前别按上面任何一档理解 TA 现在能看到什么。')
+        Text('分享设置暂时读不到，同步已暂停。请退出这一页后重试。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textHint)
       }
       ForEach([1, 2, 3], (lv: number) => {
         Row({ space: DesignTokens.space3 }) {
-          Radio({ value: '' + lv, group: 'shareLevel' })
-            .checked(this.shareLevel === lv)
-            .accessibilityText(this.levelTitle(lv))
-            .onChange((checked: boolean) => {
-              if (checked) {
-                this.pickLevel(lv);
-              }
-            })
           Column({ space: 2 }) {
             Row({ space: DesignTokens.space1 }) {
               Text(this.levelTitle(lv))
                 .fontSize(DesignTokens.fontBody)
-                .fontColor(this.shareLevel === lv ? DesignTokens.primary : DesignTokens.textPrimary)
+                .fontColor(this.shareLevel === lv ? DesignTokens.textAccent : DesignTokens.textPrimary)
                 .fontWeight(this.shareLevel === lv ? FontWeight.Medium : FontWeight.Normal)
               if (lv === 2) {
                 Text('默认')
@@ -1266,18 +1397,22 @@ export struct MeView {
 
             Text(this.levelDesc(lv))
               .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textTertiary)
+              .fontColor(this.shareLevel === lv ? DesignTokens.textSecondary : DesignTokens.textTertiary)
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
         }
         .width('100%')
         .padding(DesignTokens.space2)
-        // 整行可点，热区跟着走；朗读入口留给行内的 Radio（它自带选中态），
-        // 行本身不再 focusable，否则同一档会出现两个焦点。
         .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
         .borderRadius(DesignTokens.radiusCard)
-        .backgroundColor(this.shareLevel === lv ? DesignTokens.primaryBg : Color.Transparent)
+        .backgroundColor(this.shareLevel === lv ? DesignTokens.shareSelectedBg : Color.Transparent)
+        .animation({ duration: this.shareLevel === lv ? 140 : 0, curve: Curve.EaseOut })
+        .focusable(true).accessibilityGroup(true)
+        .accessibilityRole(AccessibilityRoleType.BUTTON)
+        .accessibilityChecked(this.shareLevel === lv)
+        .accessibilityText(this.levelTitle(lv) + '，' + this.levelDesc(lv)
+          + (this.shareLevel === lv ? '，已选择' : '，未选择'))
         .clickEffect(DesignTokens.tapButton())
         .onClick(() => this.pickLevel(lv))
       }, (lv: number) => 'lv' + lv)
@@ -1293,8 +1428,8 @@ export struct MeView {
       Column({ space: DesignTokens.space2 }) {
         this.cardHead({ title: '我的日程', action: '', onAction: () => {} })
 
-        this.navRow($r('sys.symbol.calendar'), '班表与班次',
-          '循环模板、单日改班、课程、上下班时间与通勤', false, () => {
+        this.navRow($r('sys.symbol.calendar'), '班表与课程',
+          '按周排班、设置常用班次或导入课程', false, () => {
             this.onOpenRoute(NavRoutes.SCHEDULE_HUB, ownerParam(OWNER_ME));
           })
       }
@@ -1303,200 +1438,83 @@ export struct MeView {
     }
   }
 
-  /** 作息：三个主参数常驻，视界与最短共同时段收进高级设置。 */
+  /** 紧凑草稿表单，保存动作固定在 sheet 底部。 */
   @Builder
-  rhythmCard() {
-    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-      Column({ space: DesignTokens.space3 }) {
-        this.cardHead({ title: '作息', action: this.myEditing ? '' : '编辑', onAction: () => this.startEditMyParams() })
-
-        if (this.myEditing) {
-          // 与 partnerBlock 同一口径：单行钉死宽度在 2 倍字号下会横向溢出，三对各自成组后换行
-          Flex({ wrap: FlexWrap.Wrap }) {
-            Row({ space: DesignTokens.space2 }) {
-              Text('起床').fontSize(DesignTokens.fontCaption)
-              TextInput({ text: this.myWake })
-                .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
-                .borderRadius(DesignTokens.radiusInput)
-                .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                .backgroundColor(DesignTokens.card)
-                .accessibilityText('我的起床时间，格式 HH:MM')
-                .onChange((v: string) => this.myWake = v)
-            }
-            .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-            .accessibilityGroup(true)
-
-            Row({ space: DesignTokens.space2 }) {
-              Text('就寝').fontSize(DesignTokens.fontCaption)
-              TextInput({ text: this.myBed })
-                .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-                .fontSize(DesignTokens.fontCaption)
-                .borderRadius(DesignTokens.radiusInput)
-                .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                .backgroundColor(DesignTokens.card)
-                .accessibilityText('我的就寝时间，格式 HH:MM')
-                .onChange((v: string) => this.myBed = v)
-            }
-            .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-            .accessibilityGroup(true)
-
-            Row({ space: DesignTokens.space2 }) {
-              Text('收整(分)').fontSize(DesignTokens.fontCaption)
-              TextInput({ text: this.myWind })
-                .constraintSize({ minWidth: 56, minHeight: DesignTokens.hitMin })
-                .type(InputType.Number)
-                .fontSize(DesignTokens.fontCaption)
-                .borderRadius(DesignTokens.radiusInput)
-                .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                .backgroundColor(DesignTokens.card)
-                .accessibilityText('我的收整时长，单位分钟')
-                .onChange((v: string) => this.myWind = v)
-            }
-            .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
-            .accessibilityGroup(true)
-          }
-          .width('100%')
-
-          this.advancedHead()
-          if (this.advanced) {
-            this.advancedForm()
-          }
-
-          Row({ space: DesignTokens.space3 }) {
-            Button('保存').layoutWeight(1)
-              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-              .backgroundColor(DesignTokens.primary)
-              .fontWeight(FontWeight.Bold)
-              .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-              .onClick(() => this.saveMyParams())
-            Button('取消').layoutWeight(1)
-              .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-              .backgroundColor(DesignTokens.fillWeak)
-              .fontColor(DesignTokens.textSecondary)
-              .onClick(() => this.cancelMyEdit())
-          }.width('100%')
-        } else {
-          Row() {
-            this.paramStat({ value: this.myWake, label: '起床' })
-            this.paramStat({ value: this.myBed, label: '就寝' })
-            this.paramStat({ value: this.myWind + '分', label: '收整' })
-          }.width('100%')
-
-          if (this.bedNote(this.myWake, this.myBed) !== '') {
-            Text(this.bedNote(this.myWake, this.myBed))
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textSecondary)
-          }
-
-          Text('改完就会重新计算共同时间。')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textHint)
-
-          this.advancedHead()
-          if (this.advanced) {
-            Text('往后算 ' + this.myHorizon + ' 天 · 最短共同时段 ' + this.minSlotLabel(this.myMinSlot))
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textSecondary)
-            Text('夜班窗口等其他判定都用默认值，不用管。')
-              .fontSize(DesignTokens.fontCaption)
-              .fontColor(DesignTokens.textHint)
-          }
-        }
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Start)
-    }
-  }
-
-  @Builder
-  paramStat(row: ParamStatArg) {
-    Column({ space: 2 }) {
-      Text(row.value)
-        .fontSize(DesignTokens.fontBody)
-        .fontFamily(DesignTokens.fontRound)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(DesignTokens.primary)
-      Text(row.label)
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.textTertiary)
-    }
-    .layoutWeight(1)
-    .alignItems(HorizontalAlign.Start)
-    // 数值和标签分两行画，读屏要连成一句"07:30 起床"
-    .accessibilityGroup(true)
-    .accessibilityText(row.value + ' ' + row.label)
-  }
-
-  @Builder
-  advancedHead() {
-    Row({ space: DesignTokens.space1 }) {
-      Text('高级设置（算多少天 / 最短时段）')
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.textSecondary)
-        .layoutWeight(1)
-      SymbolGlyph(this.advanced ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
-        .fontSize(14).fontColor([DesignTokens.textTertiary])
-        .accessibilityLevel('no')
-    }
-    .width('100%')
-    .padding({ top: DesignTokens.space2, bottom: DesignTokens.space2 })
-    .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-    .focusable(true)
-    .accessibilityGroup(true)
-    .accessibilityText('高级设置（算多少天 / 最短时段），' + (this.advanced ? '已展开' : '已收起'))
-    .onClick(() => {
-      this.advanced = !this.advanced;
-    })
-  }
-
-  @Builder
-  advancedForm() {
-    Column({ space: DesignTokens.space2 }) {
-      Row({ space: DesignTokens.space2 }) {
-        Text('往后算多少天').fontSize(DesignTokens.fontCaption)
-        TextInput({ text: this.myHorizon })
-          .constraintSize({ minWidth: 64, minHeight: DesignTokens.hitMin })
-          .type(InputType.Number)
-          .fontSize(DesignTokens.fontCaption)
-          .borderRadius(DesignTokens.radiusInput)
-          .border({ width: 1.5, color: DesignTokens.primaryBorder })
-          .backgroundColor(DesignTokens.card)
-          .accessibilityText('往后算多少天，可以填 ' + HORIZON_MIN + ' 到 ' + HORIZON_MAX)
-          .onChange((v: string) => this.myHorizon = v)
-        Text(HORIZON_MIN + '–' + HORIZON_MAX + ' 天')
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.textHint)
+  rhythmForm() {
+    Column({ space: 6 }) {
+      Row({ space: 10 }) {
+        this.rhythmTimeButton(false)
+        this.rhythmTimeButton(true)
       }.width('100%')
-
-      Flex({ wrap: FlexWrap.Wrap }) {
-        ForEach(MIN_SLOT_STEPS, (v: number) => {
-          Text(this.minSlotLabel(v))
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(this.myMinSlot === v ? DesignTokens.heroText : DesignTokens.textSecondary)
-            .fontWeight(FontWeight.Bold)
-            .textAlign(TextAlign.Center)
-            .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-            .margin({ right: DesignTokens.space2, bottom: DesignTokens.space2 })
+      Column() {
+        Row({ space: 8 }) {
+          Text('睡前准备（分钟）').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+            .layoutWeight(1)
+          TextInput({ text: this.myWind }).type(InputType.Number).fontSize(DesignTokens.fontBody)
+            .fontColor(DesignTokens.textPrimary)
+            .width(80).textAlign(TextAlign.End).padding({ left: 0, right: 0 }).enabled(!this.mySaving)
             .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-            .borderRadius(DesignTokens.radiusPill)
-            .backgroundColor(this.myMinSlot === v ? DesignTokens.primary : DesignTokens.fillWeakest)
-            .shadow(this.myMinSlot === v
-              ? DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepthChip) : undefined)
-            .focusable(true)
-            .accessibilityText(this.minSlotLabel(v) + (this.myMinSlot === v ? '，当前档位' : '，点按设为最短共同时段'))
-            .clickEffect(DesignTokens.tapChip())
+            .backgroundColor(Color.Transparent)
+            .accessibilityText('睡前准备时长，单位分钟')
+            .onChange((v: string) => { this.myWind = v; })
+        }.width('100%')
+        Divider().color(DesignTokens.divider).strokeWidth(1)
+        Row({ space: 8 }) {
+          Text('往后计算（天）').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+            .layoutWeight(1)
+          TextInput({ text: this.myHorizon }).type(InputType.Number).fontSize(DesignTokens.fontBody)
+            .fontColor(DesignTokens.textPrimary)
+            .width(80).textAlign(TextAlign.End).padding({ left: 0, right: 0 }).enabled(!this.mySaving)
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .backgroundColor(Color.Transparent)
+            .accessibilityText('往后计算天数，可以填 ' + HORIZON_MIN + ' 到 ' + HORIZON_MAX)
+            .onChange((v: string) => { this.myHorizon = v; })
+        }.width('100%')
+      }.width('100%').padding({ left: 12, right: 12 })
+        .backgroundColor(DesignTokens.fillWeakest).borderRadius(DesignTokens.radiusInput)
+      this.calculationForm()
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  rhythmTimeButton(bed: boolean) {
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 2 }) {
+        Text(bed ? '就寝' : '起床').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+        Text(bed ? this.myBed : this.myWake).fontSize(DesignTokens.fontTitle).fontWeight(FontWeight.Medium)
+          .fontColor(DesignTokens.textPrimary)
+      }.width('100%').alignItems(HorizontalAlign.Start)
+    }.layoutWeight(1).padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .constraintSize({ minHeight: 60 }).backgroundColor(DesignTokens.fillWeakest)
+      .borderRadius(DesignTokens.radiusInput).enabled(!this.mySaving)
+      .accessibilityText((bed ? '就寝' : '起床') + '时间，' + (bed ? this.myBed : this.myWake) + '，点击选择时间')
+      .onClick(() => this.pickRhythmTime(bed))
+  }
+
+  private minSlotChoices(): number[] {
+    return MIN_SLOT_STEPS.indexOf(this.myMinSlot) >= 0 ? MIN_SLOT_STEPS : [this.myMinSlot].concat(MIN_SLOT_STEPS);
+  }
+
+  @Builder
+  calculationForm() {
+    Row({ space: 8 }) {
+      Text('最短共同时段').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+      Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End }) {
+        ForEach(this.minSlotChoices(), (v: number) => {
+          Button(this.minSlotLabel(v))
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(this.myMinSlot === v ? DesignTokens.textAccent : DesignTokens.textSecondary)
+            .padding({ left: 8, right: 8 }).margin({ left: 4 })
+            .constraintSize({ minWidth: 44, minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .borderRadius(DesignTokens.radiusInput)
+            .backgroundColor(this.myMinSlot === v ? DesignTokens.shareSelectedBg : Color.Transparent)
+            .focusable(true).accessibilityChecked(this.myMinSlot === v)
+            .accessibilityText('至少' + this.minSlotLabel(v) + (this.myMinSlot === v ? '，已选择' : '，未选择'))
+            .enabled(!this.mySaving)
             .onClick(() => this.pickMinSlot(v))
         }, (v: number) => 'ms' + v)
-      }
-      .width('100%')
-
-      Text('比这更短的空闲会直接忽略，不算成一个窗口。')
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.textHint)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
+      }.layoutWeight(1)
+    }.width('100%')
   }
 
   @Builder
@@ -1505,9 +1523,26 @@ export struct MeView {
       Column({ space: DesignTokens.space2 }) {
         this.cardHead({ title: '数据与隐私', action: '', onAction: () => {} })
 
+        if (this.secureCleanupNote !== '') {
+          Text(this.secureCleanupNote)
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textHint)
+          Button(this.secureCleanupBusy ? '正在核实清理…' : '重试云端清理')
+            .enabled(!this.secureCleanupBusy && FeatureFlags.cloudPairing)
+            .fontSize(DesignTokens.fontCaption)
+            .fontColor(DesignTokens.textPrimary)
+            .backgroundColor(DesignTokens.primaryBg)
+            .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+            .onClick(() => {
+              this.secureCleanupBusy = true;
+              secureCloudCleanup().retry().then((code: string) => {
+                appToast(code === 'OK' ? '云端清理完成' : '仍有待清理记录，详情见下方提示');
+              }).catch(() => { appToast('本次未能核实清理结果，记录仍保留'); })
+                .finally(() => { this.secureCleanupBusy = false; this.reload(); });
+            })
+        }
+
         if (this.undeletableCloud > 0) {
-          // 批次 AO·AO3：云端已给终局判定的那几份不再自动重试，于是这件事必须有个可见的落点。
-          // 它不挂在三态提示条上——那一条讲的是"当前这一轮同步得动吗"，而这笔账多半来自上一轮。
           Text('云上还剩 ' + this.undeletableCloud + ' 份加密快照这台手机删不掉，云端不认这个删除凭据；'
             + '本机数据不受影响。')
             .fontSize(DesignTokens.fontCaption)
@@ -1530,19 +1565,10 @@ export struct MeView {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
-      .bindSheet($$this.policyOpen, this.policySheet(), {
-        detents: [SheetSize.LARGE],
-        dragBar: false,
-        showClose: false,
-        // 底色/圆角由 PrivacyPolicySheet 自己画，系统层再铺一次就是两层不透明背景
-        backgroundColor: Color.Transparent,
-        blurStyle: BlurStyle.NONE,
-        maskColor: DesignTokens.scrim
-      })
     }
   }
 
-  /** 《隐私政策》全文（与首启弹窗同一个组件、同一份文本）。 */
+  /** 隐私政策面板。 */
   @Builder
   policySheet() {
     PrivacyPolicySheet({ onClose: () => {

@@ -181,9 +181,9 @@ export default function upgradeMigrationTest() {
       const savedMine: CycleTemplate | null = await ScheduleRepo.getTemplate(OWNER_ME);
       const savedTheirs: CycleTemplate | null = await ScheduleRepo.getTemplate(OWNER_PARTNER);
       const tpl: CycleTemplate = { id: 'keytest', name: '主键验收', seq: ['day'],
-        anchorEpochDay: todayEpochDay() };
+        anchorEpochDay: todayEpochDay(), weekdaysMask: 31 };
       const other: CycleTemplate = { id: 'keytest', name: '伴侣侧同名', seq: ['late'],
-        anchorEpochDay: todayEpochDay() + 1 };
+        anchorEpochDay: todayEpochDay() + 1, weekdaysMask: 96 };
       await ScheduleRepo.saveTemplate(tpl, OWNER_ME);
       await ScheduleRepo.saveTemplate(other, OWNER_PARTNER);
       const mine = await ScheduleRepo.getTemplate(OWNER_ME);
@@ -193,6 +193,8 @@ export default function upgradeMigrationTest() {
       expect((mine as CycleTemplate).name).assertEqual('主键验收');
       expect((theirs as CycleTemplate).name).assertEqual('伴侣侧同名');
       expect((theirs as CycleTemplate).anchorEpochDay).assertEqual(todayEpochDay() + 1);
+      expect((mine as CycleTemplate).weekdaysMask).assertEqual(31);
+      expect((theirs as CycleTemplate).weekdaysMask).assertEqual(96);
 
       const st: ShiftType = { id: 'keytest', name: '验收班次', color: '#E8833A',
         startMin: 540, endMin: 1080, crossDay: false, commuteInMin: 0, commuteOutMin: 0,
@@ -288,6 +290,7 @@ export default function upgradeMigrationTest() {
      * 否则换机后会留着一个声称 PAIRED 的状态，界面上就是谎报同步成功。
      */
     it('pairing_reset_lands_on_real_preferences', 0, async () => {
+      const hadPairId: string = SettingsStore.getPairId();
       const hadState: string = SettingsStore.getPairState();
       const hadUid: string = SettingsStore.getPartnerUid();
       const hadVer: number = SettingsStore.getPartnerSnapVer();
@@ -312,14 +315,19 @@ export default function upgradeMigrationTest() {
         expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
         expect(SettingsStore.getPartnerUid()).assertEqual('');
       } finally {
-        // 还回测试机上原有的配对事实（setPairState 顺带清掉的"已提示重新配对"除外：
-        // 那只是一次性通知标记，多提示一次比把用户自己的状态改丢要轻）
+        // 还回测试机上原有的配对事实。即使中途断言失败，也不能把原 pairId 留空。
+        await SettingsStore.savePairId(hadPairId);
         await SettingsStore.setPairState(hadState, hadUid);
         await SettingsStore.setPartnerSnapVer(hadVer);
         if (hadKey !== '') {
           await seedLegacyPairKey(hadKey);
         }
       }
+      expect(SettingsStore.getPairId()).assertEqual(hadPairId);
+      expect(SettingsStore.getPairState()).assertEqual(hadState);
+      expect(SettingsStore.getPartnerUid()).assertEqual(hadUid);
+      expect(SettingsStore.getPartnerSnapVer()).assertEqual(hadVer);
+      expect(await readLegacyPairKey()).assertEqual(hadKey);
     });
 
     /**

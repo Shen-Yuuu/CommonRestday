@@ -1,31 +1,32 @@
 import { router, SegmentButtonV2Items } from '@kit.ArkUI';
-import { OWNER_ME, OWNER_PARTNER, defaultParams, todayEpochDay } from 'domain';
+import { OWNER_ME, OWNER_PARTNER, defaultParams } from 'domain';
 import { ScheduleOverview, ScheduleOverviewQueryService } from 'feature';
 import { Logger } from 'commons';
 import { DesignTokens } from '../theme/DesignTokens';
-import { ownerFromParams, ownerParam } from '../model/RouteParams';
+import { ownerParam } from '../model/RouteParams';
 import { EditorialCard } from '../component/EditorialCard';
 import { EditorialSection } from '../component/EditorialSection';
 import { CapsuleSegment } from '../component/CapsuleSegment';
-import { DayShiftSheet } from '../component/DayShiftSheet';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WeekScheduleView } from '../component/WeekScheduleView';
+import { DayShiftSheet } from '../component/DayShiftSheet';
 import { pushPendingRoute } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
+import { readScrollY } from '../util/ScrollOffset';
 import { LatestLanding } from '../util/LatestLanding';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
+import { FadingHeaderSurface, FadingScrollViewport, ScrollHeaderState } from '../component/FadingHeader';
 
 /** 录入链路页（仍是 @Entry router 页）：路由名即 pages 下的 url 后缀。 */
-const PAGE_SHIFT = 'pages/ScheduleEditor';
 const PAGE_CYCLE = 'pages/CycleEditor';
 const PAGE_COURSE = 'pages/CourseImport';
 
 const TAG = 'ScheduleHub';
 
-/** 本页的两个视图：周历单独成视图，概况统计与四个主入口合成另一个。 */
+/** 本页的两个视图：周历单独成视图，概况统计与管理入口合成另一个。 */
 const VIEW_WEEK = 'week';
 const VIEW_MANAGE = 'manage';
 
@@ -36,6 +37,11 @@ const STAT_UNKNOWN = '—';
 interface StatCell {
   value: string;
   label: string;
+}
+
+interface SidePillArg {
+  label: string;
+  partner: boolean;
 }
 
 /** 主入口条目。page 为空串的条目开本页的 sheet，不跳页。 */
@@ -49,32 +55,16 @@ interface EntryItem {
 
 const MAIN_ENTRIES: EntryItem[] = [
   {
-    key: 'shift', glyph: $r('sys.symbol.gearshape'), title: '班次类型',
-    desc: '设置上下班时间、通勤和夜班恢复', page: PAGE_SHIFT
-  },
-  {
-    key: 'cycle', glyph: $r('sys.symbol.arrow_clockwise'), title: '循环模板',
-    desc: '按「白白夜夜休休」这样的序列排班，自动铺开往后每一天', page: PAGE_CYCLE
+    key: 'week', glyph: $r('sys.symbol.calendar'), title: '周班表',
+    desc: '排班、复制或按周重复', page: PAGE_CYCLE
   },
   {
     key: 'course', glyph: $r('sys.symbol.square_and_pencil'), title: '课程表',
-    desc: '学生用：粘贴课表文本，或手动加每周固定的课', page: PAGE_COURSE
-  },
-  {
-    key: 'today', glyph: $r('sys.symbol.paintbrush'), title: '临时调整',
-    desc: '单独改某一天或请假，这天优先于循环模板', page: ''
+    desc: '导入课表或手动添加', page: PAGE_COURSE
   }
 ];
 
-/**
- * 日程录入页：从底部 Tab 降级为「我的 · 我的日程」里的栈目的地。
- * - 默认展示"我"的日程摘要与周视图；只有本机代录了伴侣（有档案或 TA 的班表数据）才出现"TA"侧；
- * - 两个视图用与共同页同一款滑动选项卡切换：「周历」单独一屏，「日程管理」装摘要统计与四个主入口；
- * - 系统标题栏藏掉了，所以页首要自己给一颗看得见的返回键（手势与返回键没有视觉线索）；
- * - 四个主入口：班次类型 / 循环模板 / 课程表 / 临时调整（单日改班 sheet）；
- * - 批量录入的二级入口首发不上线：`PaintMonth` / `OcrCourse` 两个旧录入页保留在路由表与 `main_pages.json` 里，只是这里不再给入口；
- * - 点周历日格 = 改这天的班，与主入口「临时调整」是同一条链路（临时调整默认今天）。
- */
+/** 日程录入页：从底部 Tab 降级为「我的 · 我的日程」里的栈目的地。 */
 @Component
 export struct ScheduleHub {
   /** 壳层 pushPathByName 带入的侧别：不传落在「我」，传 PARTNER 直接落在 TA 侧。 */
@@ -93,37 +83,39 @@ export struct ScheduleHub {
   @State private horizon: number = defaultParams().horizonDays;
   /** 摘要读失败态：读失败与"真的没数据"必须分开画，否则会把已录入的人引去重复录入（D-22）。 */
   @State private statusFailed: boolean = false;
-  // 单日改班 sheet（临时调整 / 点日格）
-  @State private sheetOpen: boolean = false;
-  @State private sheetDay: number = 0;
+  @State private dayVisible: boolean = false;
+  @State private dayEpoch: number = -1;
   /** 本页容器宽度档位：expanded 把两组录入入口并排，正文按可读宽度收拢。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
   /** 当前视图：进来默认落在周历——来这一页多半是看哪天能改，管理入口放第二屏。 */
   @State private hubView: string = VIEW_WEEK;
   /** 下拉刷新的转圈：重算（含向云上要一次对方快照）落地后才收。 */
   @State private refreshing: boolean = false;
-  /** 与共同页「时间窗口 / 共同计划」同款滑动选项卡；标题不带人称，两侧切换后仍然读得通。 */
-  segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '周历' }, { text: '日程管理' }]);
+  /** 周历与日程管理入口。 */
+  segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '我的班表' }, { text: '日程管理' }]);
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   // 保存动作 → 重算广播 → 伴侣侧数据可能刚被增删，摘要与 TA 可见性都要跟着刷
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
-  /**
-   * 并发读数闸门（D-51）：摘要按 side 查，而侧别那颗胶囊是同步改 @State 的——
-   * 连点两次「我的班表 / TA 的班表」时，旧的那一侧读晚落地就会把四项统计念成另一侧的数。
-   */
+  /** 只接受当前侧最后一次查询的结果。 */
   private landing: LatestLanding = new LatestLanding();
+  private hubScroller: Scroller = new Scroller();
+  @State private scrollVisual: ScrollHeaderState = new ScrollHeaderState();
 
   aboutToAppear(): void {
     this.side = this.initialOwner === OWNER_PARTNER ? OWNER_PARTNER : OWNER_ME;
     this.loadStatus();
   }
 
+  aboutToDisappear(): void {
+    this.landing.begin();
+  }
+
   onRecomputeChanged(): void {
     this.loadStatus();
   }
 
-  /** 当前侧录入概况：班次/循环/临时调整/课程四项 + 真实视界 + 是否代录过 TA。 */
+  /** 当前侧录入概况与本机代录可见性。 */
   async loadStatus(): Promise<void> {
     const token = this.landing.begin();
     try {
@@ -142,7 +134,6 @@ export struct ScheduleHub {
       if (!this.landing.isCurrent(token)) {
         return;
       }
-      // 保留上一次读到的值，只把这一态标出来：静默归零等于对着有数据的用户说"没数据"（D-22）
       Logger.warn(TAG, 'overview read failed: ' + (e as Error).name + ': ' + (e as Error).message);
       this.statusFailed = true;
     }
@@ -160,46 +151,50 @@ export struct ScheduleHub {
     router.pushUrl({ url: page, params: ownerParam(this.side) });
   }
 
-  private openDay(epochDay: number): void {
-    this.sheetDay = epochDay;
-    this.sheetOpen = true;
-  }
-
-  /** 主入口「临时调整」：没有既定点选目标日时默认今天。 */
-  private openToday(): void {
-    this.openDay(todayEpochDay());
+  private requestBack(): void {
+    this.onBack();
   }
 
   private pickSide(partner: boolean): void {
-    this.side = partner ? OWNER_PARTNER : OWNER_ME;
+    const next = partner ? OWNER_PARTNER : OWNER_ME;
+    if (next === this.side) {
+      return;
+    }
+    this.side = next;
     this.loadStatus();
   }
 
+  private openDay(epochDay: number): void {
+    this.dayEpoch = epochDay;
+    this.dayVisible = true;
+  }
+
   @Builder
-  sidePill(label: string, partner: boolean) {
-    Text(label)
+  daySheet() {
+    if (this.dayEpoch >= 0) {
+      DayShiftSheet({ owner: this.side, epochDay: this.dayEpoch,
+        onClose: () => { this.dayVisible = false; } })
+    }
+  }
+
+  @Builder
+  sidePill(item: SidePillArg) {
+    Text(item.label)
       .fontSize(DesignTokens.fontCaption)
-      // 7 分甜的当前档是一颗凸起来的白糖（白底粉字 + 落影），不再是品牌色色块
       .fontWeight(FontWeight.Bold)
-      .fontColor(this.isPartnerSide() === partner ? DesignTokens.primary : DesignTokens.textSecondary)
+      .fontColor(this.isPartnerSide() === item.partner ? DesignTokens.textAccent : DesignTokens.textSecondary)
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
       .padding({ top: DesignTokens.space2, bottom: DesignTokens.space2 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(this.isPartnerSide() === partner ? DesignTokens.card : Color.Transparent)
-      .shadow(this.isPartnerSide() === partner ? DesignTokens.floatShadow() : undefined)
+      .backgroundColor(this.isPartnerSide() === item.partner ? DesignTokens.card : Color.Transparent)
+      .shadow(this.isPartnerSide() === item.partner ? DesignTokens.floatShadow() : undefined)
       .focusable(true)
       // 选中的那一侧只剩底色区别，读屏要念出"当前"
-      .accessibilityText(this.isPartnerSide() === partner ? '当前查看' + label : '切换到' + label)
+      .accessibilityText(this.isPartnerSide() === item.partner ? '当前查看' + item.label : '切换到' + item.label)
       .clickEffect(DesignTokens.tapChip())
-      .onClick(() => this.pickSide(partner))
-  }
-
-  /** 循环入口的视界天数用户可改：文案跟着读模型给的实际值走，不写死默认常量。 */
-  private descOf(item: EntryItem): string {
-    return item.key === 'cycle'
-      ? '按「白白夜夜休休」这样的序列排班，自动铺开未来 ' + this.horizon + ' 天' : item.desc;
+      .onClick(() => this.pickSide(item.partner))
   }
 
   /** 条目行：图标 + 主副文本 + 箭头，整行 44vp 以上热区。 */
@@ -216,7 +211,7 @@ export struct ScheduleHub {
           .fontSize(DesignTokens.fontBody)
           .fontWeight(FontWeight.Medium)
           .fontColor(DesignTokens.textPrimary)
-        Text(this.descOf(item))
+        Text(item.desc)
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
       }
@@ -233,12 +228,8 @@ export struct ScheduleHub {
     .alignItems(VerticalAlign.Center)
     .focusable(true)
     .accessibilityGroup(true)
-    .accessibilityText(item.title + '。' + this.descOf(item))
+    .accessibilityText(item.title + '。' + item.desc)
     .onClick(() => {
-      if (item.page === '') {
-        this.openToday();
-        return;
-      }
       this.go(item.page);
     })
   }
@@ -269,14 +260,12 @@ export struct ScheduleHub {
 
         Row() {
           this.stat({ value: this.statOf(this.types + ''), label: '班次' })
-          this.stat({ value: this.statOf(this.tplSet ? '已设' : '未设'), label: '循环模板' })
-          this.stat({ value: this.statOf(this.ovs + ''), label: '临时调整' })
           this.stat({ value: this.statOf(this.courses + ''), label: '课程' })
         }
         .width('100%')
 
         if (this.statusFailed) {
-          Text('统计暂时读不到，班表数据没受影响；退出这一页重进可以再试一次。')
+          Text('统计读取失败，班表已保留，请重新进入。')
             .fontSize(DesignTokens.fontCaption)
             .fontColor(DesignTokens.textTertiary)
             .width('100%')
@@ -294,7 +283,7 @@ export struct ScheduleHub {
         .fontSize(DesignTokens.fontBody)
         .fontFamily(DesignTokens.fontRound)
         .fontWeight(FontWeight.Medium)
-        .fontColor(DesignTokens.primary)
+        .fontColor(DesignTokens.textAccent)
       Text(cell.label)
         .fontSize(DesignTokens.fontCaption)
         .fontColor(DesignTokens.textTertiary)
@@ -310,16 +299,12 @@ export struct ScheduleHub {
     return this.types > 0 && this.tplSet;
   }
 
-  /** 读失败时四项一律退化成占位：catch 里保留的是上一次的旧值，把旧值当现状念出来同样是说谎。 */
+  /** 读失败时统计项一律退化成占位：catch 里保留的是上一次的旧值，把旧值当现状念出来同样是说谎。 */
   private statOf(value: string): string {
     return this.statusFailed ? STAT_UNKNOWN : value;
   }
 
-  /**
-   * 页首标题栏：与四个主入口页同一款——左「返回」＋居中粗标题，标题下面不再挂说明行。
-   * 系统标题栏是本页自己藏掉的（标题与滚动都在正文里），藏掉它就一起失去了唯一的可见出口，
-   * 所以这颗可见返回键必须留着（从「我的 · 我的日程」跳进来的人要看得见怎么回去）。
-   */
+  /** 页首标题栏：与四个主入口页同一款——左「返回」＋居中粗标题，标题下面不再挂说明行。 */
   @Builder
   headBar() {
     Row() {
@@ -329,17 +314,17 @@ export struct ScheduleHub {
           // 箭头和"返回"是一回事，念两遍不如合成一句
           .accessibilityLevel('no')
         Text('返回')
-          .fontSize(15).fontColor(DesignTokens.primary)
+          .fontSize(15).fontColor(DesignTokens.textAccent)
       }
       .padding({ left: 2, top: DesignTokens.space3, bottom: DesignTokens.space3 })
       .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
       .focusable(true)
       .accessibilityGroup(true)
       .accessibilityText('返回上一页')
-      .onClick(() => this.onBack())
+      .onClick(() => this.requestBack())
 
       Blank()
-      Text('日程录入')
+      Text('日程管理')
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor(DesignTokens.textPrimary)
@@ -350,7 +335,7 @@ export struct ScheduleHub {
     .padding({ left: 2, right: DesignTokens.space3, top: DesignTokens.space4 })
   }
 
-  /** 视图切换：与共同页同一款胶囊分段（列表/周历那对 viewPill 是页内二级切换，不混用）。 */
+  /** 视图切换。 */
   @Builder
   segmentControl() {
     CapsuleSegment({
@@ -362,88 +347,101 @@ export struct ScheduleHub {
     })
   }
 
+  @Builder
+  fixedTools() {
+    FadingHeaderSurface() {
+      Column({ space: DesignTokens.space3 }) {
+        this.headBar()
+        if (this.partnerLocal) {
+          Row({ space: DesignTokens.space1 }) {
+            this.sidePill({ label: '我的班表', partner: false })
+            this.sidePill({ label: 'TA 的班表', partner: true })
+          }
+          .width('100%').padding(4)
+          .borderRadius(DesignTokens.radiusPill)
+          .backgroundColor(DesignTokens.fillSoft)
+        }
+        if (!this.isPartnerSide() || this.partnerLocal) {
+          this.segmentControl()
+        }
+      }
+      .width('100%')
+      .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+      .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp),
+        bottom: DesignTokens.space3 })
+    }
+  }
+
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
-      Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-        // 周历网格本身超过一屏，整页必须可滚
-        Scroll() {
-          Column({ space: DesignTokens.space3 }) {
-            this.headBar()
-
-            // 我 / TA 分段：只有本机代录过伴侣才出现第二侧
-            if (this.partnerLocal) {
-              Row({ space: DesignTokens.space1 }) {
-                this.sidePill('我的班表', false)
-                this.sidePill('TA 的班表', true)
-              }
-              .width('100%')
-              .padding(4)
-              .borderRadius(DesignTokens.radiusPill)
-              .backgroundColor(DesignTokens.fillSoft)
-            }
-
-            if (this.isPartnerSide() && !this.partnerLocal) {
-              // 深链指定了 TA 侧但本机没代录过（纯配对不算代录）：给引导，不显示空的 TA 表单
-              StatePanel({
-                kind: StatePanelKind.EMPTY,
-                title: '还没有代录 TA 的日程',
-                description: '先在「我的 · 伴侣与同步」添加伴侣，就能在这里替 TA 记班表。',
-                actionLabel: '去添加伴侣',
-                onAction: () => {
-                  pushPendingRoute(NavRoutes.ME);
-                }
-              })
-            } else {
-              this.segmentControl()
-
-              if (this.hubView === VIEW_WEEK) {
-                EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
-                  Column({ space: DesignTokens.space2 }) {
-                    WeekScheduleView({
-                      owner: this.side,
-                      onPickDay: (epochDay: number) => {
-                        this.openDay(epochDay);
+      Column() {
+        this.fixedTools()
+        Column() {
+          FadingScrollViewport({ fadeHeight: 24, visual: this.scrollVisual }) {
+            Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+              Scroll(this.hubScroller) {
+                Column({ space: DesignTokens.space3 }) {
+                  if (this.isPartnerSide() && !this.partnerLocal) {
+                    // 深链指定了 TA 侧但本机没代录过（纯配对不算代录）：给引导，不显示空的 TA 表单
+                    StatePanel({
+                      kind: StatePanelKind.EMPTY,
+                      title: '还没有代录 TA 的日程',
+                      description: '先在「我的 · 伴侣与同步」添加伴侣，就能在这里替 TA 记班表。',
+                      actionLabel: '去添加伴侣',
+                      onAction: () => {
+                        pushPendingRoute(NavRoutes.ME);
                       }
                     })
-                    Text('点周历里的某一天，可直接改这天的班')
-                      .fontSize(DesignTokens.fontCaption)
-                      .fontColor(DesignTokens.textHint)
-                      .width('100%').textAlign(TextAlign.Center)
+                  } else {
+                    if (this.hubView === VIEW_WEEK) {
+                      EditorialCard({ hero: false, cutTopLeft: false, tappable: false }) {
+                        WeekScheduleView({ owner: this.side,
+                          onPickDay: (epochDay: number) => this.openDay(epochDay) })
+                      }
+                    } else {
+                      this.summaryCard()
+                      this.mainEntriesCard()
+                    }
                   }
-                  .width('100%')
                 }
-              } else {
-                this.summaryCard()
-                this.mainEntriesCard()
+                .width('100%')
+                .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+                .padding({ bottom: DesignTokens.space6 })
               }
+              .width('100%')
+              .height('100%')
+              .align(Alignment.Top)
+              .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
+              .scrollBar(BarState.Off)
+              .onAppear(() => {
+                this.scrollVisual.update(readScrollY(this.hubScroller));
+              })
+              .onDidScroll(() => {
+                this.scrollVisual.update(readScrollY(this.hubScroller));
+              })
+              .bindSheet($$this.dayVisible, this.daySheet(), {
+                height: SheetSize.FIT_CONTENT,
+                detents: [SheetSize.FIT_CONTENT],
+                preferType: SheetType.BOTTOM,
+                dragBar: false,
+                showClose: false,
+                radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
+                backgroundColor: DesignTokens.card,
+                maskColor: DesignTokens.scrim
+              })
+
             }
+            .onRefreshing(() => {
+              this.onRefresh();
+            })
+            .width('100%')
+            .height('100%')
           }
-          .width('100%')
-          .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-          // 页脚那条代录说明删掉后，末张卡下面原本由它承担的空隙要自己留着
-          .padding({ bottom: DesignTokens.space6 })
         }
         .width('100%')
-        .height('100%')
-        .align(Alignment.Top)
-        .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
-        .scrollBar(BarState.Off)
-        .bindSheet($$this.sheetOpen, this.daySheet(), {
-          detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-          dragBar: false,
-          showClose: false,
-          // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
-          radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-          blurStyle: BlurStyle.Thick,
-          maskColor: DesignTokens.scrim
-        })
+        .layoutWeight(1)
       }
-      .onRefreshing(() => {
-        this.onRefresh();
-      })
-      .width('100%')
-      .height('100%')
-      // 页面底画在 Refresh 上而不是 Scroll 上：下拉时 Scroll 整体平移，底跟着走会露出一条空白
+      .width('100%').height('100%')
       .linearGradient(DesignTokens.pageGradient())
     }
   }
@@ -457,7 +455,7 @@ export struct ScheduleHub {
   @Builder
   mainEntriesCard() {
     EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-      EditorialSection({ eyebrow: 'MAIN', title: '四种排班方式' }) {
+      EditorialSection({ eyebrow: 'SCHEDULE', title: '日程管理' }) {
         ForEach(MAIN_ENTRIES, (item: EntryItem) => {
           this.entryRow(item)
         }, (item: EntryItem) => this.side + '-' + item.key)
@@ -465,16 +463,4 @@ export struct ScheduleHub {
     }
   }
 
-  @Builder
-  daySheet() {
-    if (this.sheetDay > 0) {
-      DayShiftSheet({
-        owner: this.side,
-        epochDay: this.sheetDay,
-        onClose: () => {
-          this.sheetOpen = false;
-        }
-      })
-    }
-  }
 }

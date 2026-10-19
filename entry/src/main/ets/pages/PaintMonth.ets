@@ -438,12 +438,13 @@ struct PaintMonth {
         this.gridW = Number(newArea.width) - 12;
       })
 
-      Text('点按标记 · 同色再点一次清除 · 拖动连续标记（带“改”角的为手动覆盖）')
+      Text('点按标记，再点清除 · 可拖动连续标记')
         .fontSize(11).fontColor($r('app.color.text_hint')).padding(10)
 
       Blank()
     }
     .width('100%').height('100%').linearGradient(DesignTokens.pageGradient())
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   weekRows(): (DayCell | null)[][] {

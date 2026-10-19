@@ -2,6 +2,8 @@ import { KeyCode } from '@kit.InputKit';
 import { DesignTokens } from '../theme/DesignTokens';
 import { GlassStyle } from './GlassSurface';
 import { GlassStrength } from '../theme/MaterialPolicy';
+import { ColorMetrics } from '@kit.ArkUI';
+import { LocalTween } from '../util/LocalTween';
 
 /**
  * Q糖卡片：默认贴纸角 28/28/28/14（尖收在左下），镜像档 14/28/28/28，相邻卡一左一右，读起来像一张贴歪的贴纸。
@@ -21,11 +23,60 @@ export struct EditorialCard {
   /** 玻璃表面：只有需要「浮在内容之上」的前景卡开启。 */
   glass: boolean = false;
   onTapCard: () => void = () => {};
+  @Prop selected: boolean = false;
+  @Prop @Watch('pulseRefresh') refreshCue: number = 0;
+  hoverLift: boolean = false;
+  onHoverChange: (hovered: boolean) => void = () => {};
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
-  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  @StorageProp('crd_reduce_motion') @Watch('stopMotion') reduceMotion: boolean = false;
+  @StorageProp('crd_app_foreground') @Watch('onForegroundChanged') foreground: boolean = true;
   @BuilderParam content: () => void = this.placeholder;
   @State private isPressed: boolean = false;
   @State private hasFocus: boolean = false;
+  @State private hoverProgress: number = 0;
+  @State private pulseAlpha: number = 0;
+  private hoverTween: LocalTween = new LocalTween();
+  private pulseTween: LocalTween = new LocalTween();
+  private mounted: boolean = false;
+
+  aboutToAppear(): void { this.mounted = true; }
+  aboutToDisappear(): void { this.mounted = false; this.stopMotion(); }
+  onForegroundChanged(): void { if (!this.foreground) { this.stopMotion(); } }
+  stopMotion(): void {
+    this.hoverTween.cancel(); this.pulseTween.cancel();
+    this.hoverProgress = 0; this.pulseAlpha = 0; this.isPressed = false;
+    this.onHoverChange(false);
+  }
+
+  pulseRefresh(): void {
+    if (!this.mounted || this.reduceMotion || !this.foreground) { return; }
+    this.pulseAlpha = 1;
+    this.pulseTween.play(this.getUIContext(), 1, 0, 300,
+      (alpha: number) => { this.pulseAlpha = alpha; });
+  }
+
+  private selectionOutlineTint(): ResourceColor {
+    if (this.hasFocus) { return DesignTokens.focusRing; }
+    if (this.selected) { return DesignTokens.primary; }
+    if (this.pulseAlpha <= 0) { return Color.Transparent; }
+    try {
+      const color = ColorMetrics.resourceColor(DesignTokens.primary);
+      return ColorMetrics.rgba(color.red, color.green, color.blue, this.pulseAlpha).color;
+    } catch (_) {
+      return DesignTokens.primary;
+    }
+  }
+
+  private selectionOutlineRadius(): OutlineRadiuses {
+    if (this.hero) {
+      return { topLeft: DesignTokens.radiusHero, topRight: DesignTokens.radiusHero,
+        bottomLeft: DesignTokens.radiusHeroCut, bottomRight: DesignTokens.radiusHero };
+    }
+    return { topLeft: this.cutTopLeft ? DesignTokens.radiusCardCut : DesignTokens.radiusCard,
+      topRight: DesignTokens.radiusCard,
+      bottomLeft: this.cutTopLeft ? DesignTokens.radiusCard : DesignTokens.radiusCardCut,
+      bottomRight: DesignTokens.radiusCard };
+  }
 
   @Builder
   placeholder(): void {
@@ -157,6 +208,9 @@ export struct EditorialCard {
       color: this.surfaceBorderColors(),
       radius: this.surfaceRadius()
     })
+    // 外轮廓不参与测量，选中或刷新时卡片高度和文字位置都不变。
+    .outline({ width: 2, color: this.selectionOutlineTint(), radius: this.selectionOutlineRadius() })
+    .translate({ y: this.hoverProgress * -2 })
     .scale(this.isPressed
       ? { x: DesignTokens.pressScale, y: DesignTokens.pressScale }
       : { x: 1, y: 1 })
@@ -171,6 +225,13 @@ export struct EditorialCard {
     })
     .onBlur(() => {
       this.hasFocus = false;
+    })
+    .onHover((hovered: boolean) => {
+      if (!this.tappable || !this.hoverLift) { return; }
+      this.onHoverChange(hovered);
+      this.hoverTween.play(this.getUIContext(), this.hoverProgress, hovered ? 1 : 0,
+        DesignTokens.motion(this.reduceMotion || !this.foreground, 150),
+        (value: number) => { this.hoverProgress = value; });
     })
     .onTouch((e: TouchEvent) => {
       if (e.type === TouchType.Down) {

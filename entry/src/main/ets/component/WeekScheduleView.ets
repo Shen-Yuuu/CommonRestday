@@ -1,6 +1,7 @@
 import { Interval, MIN_PER_DAY, WindowChannel, WindowTag, nowEpochMin, todayEpochDay,
   weekdayOf, clipInto, dayOfStart, intersects } from 'domain';
 import { DateLabel } from 'commons';
+import { SettingsStore } from 'data';
 import {
   CommonTimeQueryService, ScheduleOverviewQueryService, SettingsStoreParams, WeekBlock,
   WeekLanes, WeekSchedule, WindowFilter, WindowFilterKey, WindowSummary
@@ -10,18 +11,15 @@ import { busyTagLabel, tagColor } from '../util/WindowTagUtil';
 import { LatestLanding } from '../util/LatestLanding';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { NoticeBar, NoticeTone } from './NoticeBar';
+import { LocalTween } from '../util/LocalTween';
+import { WeekNavigator } from './WeekNavigator';
 
 /** 周视图模式：某一方的日程，或双方的共同空闲。 */
 export const WEEK_MODE_SCHEDULE = 'SCHEDULE';
 export const WEEK_MODE_COMMON = 'COMMON';
 
 const LABEL_W = 26;
-/**
- * 7 枚列的宽度基准只写这一处，列头与网格共用。
- * 两边还必须把那 7 枚列包在一枚 `Row().layoutWeight(1)` 里：直接跟 `Column().width(LABEL_W)`
- * 平级时，百分比算的是**整行**（含占位），而网格算的是扣掉占位后剩下的那段——实测列头每列
- * 149px、色块每列 136px，右端累计多出一个占位的宽（91px），最后一列的头飘到隔壁列上（D-62）。
- */
+/** 7 枚列的宽度基准只写这一处，列头与网格共用。 */
 const WEEK_COL_W = '14.28%';
 const DAY_HEADERS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 /** 共同空闲分级门槛（分钟）：≥6h / ≥3h / 其余。 */
@@ -55,8 +53,10 @@ interface LaneBlock {
   tag: string;
 }
 
+interface WeekPlanArg { plan: WeekBlock; day: number; }
+
 /** 当前周周一。 */
-function currentWeekStart(): number {
+export function currentWeekStart(): number {
   const today = todayEpochDay();
   return today - (weekdayOf(today) - 1);
 }
@@ -65,16 +65,13 @@ function pad2(n: number): string {
   return n < 10 ? '0' + n : '' + n;
 }
 
-/**
- * 周视图网格，两种模式共用一套周导航与列布局：
- * - 日程模式（班表页）：当前侧的班次（循环+单日覆盖）、课程（学期+节次模板）、共同计划；
- * - 共同空闲模式（共同时间页「周历」）：把月历的"哪天有空"细化成课程表式的"几点到几点有空"，
- *   只画常规通道（睡眠不计入空闲），旅行通道在表头标点，点色块直接去建计划。
- *   每列纵向分两半画双方忙碌（青灰／驼的玻璃层），空闲色块压在泳道之上，一眼看出空档是怎么来的。
- * 数据随重算广播自动刷新（涂抹/导入/参数变更后无需手动更新）。
- */
+/** 周视图网格，两种模式共用一套周导航与列布局： */
 @Component
 export struct WeekScheduleView {
+  @Prop @Watch('onActiveChanged') active: boolean = true;
+  private mounted: boolean = false;
+  initialWeekStart: number = -1;
+  onWeekChange: (day: number) => void = () => {};
   @Prop @Watch('reload') owner: string = 'ME';
   /** 模式由父页决定且运行期不变：日程模式读班表，共同模式读窗口读模型。 */
   mode: string = WEEK_MODE_SCHEDULE;
@@ -90,10 +87,13 @@ export struct WeekScheduleView {
   @State loading: boolean = true;
   /** 这一周是没读到，还是真的没有：两者在界面上必须是两句话（失败态不能说成"没有"）。 */
   @State failed: boolean = false;
+  @State private reading: boolean = false;
+  private displayedKey: string = '';
   @State weekItems: WeekBlock[] = [];
   @State commonWindows: WindowSummary[] = [];
   /** 共同模式的双方忙碌泳道：没有 TA 数据时 partner 为 null（右半不画，图例跟着改说法）。 */
   @State myLanes: Interval[] = [];
+  @State private planBlocks: WeekBlock[] = [];
   @State partnerLanes: Interval[] | null = null;
   @State axisStart: number = AXIS_DEFAULT_START;
   @State hourH: number = 24;
@@ -101,21 +101,35 @@ export struct WeekScheduleView {
   @StorageProp('recomputeCount') @Watch('reload') recomputeCount: number = 0;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
-  /**
-   * 钟点广播键（K-4③）：回前台与切页时自增，「现在」游标跟着重取一次值。
-   * 与 recomputeCount 分开是因为它不代表数据变了——挂在重算键上会把六页的 RDB 读全触发一遍。
-   */
+  /** 钟点广播键：回前台与切页时自增，「现在」游标跟着重取一次值。 */
   @StorageProp('crdClockTick') @Watch('refreshNow') clockTick: number = 0;
   /** 当下分钟数（epoch 分钟，与窗口起止同一把尺子）；0 表示还没看过钟。 */
   @State nowMin: number = 0;
-  /**
-   * 并发读数闸门（D-51）：owner 切换、父页下拉、重算广播、翻页点击四个触发点共用这一周的数据面，
-   * 而 weekStart 是翻页时**同步**改掉的——旧读数晚落地就会让色块和表头日期分家。
-   */
+  @State private partnerName: string = 'TA';
+  @State private weekOffset: number = 0;
+  @State private weekAlpha: number = 1;
+  private weekDirection: number = 0;
+  private weekTween: LocalTween = new LocalTween();
+  private loadedOwner: string = '';
+  /** 并发读数闸门：owner 切换、父页下拉、重算广播、翻页点击四个触发点共用这一周的数据面， */
   private landing: LatestLanding = new LatestLanding();
 
   aboutToAppear(): void {
+    this.mounted = true;
+    if (this.initialWeekStart >= 0) {
+      this.weekStart = this.initialWeekStart;
+    }
     this.loadWeek();
+  }
+
+  aboutToDisappear(): void {
+    this.mounted = false;
+    this.landing.begin();
+    this.weekTween.cancel();
+  }
+  onActiveChanged(): void {
+    if (!this.active) { this.landing.invalidate(); this.weekTween.cancel(); return; }
+    if (this.mounted) this.loadWeek();
   }
 
   /** 重新看一眼钟：不排定时器、不做常驻动画，进页面/回前台时准就够了（K-4③ 的口径）。 */
@@ -128,18 +142,41 @@ export struct WeekScheduleView {
   }
 
   prevWeek(): void {
-    this.weekStart = this.weekStart - 7;
-    this.loadWeek();
+    this.moveToWeek(this.weekStart - 7);
   }
 
   nextWeek(): void {
-    this.weekStart = this.weekStart + 7;
-    this.loadWeek();
+    this.moveToWeek(this.weekStart + 7);
   }
 
   goCurrentWeek(): void {
-    this.weekStart = currentWeekStart();
+    this.moveToWeek(currentWeekStart());
+  }
+
+  private moveToWeek(target: number): void {
+    if (target === this.weekStart) {
+      return;
+    }
+    this.weekTween.cancel();
+    this.weekDirection = target > this.weekStart ? 1 : -1;
+    this.weekOffset = this.weekDirection * 24;
+    this.weekAlpha = 0;
+    this.weekStart = target;
+    this.onWeekChange(this.weekStart);
     this.loadWeek();
+  }
+
+  private finishWeekMotion(): void {
+    if (this.weekDirection === 0) {
+      return;
+    }
+    const from = this.weekDirection * 24;
+    this.weekDirection = 0;
+    const reduce: boolean = AppStorage.get<boolean>('crd_reduce_motion') ?? false;
+    this.weekTween.play(this.getUIContext(), 0, 1, DesignTokens.motion(reduce, 220), (progress: number) => {
+      this.weekOffset = from * (1 - progress);
+      this.weekAlpha = progress;
+    });
   }
 
   weekDays(): number[] {
@@ -155,6 +192,12 @@ export struct WeekScheduleView {
   }
 
   loadWeek(): void {
+    if (!this.mounted || !this.active) return;
+    if (!this.isCommon() && this.loadedOwner !== this.owner) {
+      this.weekItems = [];
+      this.failed = false;
+      this.loadedOwner = this.owner;
+    }
     // 每次读数顺带重取一次当下：翻页/切侧/首帧都经过这里，游标不会停在旧分钟上
     this.refreshNow();
     if (this.isCommon()) {
@@ -167,34 +210,43 @@ export struct WeekScheduleView {
   /** 周日程块由 feature 读模型装配（班次+课程+共同计划），这里只负责画。 */
   async loadScheduleWeek(): Promise<void> {
     const token = this.landing.begin();
-    this.loading = true;
+    const key = this.mode + ':' + this.owner + ':' + this.weekStart;
+    const retain = this.displayedKey === key;
+    this.reading = true; this.loading = !retain;
     try {
+      this.partnerName = SettingsStore.getPartnerDisplayName() || 'TA';
       const data: WeekSchedule = await ScheduleOverviewQueryService.getWeekSchedule(this.owner,
         this.weekStart);
       if (!this.landing.isCurrent(token)) {
         return;
       }
       this.weekItems = data.blocks;
+      this.displayedKey = key;
       this.failed = false;
       this.fitAxis();
     } catch (e) {
       if (!this.landing.isCurrent(token)) {
         return;
       }
-      this.weekItems = [];
+      if (!retain) this.weekItems = [];
       this.failed = true;
+    } finally {
+      if (this.landing.isCurrent(token)) {
+        this.loading = false;
+        this.reading = false;
+        this.finishWeekMotion();
+      }
     }
-    this.loading = false;
   }
 
-  /**
-   * 装配当前周的共同空闲：读模型给的是"现在起"的窗口，周历要能翻到过去与更远的周，
-   * 因此按周起点取全量（ALL 档）再按日裁剪；筛选只在列表视图生效，两个视图看到的是同一批窗口。
-   */
+  /** 装配当前周的共同空闲：读模型给的是"现在起"的窗口，周历要能翻到过去与更远的周， */
   async loadCommonWeek(): Promise<void> {
     const token = this.landing.begin();
-    this.loading = true;
+    const key = this.mode + ':' + this.owner + ':' + this.weekStart;
+    const retain = this.displayedKey === key;
+    this.reading = true; this.loading = !retain;
     try {
+      this.partnerName = SettingsStore.getPartnerDisplayName() || 'TA';
       const params = SettingsStoreParams();
       this.horizonDays = params.horizonDays;
       const filter: WindowFilter = {
@@ -215,27 +267,29 @@ export struct WeekScheduleView {
       }
       this.commonWindows = wins;
       this.failed = false;
-      await this.loadLanes(token);
+      await this.loadLanes(token, retain);
       if (!this.landing.isCurrent(token)) {
         return;
       }
       this.fitAxis();
+      this.displayedKey = key;
     } catch (e) {
       if (!this.landing.isCurrent(token)) {
         return;
       }
-      this.commonWindows = [];
+      if (!retain) this.commonWindows = [];
       this.failed = true;
+    } finally {
+      if (this.landing.isCurrent(token)) {
+        this.loading = false;
+        this.reading = false;
+        this.finishWeekMotion();
+      }
     }
-    this.loading = false;
   }
 
-  /**
-   * 单独读一周的双方忙碌。失败只让左右两半空着：空闲块是另一条读模型算好的，
-   * 不因为"看不出为什么没空"就把已有的答案一起抹掉。
-   * token 由调用方那一次读数传入：泳道和这一周的窗口必须同一批落地。
-   */
-  private async loadLanes(token: number): Promise<void> {
+  /** 单独读一周的双方忙碌。失败只让左右两半空着：空闲块是另一条读模型算好的， */
+  private async loadLanes(token: number, retain: boolean): Promise<void> {
     try {
       const lanes: WeekLanes = await ScheduleOverviewQueryService.getWeekLanes(this.weekStart);
       if (!this.landing.isCurrent(token)) {
@@ -243,20 +297,21 @@ export struct WeekScheduleView {
       }
       this.myLanes = lanes.mine;
       this.partnerLanes = lanes.partner;
+      this.planBlocks = lanes.plans;
     } catch (e) {
       if (!this.landing.isCurrent(token)) {
         return;
       }
-      this.myLanes = [];
-      this.partnerLanes = null;
+      this.failed = true;
+      if (!retain) {
+        this.myLanes = [];
+        this.partnerLanes = null;
+        this.planBlocks = [];
+      }
     }
   }
 
-  /**
-   * 纵轴自适应：默认只画 06:00–24:00（深夜直接缩略），有内容落在六点之前才把起点往上撑。
-   * 每小时高度按可用高度反推：块越少格子越高，但整张网格不超过 GRID_BUDGET，
-   * 日程模式原来固定 24×34=816vp，比屏幕还高、必须滚动才能看完一周。
-   */
+  /** 纵轴自适应：默认只画 06:00–24:00（深夜直接缩略），有内容落在六点之前才把起点往上撑。 */
   private fitAxis(): void {
     let h0 = AXIS_DEFAULT_START;
     const days = this.weekDays();
@@ -267,6 +322,7 @@ export struct WeekScheduleView {
           continue;
         }
         const blocks = this.dayFreeBlocks(day);
+        for (const plan of this.dayPlanBlocks(day)) h0 = Math.min(h0, this.startHour(plan.start, day));
         for (let j = 0; j < blocks.length; j++) {
           h0 = Math.min(h0, this.startHour(blocks[j].start, day));
         }
@@ -322,7 +378,20 @@ export struct WeekScheduleView {
       if (c == null) {
         continue;
       }
-      out.push({ start: c.start, end: c.end, name: it.name, color: it.color });
+      out.push({ id: it.id, kind: it.kind, start: c.start, end: c.end, name: it.name, color: it.color,
+        conflicted: it.conflicted });
+    }
+    return out;
+  }
+
+  private dayPlanBlocks(epochDay: number): WeekBlock[] {
+    const s = epochDay * MIN_PER_DAY;
+    const e = s + MIN_PER_DAY;
+    const out: WeekBlock[] = [];
+    for (const it of this.planBlocks) {
+      const c = clipInto(it.start, it.end, s, e);
+      if (c !== null) out.push({ id: it.id, kind: it.kind, start: c.start, end: c.end,
+        name: it.name, color: it.color, conflicted: it.conflicted });
     }
     return out;
   }
@@ -365,10 +434,7 @@ export struct WeekScheduleView {
     return out;
   }
 
-  /**
-   * 泳道块的朗读文本。块里一个像素的文字都放不下（半列宽约 40vp），
-   * 所以「谁、几点到几点、在忙什么」必须整句读出来，否则这块颜色对读屏用户就是噪音。
-   */
+  /** 泳道块的朗读文本。块里一个像素的文字都放不下（半列宽约 40vp）， */
   private laneRead(who: string, b: LaneBlock, epochDay: number): string {
     return DateLabel.weekday(epochDay) + ' ' + who + ' ' + DateLabel.hm(b.start) + ' 到 '
       + DateLabel.edgeTime(b.end, true) + '，' + busyTagLabel(b.tag);
@@ -437,11 +503,7 @@ export struct WeekScheduleView {
     return DateLabel.hm(b.start) + '\n' + short;
   }
 
-  /**
-   * 空闲块的朗读文本。矮块上面根本没有文字（blockLabel 返回空串），
-   * 但色块仍然是可点的：读屏必须念出「哪天、几点到几点、多久」，否则点下去的人完全不知道点了什么。
-   * 时长分级只靠颜色区分（docs/06 §3.10 B：状态不得只靠颜色），这里把分钟数直接读出来。
-   */
+  /** 空闲块的朗读文本。矮块上面根本没有文字（blockLabel 返回空串）， */
   private freeBlockRead(b: FreeBlock, epochDay: number): string {
     return DateLabel.weekday(epochDay) + ' ' + DateLabel.hm(b.start) + ' 到 ' + DateLabel.edgeTime(b.end, true)
       + '，' + DateLabel.duration(b.end - b.start) + '共同空闲，点击去计划';
@@ -483,29 +545,18 @@ export struct WeekScheduleView {
     return this.isCommon() ? Math.max(h - 1, 4) : Math.max(h, 14);
   }
 
-  /**
-   * 游标所在的那天取自 `nowMin` 自己，不再于渲染时另读一次表：
-   * 分两次读数时，跨午夜那一瞬会把游标摆到隔壁日子（纵向偏移正好一整天）。
-   */
+  /** 游标所在的那天取自 `nowMin` 自己，不再于渲染时另读一次表： */
   private nowDay(): number {
     return dayOfStart(this.nowMin);
   }
 
-  /**
-   * 「现在」游标画不画（K-4③）：落在纵轴覆盖的那段里才有容身之处。
-   * 凌晨缩略掉的那几段不画——游标停不出轴，画在边缘反而像标错了日子。
-   */
+  /** 「现在」游标画不画：落在纵轴覆盖的那段里才有容身之处。 */
   nowShown(): boolean {
     const minuteOfDay = this.nowMin % MIN_PER_DAY;
     return minuteOfDay >= this.axisStart * 60 && minuteOfDay <= AXIS_END * 60;
   }
 
-  /**
-   * 「现在」静态游标：一枚点 + 一条向右淡出的细线，压在色块之上，只作装饰。
-   * 里面不放时间文字——半列约 40vp，两行字会互相压（与 K-4 ④ 同一理由），
-   * 读数由列头的「今天」与各块自己的 accessibilityText 承担。
-   * 全部读 this.*，不经带值传参的 @Builder：那条链路在 ArkUI 里不随状态刷新（D-24 同族）。
-   */
+  /** 「现在」静态游标：一枚点 + 一条向右淡出的细线，压在色块之上，只作装饰。 */
   @Builder
   nowMarker() {
     Row()
@@ -543,16 +594,21 @@ export struct WeekScheduleView {
   }
 
   build() {
-    Column({ space: 8 }) {
+    Column({ space: 4 }) {
       this.weekNav()
-      // 那一排是为纵轴说明而存在的，「本周」只是搭在同一排。两种模式现在共用自适应纵轴
-      // （日程模式不再固定整 24 小时），所以都读得到这一行，也都要有回到本周的出口。
       this.axisLine()
+      Column({ space: 4 }) {
+        this.weekBody()
+      }
+      .width('100%').translate({ x: this.weekOffset }).opacity(this.weekAlpha)
+      .hitTestBehavior(this.loading || this.reading ? HitTestMode.None : HitTestMode.Default)
+    }
+    .width('100%').clip(true)
+  }
 
-      if (this.loading) {
-        Text('加载中…').fontSize(12).fontColor($r('app.color.text_tertiary'))
-          .width('100%').textAlign(TextAlign.Center).padding({ top: 20, bottom: 20 })
-      } else if (this.isCommon()) {
+  @Builder
+  weekBody() {
+      if (this.isCommon()) {
         this.commonHead()
         this.commonCols()
         this.busyLegendLine()
@@ -569,7 +625,7 @@ export struct WeekScheduleView {
               this.loadWeek();
             }
           })
-        } else {
+        } else if (!this.loading) {
           Text(this.commonNote())
             .fontSize(11).fontColor(DesignTokens.textHint)
             .width('100%').textAlign(TextAlign.Center)
@@ -587,68 +643,30 @@ export struct WeekScheduleView {
               this.loadWeek();
             }
           })
-        } else if (this.weekItems.length === 0) {
+        } else if (!this.loading && this.weekItems.length === 0) {
           Text('这周还没有班次、课程和计划')
             .fontSize(11).fontColor($r('app.color.text_hint'))
             .width('100%').textAlign(TextAlign.Center)
         }
       }
-    }
-    .width('100%')
   }
 
   @Builder
   weekNav() {
-    Row({ space: 6 }) {
-      SymbolGlyph($r('sys.symbol.chevron_left'))
-        .fontSize(18).fontColor([$r('app.color.text_secondary')])
-        .padding({ left: 6, right: 6 })
-        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
-        .focusable(true)
-        .accessibilityText('查看上一周')
-        .onClick(() => this.prevWeek())
-      Text(DateLabel.md(this.weekStart) + ' – ' + DateLabel.md(this.weekStart + 6))
-        .fontSize(14).fontWeight(FontWeight.Medium)
-        .layoutWeight(1).textAlign(TextAlign.Center)
-        .accessibilityText('当前显示 ' + DateLabel.md(this.weekStart) + ' 至 ' + DateLabel.md(this.weekStart + 6))
-        .onClick(() => this.goCurrentWeek())
-      SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(18).fontColor([$r('app.color.text_secondary')])
-        .padding({ left: 6, right: 6 })
-        .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
-        .focusable(true)
-        .accessibilityText('查看下一周')
-        .onClick(() => this.nextWeek())
-    }.width('100%')
+    WeekNavigator({ weekStart: this.weekStart, horizontalOffset: this.weekOffset, alpha: this.loading ? 1 : this.weekAlpha,
+      onPrevious: () => this.prevWeek(), onNext: () => this.nextWeek(), onCurrent: () => this.goCurrentWeek() })
   }
 
-  /**
-   * 网格右上那一排（原型同位置）：纵轴说明 + 回到本周。
-   * 不塞进星期行：那 7 列要和下方网格的列宽逐列对齐，挤进两颗就把对齐弄丢了。
-   */
+  /** 更新状态与纵轴说明共用一行，不保留空的加载占位。 */
   @Builder
   axisLine() {
     Row({ space: 8 }) {
+      Text(this.loading ? '更新中…' : '')
+        .fontSize(10).fontColor(DesignTokens.textHint)
       Blank()
       Text('纵轴 ' + pad2(this.axisStart) + '–24')
-        .fontSize(8).fontColor(DesignTokens.textHint)
-      this.currentWeekChip()
+        .fontSize(10).fontColor(DesignTokens.textHint)
     }.width('100%')
-  }
-
-  @Builder
-  currentWeekChip() {
-    Text('本周').fontSize(12).fontColor($r('app.color.brand_pink'))
-      .fontWeight(FontWeight.Bold)
-      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-      .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor($r('app.color.brand_pink_bg'))
-      // 纯文字当按钮用：热区、焦点、朗读名都得自己补，缺一项读屏用户就找不到回到本周的入口
-      .constraintSize({ minWidth: AccessibilityPolicy.minHit(this.senior), minHeight: AccessibilityPolicy.minHit(this.senior) })
-      .focusable(true)
-      .accessibilityText('回到本周')
-      .clickEffect(DesignTokens.tapChip())
-      .onClick(() => this.goCurrentWeek())
   }
 
   // ---------- 日程模式 ----------
@@ -663,16 +681,19 @@ export struct WeekScheduleView {
           Column({ space: 1 }) {
             Text(DAY_HEADERS[idx])
               .fontSize(10)
-              .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_tertiary'))
+              .fontColor(ed === todayEpochDay() ? $r('app.color.text_accent') : $r('app.color.text_tertiary'))
             Text('' + DateLabel.ymd(ed).d)
               .fontSize(11).fontWeight(FontWeight.Medium)
-              .fontColor(ed === todayEpochDay() ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
+              .fontColor(ed === todayEpochDay() ? $r('app.color.text_accent') : $r('app.color.text_secondary'))
           }
           .width(WEEK_COL_W)
           .alignItems(HorizontalAlign.Center)
           // 星期字 + 日号两枚 Text 读成一句，今天靠颜色额外标出来的部分由文本自己带上
           .accessibilityGroup(true)
           .accessibilityText(this.headRead(ed))
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .focusable(true)
+          .onClick(() => this.onPickDay(ed))
         }, (ed: number, idx: number) => '' + ed + '-' + idx)
       }
       .layoutWeight(1)
@@ -685,8 +706,6 @@ export struct WeekScheduleView {
       Column() {
         ForEach(this.axisHours(), (h: number) => {
           Row() {
-            // 纵轴刻度只给眼睛用：每个日程块自己会念起止时间，逐格念 12 遍纯属噪音。
-            // no 只能挂在这枚 Text 自己身上——挂在下面的 Column 上只摘掉容器，子节点照念（D-29）。
             if (this.showHourLabel(h)) {
               Text(pad2(h))
                 .fontSize(8).fontColor($r('app.color.text_hint'))
@@ -721,26 +740,28 @@ export struct WeekScheduleView {
                 .accessibilityLevel('no')
             }
 
-            // 日程块（键要含 color：改了班次配色而时段与名称没变时，节点是按键复用的，旧色会留在屏上——D-40 同一族）
             ForEach(this.dayItems(ed), (item: WeekBlock) => {
-              Column() {
-                Text(item.name)
-                  .fontSize(9).fontColor(DesignTokens.foregroundOn(item.color))
-                  .fontWeight(FontWeight.Bold)
-                  .maxLines(2)
-                  .width('100%').textAlign(TextAlign.Center)
+              if (item.kind === 'PLAN') {
+                this.planBlock({ plan: item, day: ed })
+              } else {
+                Column() {
+                  Text(item.name)
+                    .fontSize(9).fontColor(DesignTokens.foregroundOn(item.color))
+                    .fontWeight(FontWeight.Bold)
+                    .maxLines(2)
+                    .width('100%').textAlign(TextAlign.Center)
+                }
+                .width('92%')
+                .height(this.blockH(item.start, item.end))
+                .position({ x: 1, y: this.blockY(item.start, ed) })
+                .backgroundColor(item.color)
+                .borderRadius(DesignTokens.blockRadius())
+                .clip(true)
+                .accessibilityGroup(true)
+                .accessibilityText(this.scheduleBlockRead(item, ed))
               }
-              .width('92%')
-              .height(this.blockH(item.start, item.end))
-              .position({ x: 1, y: this.blockY(item.start, ed) })
-              .backgroundColor(item.color)
-              .borderRadius(DesignTokens.blockRadius())
-              .clip(true)
-              .accessibilityGroup(true)
-              .accessibilityText(this.scheduleBlockRead(item, ed))
             }, (item: WeekBlock) => '' + item.start + '-' + item.end + item.name + item.color)
 
-            // 「现在」游标画在色块之上：压在被遮住的班次下面就等于没有（K-4③）
             if (ed === this.nowDay() && this.nowShown()) {
               this.nowMarker()
             }
@@ -769,16 +790,15 @@ export struct WeekScheduleView {
       // 只留一格占位，让 7 列和下方网格逐列对齐；纵轴说明已挪到网格右上（见 axisLine）
       Column().width(LABEL_W).accessibilityLevel('no')
 
-      // 与 commonCols 同一个基准：占位列算在百分比之外，否则头与色块逐列错位（D-62）
       Row() {
         ForEach(this.weekDays(), (ed: number, idx: number) => {
           Column({ space: 1 }) {
             Text(DAY_HEADERS[idx])
               .fontSize(10)
-              .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textTertiary)
+              .fontColor(ed === todayEpochDay() ? DesignTokens.textAccent : DesignTokens.textTertiary)
             Text('' + DateLabel.ymd(ed).d)
               .fontSize(11).fontWeight(FontWeight.Medium)
-              .fontColor(ed === todayEpochDay() ? DesignTokens.primary : DesignTokens.textSecondary)
+              .fontColor(ed === todayEpochDay() ? DesignTokens.textAccent : DesignTokens.textSecondary)
             Text(this.isKnown(ed) ? this.dayTotalLabel(ed) : '·')
               .fontSize(8)
               .fontColor(this.isKnown(ed) ? DesignTokens.textSecondary : DesignTokens.textHint)
@@ -791,6 +811,13 @@ export struct WeekScheduleView {
           // 四行（星期/日号/总量/旅行标点）合成一句；标点只有颜色，读屏靠 headRead 里的文字
           .accessibilityGroup(true)
           .accessibilityText(this.headRead(ed))
+          .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .focusable(this.isKnown(ed))
+          .onClick(() => {
+            if (this.isKnown(ed)) {
+              this.onPickDay(ed);
+            }
+          })
         }, (ed: number, idx: number) => 'ch' + ed + '-' + idx)
       }
       .layoutWeight(1)
@@ -799,21 +826,18 @@ export struct WeekScheduleView {
     .alignItems(VerticalAlign.Top)
   }
 
-  /**
-   * 半列宽的忙碌泳道。块里一个字都不放：半列约 40vp，写「07 到 12 班次」只会糊成一团，
-   * 所以谁、几点到几点、在忙什么整句交给读屏念（laneRead）。
-   */
+  /** 半列宽的忙碌泳道。块里一个字都不放：半列约 40vp，写「07 到 12 班次」只会糊成一团， */
   @Builder
   laneRow(b: LaneBlock, epochDay: number, partner: boolean) {
     Column()
       .width('100%')
       .height(Math.max(this.blockH(b.start, b.end), LANE_MIN_H))
       .position({ x: 0, y: this.blockY(b.start, epochDay) })
-      .backgroundColor(partner ? DesignTokens.busyPartnerGlass : DesignTokens.busyMineGlass)
-      .border({ width: 0.5, color: partner ? DesignTokens.busyPartnerEdge : DesignTokens.busyMineEdge })
+      .backgroundColor(b.tag === 'UNKNOWN' ? DesignTokens.fillWeak : partner ? DesignTokens.busyPartnerGlass : DesignTokens.busyMineGlass)
+      .border({ width: 0.5, color: b.tag === 'UNKNOWN' ? DesignTokens.borderWeak : partner ? DesignTokens.busyPartnerEdge : DesignTokens.busyMineEdge })
       .borderRadius(3)
       .accessibilityGroup(true)
-      .accessibilityText(this.laneRead(partner ? 'TA' : '我', b, epochDay))
+      .accessibilityText(this.laneRead(partner ? this.partnerName : '我', b, epochDay))
   }
 
   @Builder
@@ -889,7 +913,6 @@ export struct WeekScheduleView {
             // 泳道只是底色，点列看当日明细、点色块去建计划这两件事不能被它挡住
             .hitTestBehavior(HitTestMode.None)
 
-            // 空闲块：底色与高度都按 end-start 分档，所以键里必须有 end（同 D-40 那一族）
             ForEach(this.dayFreeBlocks(ed), (b: FreeBlock) => {
               Column() {
                 Text(this.blockLabel(b))
@@ -908,10 +931,18 @@ export struct WeekScheduleView {
               .accessibilityGroup(true)
               .accessibilityText(this.freeBlockRead(b, ed))
               .clickEffect(DesignTokens.tapButton())
-              .onClick(() => this.onPickWindow(b.winStart, b.winEnd))
+              .onClick(() => {
+                // 切周/刷新时日期仍可看，旧空闲块不能被当作新结果拿去建计划。
+                if (!this.loading && !this.reading && !this.failed) {
+                  this.onPickWindow(b.winStart, b.winEnd);
+                }
+              })
             }, (b: FreeBlock) => '' + b.winStart + '-' + b.winEnd + '-' + b.start + '-' + b.end)
 
-            // 「现在」游标：与日程模式同一枚画法，画在所有块之上（K-4③）
+            ForEach(this.dayPlanBlocks(ed), (plan: WeekBlock) => {
+              this.planBlock({ plan: plan, day: ed })
+            }, (plan: WeekBlock) => 'cp' + plan.id + '-' + plan.start + '-' + plan.end)
+
             if (ed === this.nowDay() && this.nowShown()) {
               this.nowMarker()
             }
@@ -960,22 +991,51 @@ export struct WeekScheduleView {
     .accessibilityText(label)
   }
 
-  /**
-   * 泳道那一行的说法跟着数据走：没有 TA 的数据时右半根本没画，
-   * 图例却写「TA 在忙」就等于用一句假话解释一片空白，所以单人态只报自己这一侧。
-   */
+  /** 两种周历共用计划便签；不改变原始时段和占用计算。 */
+  @Builder
+  planBlock(arg: WeekPlanArg) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column().width(3).height('100%')
+        .backgroundColor(arg.plan.conflicted === true ? DesignTokens.dangerDeep : DesignTokens.planAccent)
+        .accessibilityLevel('no')
+      Column({ space: 2 }) {
+        Text(arg.plan.name).fontSize(10).fontWeight(FontWeight.Medium)
+          .fontColor(DesignTokens.planInk).width('100%')
+          .maxLines(this.blockH(arg.plan.start, arg.plan.end) >= 42 ? 2 : 1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.blockH(arg.plan.start, arg.plan.end) >= 42) {
+          Text(DateLabel.hm(arg.plan.start)).fontSize(9).fontColor(DesignTokens.planMuted)
+        }
+      }.width('100%').height('100%').alignItems(HorizontalAlign.Start)
+        .padding({ left: 6, right: 2, top: 3, bottom: 2 })
+    }.width('96%').height(this.blockH(arg.plan.start, arg.plan.end))
+      .position({ x: 1, y: this.blockY(arg.plan.start, arg.day) })
+      .backgroundColor(DesignTokens.planSurface).borderRadius(6).clip(true)
+      .accessibilityGroup(true).accessibilityText((arg.plan.conflicted === true ? '计划有冲突，' : '已安排计划，')
+        + this.scheduleBlockRead(arg.plan, arg.day))
+      .clickEffect(DesignTokens.tapButton()).onClick(() => this.onPickDay(arg.day))
+  }
+
   @Builder
   busyLegendLine() {
+    Column({ space: 4 }) {
     Row({ space: 10 }) {
       this.busySwatch(DesignTokens.busyMineGlass, DesignTokens.busyMineEdge, '我在忙')
+      this.busySwatch(DesignTokens.planSurface, DesignTokens.planAccent, '已安排计划')
       if (this.partnerLanes != null) {
-        this.busySwatch(DesignTokens.busyPartnerGlass, DesignTokens.busyPartnerEdge, 'TA 在忙')
+        this.busySwatch(DesignTokens.busyPartnerGlass, DesignTokens.busyPartnerEdge, this.partnerName + '在忙')
       } else {
-        Text('还没有 TA 的数据').fontSize(10).fontColor(DesignTokens.textHint)
+        Text('还没有' + this.partnerName + '的数据').fontSize(10).fontColor(DesignTokens.textHint)
       }
     }
     .width('100%')
     .justifyContent(FlexAlign.Center)
+    if (this.myLanes.some((iv: Interval): boolean => iv.tag === 'UNKNOWN')
+      || (this.partnerLanes ?? []).some((iv: Interval): boolean => iv.tag === 'UNKNOWN')) {
+      Text('浅灰区域：尚未更新的班表结果，请双方更新应用并同步')
+        .fontSize(10).fontColor(DesignTokens.textHint)
+    }
+    }.width('100%')
   }
 
   @Builder

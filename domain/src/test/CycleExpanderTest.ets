@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import { CycleTemplate, ScheduleOverride } from '../main/ets/model/Types';
-import { expandCycle, cycleShiftAt } from '../main/ets/expand/CycleExpander';
+import { expandCycle, cycleShiftAt, cycleWeekday, cycleWeekdaysMask } from '../main/ets/expand/CycleExpander';
 
 function tpl(seq: string[], anchor: number): CycleTemplate {
   const t: CycleTemplate = { id: 't1', name: 'test', seq: seq, anchorEpochDay: anchor };
@@ -78,6 +78,63 @@ export default function cycleExpanderTest() {
     it('empty_seq_safe', 0, () => {
       const t = tpl([], 100);
       expect(expandCycle(t, [], 100, 3).length).assertEqual(0);
+    });
+
+    it('weekdays_filter_does_not_pause_natural_day_rotation', 0, () => {
+      const monday = Math.floor(Date.UTC(2026, 8, 28) / 86400000);
+      const t = tpl(['A', 'A', 'B', ''], monday);
+      t.weekdaysMask = 31;
+      expect(cycleShiftAt(t, monday + 5)).assertEqual(null);
+      expect(cycleShiftAt(t, monday + 6)).assertEqual(null);
+      expect(cycleShiftAt(t, monday + 7)).assertEqual(null); // 自然日第8天排休，不跳过周末
+      expect(cycleShiftAt(t, monday + 8)).assertEqual('A');
+      const rows = expandCycle(t, [], monday, 14);
+      for (let i = 0; i < rows.length; i++) {
+        expect(cycleWeekday(rows[i].epochDay) <= 5).assertTrue();
+        expect(rows[i].typeId).assertEqual(cycleShiftAt(t, rows[i].epochDay));
+      }
+    });
+
+    it('weekday_mask_never_suppresses_a_day_override', 0, () => {
+      const monday = Math.floor(Date.UTC(2026, 8, 28) / 86400000);
+      const t = tpl(['A'], monday);
+      t.weekdaysMask = 31;
+      const rows = expandCycle(t, [ov(monday + 5, 'X'), ov(monday + 4, null)], monday, 7);
+      expect(rows.length).assertEqual(5);
+      expect(rows[4].epochDay).assertEqual(monday + 5);
+      expect(rows[4].typeId).assertEqual('X');
+    });
+
+    it('missing_weekday_mask_keeps_old_templates_identical', 0, () => {
+      const old = tpl(['A', '', 'B'], 100);
+      const all = tpl(['A', '', 'B'], 100);
+      all.weekdaysMask = 127;
+      expect(JSON.stringify(expandCycle(old, [], 95, 28)))
+        .assertEqual(JSON.stringify(expandCycle(all, [], 95, 28)));
+    });
+
+    it('weekday_normalization_and_negative_epoch_days', 0, () => {
+      expect(cycleWeekday(0)).assertEqual(4); // 1970-01-01 周四
+      expect(cycleWeekday(-3)).assertEqual(1);
+      expect(cycleWeekday(-4)).assertEqual(7);
+      expect(cycleWeekdaysMask()).assertEqual(127);
+      expect(cycleWeekdaysMask(Number.NaN)).assertEqual(127);
+      expect(cycleWeekdaysMask(-1)).assertEqual(127);
+      expect(cycleWeekdaysMask(128)).assertEqual(127);
+      expect(cycleWeekdaysMask(1.5)).assertEqual(127);
+      expect(cycleWeekdaysMask(0)).assertEqual(0);
+    });
+
+    it('weekend_only_and_empty_selection_have_consistent_preview', 0, () => {
+      const t = tpl(['A'], -3); // 周一
+      t.weekdaysMask = 96;
+      const rows = expandCycle(t, [], -3, 7);
+      expect(rows.length).assertEqual(2);
+      expect(rows[0].epochDay).assertEqual(2);
+      expect(rows[1].epochDay).assertEqual(3);
+      t.weekdaysMask = 0;
+      expect(expandCycle(t, [], -3, 7).length).assertEqual(0);
+      expect(cycleShiftAt(t, -3)).assertEqual(null);
     });
   });
 }

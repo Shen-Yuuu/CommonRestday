@@ -4,17 +4,19 @@ import {
   ScheduleRepo, SettingsStore
 } from 'data';
 import {
-  AgcPairingClient, CLOUD_LOCAL, CLOUD_NETWORK, CloudApiError, newRequestId, PairKeyStore, PairSession
+  AgcPairingClient, CLOUD_LOCAL, CLOUD_NETWORK, CloudApiError, EncryptedPayload,
+  newRequestId, PairKeyStore, PairSession
 } from 'cloud';
 import { Logger } from 'commons';
 import { FeatureFlags } from '../config/FeatureFlags';
 import { ScheduleUseCase } from './ScheduleUseCase';
 import { ShareLevelReader } from './ShareLevelReader';
+import { SecureLifecycle } from './SecureLifecycle';
 import { PlanProjectionCleanupService } from './PlanProjectionCleanupService';
 import {
   addCleanupReport, clearAllMessageOf, emptyCleanupReport
 } from '../model/PlanFlow';
-import { horizonError, horizonFromStore, isCrossMidnight, rhythmError, toMinutes } from '../model/RhythmRules';
+import { horizonError, horizonFromStore, rhythmError, toMinutes } from '../model/RhythmRules';
 import {
   decodeSyncState, shareLevelFromStore, SHARE_LEVEL_UNKNOWN, SYNC_STATE_OK, SyncState
 } from '../model/CloudSyncRules';
@@ -31,6 +33,8 @@ const HEARTBEAT_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export interface SettingsResult {
   ok: boolean;
   message: string;
+  /** 只有邀请方查询到待确认申请、且本机持有加密确认凭据时才为 true。 */
+  approvalRequired?: boolean;
 }
 
 /** 邀请码结果：成功后页面要展示 6 位码，失败时只有提示语。 */
@@ -176,7 +180,7 @@ export class ProfileSettingsService {
     p.minSlotMin = input.minSlotMin;
     try {
       await SettingsStore.setParams(p);
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
@@ -218,7 +222,7 @@ export class ProfileSettingsService {
     };
     try {
       await SettingsStore.savePartnerProfile(profile);
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
@@ -230,7 +234,7 @@ export class ProfileSettingsService {
     try {
       await SettingsStore.clearPartnerProfile();
       await ScheduleRepo.deletePartnerData();
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
     } catch (e) {
       return fail('删除失败：' + (e as Error).message);
     }
@@ -289,7 +293,7 @@ export class ProfileSettingsService {
     }
     try {
       await SettingsStore.setShareLevel(level);
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
     } catch (e) {
       return fail('保存失败：' + (e as Error).message);
     }
@@ -318,6 +322,28 @@ export class ProfileSettingsService {
     }
   }
 
+  static hasLocalInviteProof(): boolean {
+    try {
+      return SettingsStore.getInviteProof(SettingsStore.getPairId()) !== '';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** 云端已 ACTIVE 后释放短期凭据；两个清理动作互不阻断，也不把已成功的配对说成失败。 */
+  private static async releaseInviteProof(pairId: string): Promise<void> {
+    try {
+      await SettingsStore.clearInviteProof();
+    } catch (cleanupError) {
+      Logger.warn(TAG, 'invite proof envelope cleanup degraded');
+    }
+    try {
+      await PairKeyStore.dropInviteProof(pairId);
+    } catch (cleanupError) {
+      Logger.warn(TAG, 'invite proof alias cleanup degraded');
+    }
+  }
+
   /**
    * 云同步三态（协议 §3.4 末行）：「我的 · 伴侣与同步」的提示条与「今天还排不排得动推送」共用的读入口。
    * 偏好没就绪或串是脏值都回「已同步」= 提示条不出——假警报比漏报更贵，见 `decodeSyncState`。
@@ -329,18 +355,6 @@ export class ProfileSettingsService {
       const clean: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
       return clean;
     }
-  }
-
-  /**
-   * 加入方拿到的一次性确认凭据，等 TA 把它交回发起方（分享/二维码）。
-   * 只活在进程内存：落 Preferences 就违反"一次性凭据不持久化"（门禁 §4 第 3 条），
-   * 而宿主必须是比页面长寿的静态位，否则用户切个 Tab 回来就分享不出去了。
-   */
-  private static outboundToken: string = '';
-
-  /** 页面组分享链接用（`PairLink.build(token, 0)`）；空串就是还没有可分享的东西。 */
-  static getOutboundToken(): string {
-    return ProfileSettingsService.outboundToken;
   }
 
   /**
@@ -363,7 +377,7 @@ export class ProfileSettingsService {
       return '这次配对已经失效，重新配对一次就行；本机数据不受影响';
     }
     if (semantic === 'QUOTA_EXHAUSTED') {
-      return '今天的同步次数用完了，明天自动恢复';
+      return '云端提示今日次数已用尽，请等额度恢复后再操作';
     }
     if (semantic === 'SCHEMA_UNSUPPORTED') {
       return '云端版本和手机上的应用对不上，更新后再试';
@@ -372,7 +386,7 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 生成邀请码（发起方）：HUKS 身份密钥 → pairing-create（带公钥）→ 存 pairId → WAITING。
+   * 生成邀请码（发起方）：云端仅向本机返回确认凭据，HUKS 密封后才落 WAITING。
    * 关闭态一条请求都不发、一个别名都不建。
    */
   static async createInvite(): Promise<InviteResult> {
@@ -380,13 +394,36 @@ export class ProfileSettingsService {
       const blocked: InviteResult = { ok: false, code: '', message: FeatureFlags.cloudClosedMessage };
       return blocked;
     }
+    const setupEpoch = SecureLifecycle.anchor();
+    const setupPairId = SettingsStore.getPairId();
     try {
       const uid = await SettingsStore.getOrCreateUid();
       const publicKey = await PairKeyStore.ensureIdentity(uid);
       const session: PairSession = await new AgcPairingClient().createPairing(uid, publicKey);
+      if (setupEpoch !== SecureLifecycle.anchor() || setupPairId !== SettingsStore.getPairId()) {
+        return { ok: false, code: '', message: '配对已变化，原操作结果已忽略' };
+      }
+      if (session.status !== 'WAITING' || session.pairId === '' || !/^\d{6}$/.test(session.code)
+        || session.confirmToken.length < 22 || session.confirmToken.length > 128) {
+        return { ok: false, code: '', message: '配对服务版本不匹配，请更新云对象后再试' };
+      }
+      const oldPairId = SettingsStore.getPairId();
+      const proof = await PairKeyStore.sealInviteProof(session.pairId, session.confirmToken);
+      if (setupEpoch !== SecureLifecycle.anchor() || setupPairId !== SettingsStore.getPairId()) {
+        await PairKeyStore.dropInviteProof(session.pairId);
+        return { ok: false, code: '', message: '配对已变化，原操作结果已忽略' };
+      }
+      await SettingsStore.saveInviteProof(session.pairId, JSON.stringify(proof));
       await SettingsStore.savePairId(session.pairId);
       await SettingsStore.setPairState(PAIR_WAITING, '');
-      ProfileSettingsService.outboundToken = '';
+      if (oldPairId !== '' && oldPairId !== session.pairId) {
+        try {
+          await PairKeyStore.dropInviteProof(oldPairId);
+        } catch (cleanupError) {
+          // 新邀请已经落稳：旧别名清理失败不能把成功说成失败并诱导用户再生成一次。
+          Logger.warn(TAG, 'stale invite proof cleanup degraded');
+        }
+      }
       const r: InviteResult = { ok: true, message: '配对码已生成，发给 TA 吧', code: session.code };
       return r;
     } catch (e) {
@@ -397,10 +434,8 @@ export class ProfileSettingsService {
   }
 
   /**
-   * 输码加入（加入方）：pairing-join → **就地完成 ECDH 协商** → 存 pairId → PENDING_CONFIRM。
-   *
-   * 加入后不得立即视为已配对，也不得推任何快照（协议 §4.2）：本机停在 PENDING_CONFIRM，
-   * 直到发起方带着这条 confirmToken 走完 §4.3。token 交回发起方靠分享/扫码，本应用不代发。
+   * 输码加入（加入方）：pairing-join → ECDH → PENDING_CONFIRM。
+   * 确认凭据不发给加入方；它只需通知邀请方在本机检查并确认。
    */
   static async joinByCode(codeText: string): Promise<SettingsResult> {
     if (ProfileSettingsService.cloudBlocked()) {
@@ -410,43 +445,57 @@ export class ProfileSettingsService {
     if (code.length !== 6 || Number.isNaN(Number(code))) {
       return fail('请输入 TA 分享的 6 位配对码');
     }
+    const setupEpoch = SecureLifecycle.anchor();
+    const setupPairId = SettingsStore.getPairId();
     try {
       const uid = await SettingsStore.getOrCreateUid();
       const publicKey = await PairKeyStore.ensureIdentity(uid);
       const session: PairSession = await new AgcPairingClient().joinPairing(code, uid, publicKey);
+      if (setupEpoch !== SecureLifecycle.anchor() || setupPairId !== SettingsStore.getPairId()) return fail('配对已变化，原操作结果已忽略');
+      if (session.status !== 'PENDING_CONFIRM' || session.pairId === '' || session.confirmToken !== '') {
+        return fail('配对服务版本不匹配，请更新云对象后再试');
+      }
       // 协商失败就是没有钥匙：宁可不写 pairId，也不留下一个"显示已配对但永远同步不动"的态
       if (session.peerPublicKey === '') {
         return fail('TA 那边还没准备好，让 TA 重新生成配对码');
       }
       await PairKeyStore.agreeKey(uid, session.pairId, session.peerPublicKey);
+      if (setupEpoch !== SecureLifecycle.anchor() || setupPairId !== SettingsStore.getPairId()) {
+        await PairKeyStore.dropPairKey(session.pairId);
+        return fail('配对已变化，原操作结果已忽略');
+      }
       await SettingsStore.savePairId(session.pairId);
       await SettingsStore.setPairState(PAIR_PENDING, session.peerUid);
-      ProfileSettingsService.outboundToken = session.confirmToken;
+      await SettingsStore.setUnifiedPairConsent(session.pairId);
     } catch (e) {
       Logger.warn(TAG, 'joinPairing degraded: ' + (e as Error).message);
       return fail(ProfileSettingsService.degradedMessage(e));
     }
-    if (ProfileSettingsService.outboundToken === '') {
-      return ok('已加入，但这次没拿到确认用的链接：让 TA 用配对码重新发起一次');
-    }
-    return ok('已加入，把配对链接发给 TA，TA 确认后才开始同步');
+    return ok('加入申请已送达，请让生成配对码的 TA 点「检查配对状态」并确认');
   }
 
   /**
-   * 发起方确认（协议 §4.3）：只有在云端真的把会话转成 ACTIVE 之后才写 PAIRED。
-   * 协商双方各算一次：发起方在这里用加入方的公钥算出与对方同一个密钥。
+   * 发起方确认：凭据只能由创建邀请时的本机 HUKS 密文恢复，不接受页面或外部输入。
    */
-  static async confirmWithToken(confirmToken: string): Promise<SettingsResult> {
+  static async confirmPendingJoin(): Promise<SettingsResult> {
     if (ProfileSettingsService.cloudBlocked()) {
       return fail(FeatureFlags.cloudClosedMessage);
     }
     const pairId = SettingsStore.getPairId();
-    if (pairId === '' || confirmToken === '') {
-      return fail('现在没有要确认的配对');
+    const setupEpoch = SecureLifecycle.anchor();
+    const sealed = SettingsStore.getInviteProof(pairId);
+    if (pairId === '' || sealed === '') {
+      return fail('这次邀请没有本机确认凭据，请取消后重新生成配对码');
     }
     try {
+      const envelope = JSON.parse(sealed) as EncryptedPayload;
+      const confirmToken = await PairKeyStore.openInviteProof(pairId, envelope);
+      if (confirmToken === null || confirmToken.length < 22) {
+        return fail('本机确认凭据已不可用，请取消后重新生成配对码');
+      }
       const uid = await SettingsStore.getOrCreateUid();
       const session: PairSession = await new AgcPairingClient().confirmPairing(pairId, uid, confirmToken);
+      if (setupEpoch !== SecureLifecycle.anchor() || pairId !== SettingsStore.getPairId()) return fail('配对已变化，原确认结果已忽略');
       if (session.status !== 'ACTIVE') {
         return fail('云端还没确认这次配对，稍后再试');
       }
@@ -454,11 +503,16 @@ export class ProfileSettingsService {
         return fail('TA 那边还没准备好，重新配对一次');
       }
       await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
+      if (setupEpoch !== SecureLifecycle.anchor() || pairId !== SettingsStore.getPairId()) {
+        await PairKeyStore.dropPairKey(pairId);
+        return fail('配对已变化，原确认结果已忽略');
+      }
       await SettingsStore.setPairState(PAIRED, session.peerUid);
-      ProfileSettingsService.outboundToken = '';
+      await SettingsStore.setUnifiedPairConsent(pairId);
+      await ProfileSettingsService.releaseInviteProof(pairId);
       ScheduleUseCase.onScheduleChanged().catch(() => {
       });
-      return ok('配对完成，班表会按你选的等级加密同步');
+      return ok('确认完成，正在连接班表与共同计划');
     } catch (e) {
       Logger.warn(TAG, 'confirmPairing degraded: ' + (e as Error).message);
       return fail(ProfileSettingsService.degradedMessage(e));
@@ -476,27 +530,42 @@ export class ProfileSettingsService {
       return fail(FeatureFlags.cloudClosedMessage);
     }
     const pairId = SettingsStore.getPairId();
+    const epoch = SecureLifecycle.anchor();
     if (pairId === '') {
       return fail('还没有生成配对码，先生成一个');
     }
     try {
       const uid = await SettingsStore.getOrCreateUid();
       const session: PairSession = await new AgcPairingClient().pairStatus(pairId, uid);
+      if (pairId !== SettingsStore.getPairId() || epoch !== SecureLifecycle.anchor()) return fail('配对已变化，原检查结果已忽略');
       if (session.status === 'ACTIVE') {
         if (!await PairKeyStore.hasPairKey(pairId)) {
           if (session.peerPublicKey === '') {
             return fail('TA 那边还没准备好，重新配对一次');
           }
           await PairKeyStore.agreeKey(uid, pairId, session.peerPublicKey);
+          if (pairId !== SettingsStore.getPairId() || epoch !== SecureLifecycle.anchor()) {
+            await PairKeyStore.dropPairKey(pairId);
+            return fail('配对已变化，原检查结果已忽略');
+          }
         }
         await SettingsStore.setPairState(PAIRED, session.peerUid);
+        if (SettingsStore.getInviteProof(pairId) !== '') {
+          await ProfileSettingsService.releaseInviteProof(pairId);
+        }
         ScheduleUseCase.onScheduleChanged().catch(() => {
         });
         return ok('已经连上云端，班表会按你选的等级加密同步');
       }
       if (session.status === 'PENDING_CONFIRM') {
         await SettingsStore.setPairState(PAIR_PENDING, session.peerUid);
-        return ok('还在等 TA 确认：把配对链接发给 TA，确认后自动开始同步');
+        if (SettingsStore.getInviteProof(pairId) !== '') {
+          const pending: SettingsResult = {
+            ok: true, message: 'TA 已输入配对码，请在这台手机确认配对', approvalRequired: true
+          };
+          return pending;
+        }
+        return ok('还在等生成配对码的 TA 确认；请 TA 检查配对状态');
       }
       // WAITING / EXPIRED / REVOKED / 未知：本机跟着回落，不替云端谎报进度
       await SettingsStore.setPairState(session.status === 'WAITING' ? PAIR_WAITING : PAIR_NONE, '');
@@ -509,6 +578,7 @@ export class ProfileSettingsService {
 
   /** 取消等待中的配对：只清配对标记与别名，不动本机代录数据。 */
   static async cancelWaiting(): Promise<void> {
+    SecureLifecycle.invalidate();
     try {
       await ProfileSettingsService.forgetPair();
     } catch (e) {
@@ -518,7 +588,7 @@ export class ProfileSettingsService {
 
   /**
    * 本机配对痕迹的一次性清理：pairId、对方快照游标、最后一次有效快照信封、云同步三态、
-   * HUKS 协商别名、心跳游标、内存里的确认凭据。
+   * HUKS 协商别名、邀请证明别名与密文、心跳游标。
    * 身份别名（`crd-id-<uid>`）留着——它是这台设备的长期身份，下一轮配对还要用同一把公钥。
    *
    * 三态必须跟着清：「已降级」的语义是"排不动推送，直到某次拉成功"，留着它，
@@ -532,7 +602,10 @@ export class ProfileSettingsService {
    */
   private static async forgetPair(): Promise<void> {
     ScheduleUseCase.cancelMergedSync();
-    await PairKeyStore.dropPairKey(SettingsStore.getPairId());
+    const pairId = SettingsStore.getPairId();
+    await PairKeyStore.dropPairKey(pairId);
+    await PairKeyStore.dropInviteProof(pairId);
+    await SettingsStore.clearInviteProof();
     await SettingsStore.savePairId('');
     await SettingsStore.clearPairKey();
     await SettingsStore.setPartnerSnapVer(0);
@@ -540,7 +613,6 @@ export class ProfileSettingsService {
     await SettingsStore.setCloudSyncState('');
     await SettingsStore.setPairState(PAIR_NONE, '');
     await SettingsStore.setLastHeartbeatAt(0);
-    ProfileSettingsService.outboundToken = '';
   }
 
   /**
@@ -712,6 +784,11 @@ export class ProfileSettingsService {
    */
   static async unpair(): Promise<SettingsResult> {
     try {
+      // Stop setup before awaiting either revocation; cleanup itself remains enabled.
+      SecureLifecycle.invalidate();
+      await SettingsStore.setUnifiedPairConsent('');
+      const secure = await SecureLifecycle.disconnectPlans();
+      if (secure !== 'OK') return fail('共同计划连接尚未解除，本机配对已保留。请在网络恢复后重试');
       const sweep = await ProfileSettingsService.sweepCloudUnpair(true);
       if (sweep.refusedMessage !== '') {
         await ProfileSettingsService.rememberCloudDebt(sweep, true);
@@ -837,6 +914,13 @@ export class ProfileSettingsService {
    *    只有能补删的那一笔，话里才说"下次打开会自动再试"。
    */
   static async clearAllData(): Promise<SettingsResult> {
+    SecureLifecycle.beginClear();
+    try {
+      return await ProfileSettingsService.clearAllDataLocked();
+    } finally { SecureLifecycle.endClear(); }
+  }
+
+  private static async clearAllDataLocked(): Promise<SettingsResult> {
     const report = emptyCleanupReport();
     let calendarPurged = true;
     try {
@@ -857,7 +941,16 @@ export class ProfileSettingsService {
       const sweep = await ProfileSettingsService.sweepCloudUnpair(false);
       // 协商密钥要跟着一起毁：pairId 随 Preferences 清掉之后，HUKS 里那把别名就成了没人认领的钥匙
       await PairKeyStore.dropPairKey(SettingsStore.getPairId());
+      try {
+        await PairKeyStore.dropInviteProof(SettingsStore.getPairId());
+      } catch (cleanupError) {
+        // 清空本机数据是用户的即时处置权；别名删除故障不能阻断本地数据库与偏好清理。
+        Logger.warn(TAG, 'invite proof alias cleanup degraded during clear-all');
+      }
       await ScheduleRepo.clearAllData();
+      try { await SecureLifecycle.clearLocalKeys(); } catch {
+        Logger.warn(TAG, 'secure local key cleanup deferred; identifiers retained');
+      }
       await SettingsStore.clearAllSettings();
       await ProfileSettingsService.rememberCloudDebt(sweep, false);
       // 旧账回位，并把它并进报数：那句「还剩 N 份这台手机删不掉」数的是云上真实剩下的份数，

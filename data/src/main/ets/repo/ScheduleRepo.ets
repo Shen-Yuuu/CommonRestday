@@ -1,6 +1,7 @@
 import { relationalStore } from '@kit.ArkData';
 import {
-  Course, CycleTemplate, OWNER_ME, OWNER_PARTNER, PlanBlock, ScheduleOverride, ShiftType, Window, WindowChannel
+  Course, CycleTemplate, OWNER_ME, OWNER_PARTNER, PlanBlock, ScheduleOverride, ShiftType, Window, WindowChannel,
+  cycleWeekdaysMask, ShiftSegment, shiftError
 } from 'domain';
 import { Db } from '../db/Db';
 import { Logger } from 'commons';
@@ -51,6 +52,11 @@ const PLAN_COLUMNS = `SELECT id, title, kind, status, created_by, window_ref, st
         conflict_hint, my_event_id, reminder_id, updated_at, calendar_state, sync_state
       FROM plan`;
 
+interface CleanupProgress { flowId: string; authUid: string; pairId: string; phase: string; role?: string; }
+const WINDOW_CACHE_TIME_KEY: string = 'window_cache_computed_at_v1';
+const WINDOW_CACHE_POLICY_KEY: string = 'window_cache_policy_v1';
+const WINDOW_CACHE_POLICY: string = 'unassigned_free_v2';
+
 export class ScheduleRepo {
   /**
    * 事务包裹一批写入：要么全部落库，要么整批回滚。
@@ -77,6 +83,8 @@ export class ScheduleRepo {
   // ---------- 班次类型 ----------
 
   static async upsertShiftType(st: ShiftType, owner: string = OWNER_ME): Promise<void> {
+    const invalid = shiftError(st);
+    if (invalid !== '') throw new Error(invalid);
     const sql = `INSERT OR REPLACE INTO shift_type
       (id, owner, name, color, start_min, end_min, cross_day, commute_in_min, commute_out_min,
        recovery_min, night_mode, allow_activity, kind)
@@ -86,6 +94,7 @@ export class ScheduleRepo {
       st.commuteInMin, st.commuteOutMin, st.recoveryMin, st.nightMode,
       st.allowActivity ? 1 : 0, st.kind
     ]);
+    await ScheduleRepo.setMeta('shift_segments_v1:' + owner + ':' + st.id, JSON.stringify(st.segments ?? []));
   }
 
   /** 删除指定 owner 的班次类型（id + owner 双条件，防止跨 owner 误删）。 */
@@ -94,6 +103,7 @@ export class ScheduleRepo {
     pred.equalTo('id', id);
     pred.equalTo('owner', owner);
     await Db.get().delete(pred);
+    await Db.get().executeSql('DELETE FROM sync_meta WHERE k=?', ['shift_segments_v1:' + owner + ':' + id]);
   }
 
   static async listShiftTypes(owner: string = OWNER_ME): Promise<ShiftType[]> {
@@ -119,17 +129,27 @@ export class ScheduleRepo {
       out.push(st);
     }
     rs.close();
+    for (const st of out) {
+      const segments = await ScheduleRepo.getMeta('shift_segments_v1:' + owner + ':' + st.id);
+      if (segments !== '') {
+        st.segments = JSON.parse(segments) as ShiftSegment[];
+        if (!Array.isArray(st.segments) || shiftError(st) !== '') throw new Error('常用班次时段数据无法读取');
+      }
+    }
     return out;
   }
 
   // ---------- 循环模板 ----------
 
   static async saveTemplate(tpl: CycleTemplate, owner: string = OWNER_ME): Promise<void> {
-    const pred = new relationalStore.RdbPredicates('cycle_template');
-    pred.equalTo('owner', owner);
-    await Db.get().delete(pred);
-    const sql = 'INSERT INTO cycle_template (id, owner, name, seq, anchor_day) VALUES (?, ?, ?, ?, ?)';
-    await Db.get().executeSql(sql, [tpl.id, owner, tpl.name, tpl.seq.join(','), tpl.anchorEpochDay]);
+    await ScheduleRepo.runInTransaction(async (): Promise<void> => {
+      const pred = new relationalStore.RdbPredicates('cycle_template');
+      pred.equalTo('owner', owner);
+      await Db.get().delete(pred);
+      const sql = 'INSERT INTO cycle_template (id, owner, name, seq, anchor_day, weekdays_mask) VALUES (?, ?, ?, ?, ?, ?)';
+      await Db.get().executeSql(sql, [tpl.id, owner, tpl.name, tpl.seq.join(','), tpl.anchorEpochDay,
+        cycleWeekdaysMask(tpl.weekdaysMask)]);
+    });
   }
 
   static async getTemplate(owner: string = OWNER_ME): Promise<CycleTemplate | null> {
@@ -145,7 +165,8 @@ export class ScheduleRepo {
         id: rs.getString(rs.getColumnIndex('id')),
         name: rs.getString(rs.getColumnIndex('name')),
         seq: seq,
-        anchorEpochDay: anchor
+        anchorEpochDay: anchor,
+        weekdaysMask: cycleWeekdaysMask(rs.getLong(rs.getColumnIndex('weekdays_mask')))
       };
     }
     rs.close();
@@ -244,20 +265,59 @@ export class ScheduleRepo {
       pred.equalTo('owner', OWNER_PARTNER);
       await Db.get().delete(pred);
     }
+    await Db.get().executeSql('DELETE FROM sync_meta WHERE k=? OR k LIKE ?', ['weekly_roster_v1:PARTNER', 'shift_segments_v1:PARTNER:%']);
   }
 
   // ---------- 全量清空 ----------
 
-  /** 清空全部 8 张表的所有行（"清空我的全部数据"设置项调用；设置侧配合 SettingsStore.clearAllSettings）。 */
+  /** 清空业务表和共同计划本地缓存（设置侧配合 SettingsStore.clearAllSettings）。 */
   static async clearAllData(): Promise<void> {
+    try {
+    // Upgrade from v7 may have an existing setup but no ledger yet. Read outside the write transaction.
+    const rs = await Db.get().querySql('SELECT data_json FROM shared_pairing_setup WHERE id=1');
+    let raw = '';
+    try { if (rs.goToNextRow()) raw = rs.getString(rs.getColumnIndex('data_json')); }
+    finally { try { rs.close(); } catch (error) { throw error as Error; } }
+    let candidate: CleanupProgress | null = null;
+    try {
+      if (raw !== '' && raw.length <= 8192) {
+        const row = JSON.parse(raw) as CleanupProgress;
+        if (row !== null && /^[A-Za-z0-9_-]{1,128}$/.test(row.flowId) && row.phase !== 'REVOKED'
+          && typeof row.authUid === 'string' && row.authUid.length > 0 && row.authUid.length <= 256
+          && typeof row.pairId === 'string' && (row.pairId === '' || /^sp-[a-f0-9]{32}$/.test(row.pairId))) candidate = row;
+      }
+    } catch { /* Corrupt progress is non-authorizing; an existing session is retained below as REVIEW. */ }
     const tables: string[] = [
       'shift_type', 'cycle_template', 'schedule_override', 'course',
-      'term_config', 'plan', 'computed_window', 'sync_meta'
+      'term_config', 'plan', 'computed_window', 'sync_meta',
+      'shared_plan_session', 'shared_plan_cache', 'shared_plan_outgoing', 'shared_plan_source', 'shared_plan_wire',
+      'shared_plan_cursor', 'shared_plan_archive_vote',
+      'shared_pairing_setup'
     ];
-    const s = Db.get();
-    for (let i = 0; i < tables.length; i++) {
-      await s.executeSql(`DELETE FROM ${tables[i]}`);
-    }
+    await ScheduleRepo.runInTransaction(async () => {
+      try {
+      const s = Db.get();
+      if (candidate !== null) {
+        await s.executeSql(`INSERT INTO shared_pairing_cleanup(flow_id,auth_uid,pair_id,status)
+          SELECT ?,?,?,'LIVE' WHERE EXISTS (SELECT 1 FROM shared_pairing_setup WHERE data_json=?)
+          ON CONFLICT(flow_id) DO UPDATE SET auth_uid=excluded.auth_uid,pair_id=excluded.pair_id
+          WHERE shared_pairing_cleanup.status='LIVE'`, [candidate.flowId, candidate.authUid, candidate.pairId, raw]);
+      }
+      // A session without a setup record still needs a visible, non-authorizing cleanup debt.
+      await s.executeSql(`INSERT OR IGNORE INTO shared_pairing_cleanup(flow_id,auth_uid,pair_id,status)
+        SELECT flow_id,'','','REVIEW' FROM shared_pairing_setup`);
+      await s.executeSql(`INSERT OR IGNORE INTO shared_pairing_cleanup(flow_id,auth_uid,pair_id,status)
+        SELECT generation,'',pair_id,'REVIEW' FROM shared_plan_session`);
+      await s.executeSql(`UPDATE shared_pairing_cleanup SET status=CASE
+        WHEN auth_uid='' THEN 'REVIEW' WHEN pair_id='' THEN 'UNRESOLVED' ELSE 'WAITING' END WHERE status='LIVE'`);
+      if (candidate !== null && candidate.role === 'CREATOR' && candidate.pairId === '') {
+        await s.executeSql(`UPDATE shared_pairing_cleanup SET status='UNRESOLVED_CREATE'
+          WHERE flow_id=? AND auth_uid=? AND status='UNRESOLVED'`, [candidate.flowId, candidate.authUid]);
+      }
+      for (const table of tables) await s.executeSql(`DELETE FROM ${table}`);
+      } catch (error) { throw error as Error; }
+    });
+    } catch (error) { throw error as Error; }
   }
 
   // ---------- 学期配置 ----------
@@ -368,6 +428,12 @@ export class ScheduleRepo {
     return ScheduleRepo.queryPlans(sql);
   }
 
+  /** Snapshot input excludes shared projections BEFORE intervals are merged. Local computation still includes them. */
+  static async listSnapshotPlans(): Promise<PlanRow[]> {
+    return ScheduleRepo.queryPlans(PLAN_COLUMNS + ` WHERE status <> 'CANCELLED'
+      AND NOT EXISTS (SELECT 1 FROM shared_plan_source WHERE local_id=plan.id) ORDER BY start_min ASC`);
+  }
+
   /**
    * 需要清扫"系统侧残留"的计划（**含 CANCELLED**），按开始时间升序。
    *
@@ -400,42 +466,45 @@ export class ScheduleRepo {
   }
 
   private static async queryPlans(sql: string): Promise<PlanRow[]> {
-    const rs = await Db.get().querySql(sql);
-    const out: PlanRow[] = [];
-    while (rs.goToNextRow()) {
-      out.push(ScheduleRepo.planRowOf(rs));
-    }
-    rs.close();
-    return out;
+    try {
+      const rs = await Db.get().querySql(sql);
+      try {
+        const out: PlanRow[] = [];
+        while (rs.goToNextRow()) out.push(ScheduleRepo.planRowOf(rs));
+        return out;
+      } finally { rs.close(); }
+    } catch (e) { throw e as Error; }
   }
 
   /** 计划行读取：两处分站共用，NULL 兜底与 DDL 默认一致（迁移补列后旧行为默认值）。 */
   private static planRowOf(rs: relationalStore.ResultSet): PlanRow {
-    const hintIdx = rs.getColumnIndex('conflict_hint');
-    const evIdx = rs.getColumnIndex('my_event_id');
-    const ridIdx = rs.getColumnIndex('reminder_id');
-    const cbIdx = rs.getColumnIndex('created_by');
-    const wrIdx = rs.getColumnIndex('window_ref');
-    const uaIdx = rs.getColumnIndex('updated_at');
-    const csIdx = rs.getColumnIndex('calendar_state');
-    const ssIdx = rs.getColumnIndex('sync_state');
-    const p: PlanRow = {
-      id: rs.getString(rs.getColumnIndex('id')),
-      title: rs.getString(rs.getColumnIndex('title')),
-      kind: rs.getString(rs.getColumnIndex('kind')),
-      status: rs.getString(rs.getColumnIndex('status')),
-      createdBy: rs.isColumnNull(cbIdx) ? 'ME' : rs.getString(cbIdx),
-      windowRef: rs.isColumnNull(wrIdx) ? '' : rs.getString(wrIdx),
-      start: rs.getLong(rs.getColumnIndex('start_min')),
-      end: rs.getLong(rs.getColumnIndex('end_min')),
-      conflictHint: rs.isColumnNull(hintIdx) ? '' : rs.getString(hintIdx),
-      myEventId: rs.isColumnNull(evIdx) ? '' : rs.getString(evIdx),
-      reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx),
-      updatedAt: rs.isColumnNull(uaIdx) ? 0 : rs.getLong(uaIdx),
-      calendarState: rs.isColumnNull(csIdx) ? 'NOT_REQUESTED' : rs.getString(csIdx),
-      syncState: rs.isColumnNull(ssIdx) ? 'LOCAL_ONLY' : rs.getString(ssIdx)
-    };
-    return p;
+    try {
+      const hintIdx = rs.getColumnIndex('conflict_hint');
+      const evIdx = rs.getColumnIndex('my_event_id');
+      const ridIdx = rs.getColumnIndex('reminder_id');
+      const cbIdx = rs.getColumnIndex('created_by');
+      const wrIdx = rs.getColumnIndex('window_ref');
+      const uaIdx = rs.getColumnIndex('updated_at');
+      const csIdx = rs.getColumnIndex('calendar_state');
+      const ssIdx = rs.getColumnIndex('sync_state');
+      const p: PlanRow = {
+        id: rs.getString(rs.getColumnIndex('id')),
+        title: rs.getString(rs.getColumnIndex('title')),
+        kind: rs.getString(rs.getColumnIndex('kind')),
+        status: rs.getString(rs.getColumnIndex('status')),
+        createdBy: rs.isColumnNull(cbIdx) ? 'ME' : rs.getString(cbIdx),
+        windowRef: rs.isColumnNull(wrIdx) ? '' : rs.getString(wrIdx),
+        start: rs.getLong(rs.getColumnIndex('start_min')),
+        end: rs.getLong(rs.getColumnIndex('end_min')),
+        conflictHint: rs.isColumnNull(hintIdx) ? '' : rs.getString(hintIdx),
+        myEventId: rs.isColumnNull(evIdx) ? '' : rs.getString(evIdx),
+        reminderId: rs.isColumnNull(ridIdx) ? -1 : rs.getLong(ridIdx),
+        updatedAt: rs.isColumnNull(uaIdx) ? 0 : rs.getLong(uaIdx),
+        calendarState: rs.isColumnNull(csIdx) ? 'NOT_REQUESTED' : rs.getString(csIdx),
+        syncState: rs.isColumnNull(ssIdx) ? 'LOCAL_ONLY' : rs.getString(ssIdx)
+      };
+      return p;
+    } catch (e) { throw e as Error; }
   }
 
   // ---------- 窗口缓存 ----------
@@ -462,6 +531,11 @@ export class ScheduleRepo {
           [w.start, w.end, w.durationMin, w.tags.join('|'), computedAt, w.channel]);
       }
       await s.executeSql('DELETE FROM computed_window WHERE computed_at < ?', [computedAt]);
+      // 零窗口同样是计算成功；完成时间与整批窗口一起提交或回滚。
+      await s.executeSql('INSERT OR REPLACE INTO sync_meta (k, v) VALUES (?, ?)',
+        [WINDOW_CACHE_TIME_KEY, String(computedAt)]);
+      await s.executeSql('INSERT OR REPLACE INTO sync_meta (k, v) VALUES (?, ?)',
+        [WINDOW_CACHE_POLICY_KEY, WINDOW_CACHE_POLICY]);
     });
   }
 
@@ -488,11 +562,16 @@ export class ScheduleRepo {
   }
 
   /**
-   * 窗口缓存的生成时刻（ms）；缓存为空返回 0。
+   * 最近一次成功计算的时刻（ms）；零窗口仍有时刻，未计算才返回 0。
+   * 旧规则缓存必须先重算；完成标记、窗口时间和计算规则版本在同一查询读取。
    * MAX() 在空表上仍返回一行 NULL，必须先判空列再取值。
    */
   static async windowCacheComputedAt(): Promise<number> {
-    const rs = await Db.get().querySql('SELECT MAX(computed_at) AS computed_at FROM computed_window');
+    const rs = await Db.get().querySql(`SELECT MAX(computed_at) AS computed_at FROM (
+      SELECT computed_at FROM computed_window
+      UNION ALL SELECT CAST(v AS INTEGER) AS computed_at FROM sync_meta WHERE k = ?)
+      WHERE EXISTS (SELECT 1 FROM sync_meta WHERE k = ? AND v = ?)`,
+      [WINDOW_CACHE_TIME_KEY, WINDOW_CACHE_POLICY_KEY, WINDOW_CACHE_POLICY]);
     let v = 0;
     if (rs.goToNextRow() && !rs.isColumnNull(0)) {
       v = rs.getLong(0);

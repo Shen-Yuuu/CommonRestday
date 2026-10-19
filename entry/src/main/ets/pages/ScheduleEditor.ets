@@ -1,11 +1,11 @@
-import { router } from '@kit.ArkUI';
-import { HdsColorPicker, HdsColorPickerTabType } from '@kit.UIDesignKit';
+import { LengthMetrics, router } from '@kit.ArkUI';
+import { HdsColorPicker, HdsColorPickerTabType, HdsColorPickerOptions } from '@kit.UIDesignKit';
 import { util } from '@kit.ArkTS';
-import { OWNER_ME, ShiftType, hhmmToMin, minToHHmm } from 'domain';
+import { OWNER_ME, ShiftType, ShiftSegment, shiftSegments, shiftError, minToHHmm } from 'domain';
 import { ScheduleRepo } from 'data';
-import { DateLabel } from 'commons';
 import { ScheduleCommandService, ScheduleUseCase, NIGHT_MODE_LABELS, nightModeHint, nightModeIndex, nightModeOf } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
+import { TimeSegmentsEditor } from '../component/TimeSegmentsEditor';
 import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
@@ -23,6 +23,10 @@ import { LatestLanding } from '../util/LatestLanding';
  * 所以换色不再需要手工核对比度。八色在新判据下仍全部落在暖白（2.99–4.76:1，`SwatchInkTest` 逐色钉住）。
  */
 const COLORS: string[] = ['#EF6F42', '#4E97DB', '#9A6BDC', '#F0568C', '#5B6ACF', '#3A9E6E', '#C08A2A', '#8E8397'];
+const COLOR_PICKER_OPTIONS: HdsColorPickerOptions = {
+  circleRadius: 13,
+  tabs: [HdsColorPickerTabType.GRID, HdsColorPickerTabType.SPECTRUM, HdsColorPickerTabType.SLIDERS]
+};
 
 /** 夜班判定三档（D-33）：文字与档位来自 feature/model/RhythmRules，顺序即存库值。 */
 const NIGHT_MODE_OPTIONS: SelectOption[] = NIGHT_MODE_LABELS.map((label: string): SelectOption => {
@@ -42,15 +46,15 @@ struct ScheduleEditor {
   /** 编辑中的是否为已落库班次（false = 新增未保存，删除按钮退化为取消）。 */
   @State persisted: boolean = false;
   @State name: string = '';
-  @State startText: string = '09:00';
-  @State endText: string = '18:00';
+  @State segments: ShiftSegment[] = [{ startMin: 540, endMin: 1080, crossDay: false }];
   @State commuteIn: string = '30';
   @State commuteOut: string = '30';
   @State recovery: string = '0';
   @State nightIdx: number = 0;
   @State color: string = COLORS[0];
-  // 自定义取色 sheet（HdsColorPicker，API 26）
-  @State colorSheetVisible: boolean = false;
+  @State private editorVisible: boolean = false;
+  @State private pickerInitialColor: string = COLORS[0];
+  @State private submitting: boolean = false;
   /**
    * 并发读数闸门（D-51）：删除/保存的本地收尾各读一次列表，连点两次删除时先起的那读晚落地，
    * 调色板会把已经删掉的那个班次画回来（D-40 之后键吃进了显示字段，所以它真会重画）。
@@ -82,27 +86,41 @@ struct ScheduleEditor {
   }
 
   edit(st: ShiftType): void {
+    if (this.submitting) {
+      return;
+    }
     this.editing = st;
     this.persisted = this.isPersisted(st.id);
     this.name = st.name;
-    this.startText = minToHHmm(st.startMin);
-    this.endText = minToHHmm(st.endMin);
+    this.segments = shiftSegments(st).map((s: ShiftSegment): ShiftSegment => {
+      return { startMin: s.startMin, endMin: s.endMin, crossDay: s.crossDay };
+    });
     this.commuteIn = '' + st.commuteInMin;
     this.commuteOut = '' + st.commuteOutMin;
     this.recovery = '' + st.recoveryMin;
     this.nightIdx = nightModeIndex(st.nightMode);
     this.color = st.color;
+    this.pickerInitialColor = st.color;
+    this.editorVisible = true;
+  }
+
+  private closeEditor(): void {
+    if (this.submitting) {
+      return;
+    }
+    this.editorVisible = false;
+    this.editing = null;
   }
 
   /**
    * 行 key 带上屏内显示的每一个字段（D-40，与 D-30 的 PlansView.cardKey 同一族）。
    * 只按 id 做 key 时，保存后 reload 换掉的是数组、不是节点，这一行仍念着改值前的旧数字；
-   * 行内编辑器是 ForEach 之外的独立 ListItem，重建列表行不会碰到它。
+   * 编辑器在独立 sheet 中，重建列表行不会重置编辑草稿。
    */
   rowKey(st: ShiftType): string {
     return st.id + '-' + st.name + '-' + st.color + '-' + st.startMin + '-' + st.endMin
       + '-' + (st.crossDay ? 1 : 0) + '-' + st.commuteInMin + '/' + st.commuteOutMin
-      + '-' + st.recoveryMin;
+      + '-' + st.recoveryMin + '-' + JSON.stringify(st.segments || []);
   }
 
   /** id 是否已存在于列表（区分"编辑已保存班次"与"新增未保存"）。 */
@@ -127,16 +145,19 @@ struct ScheduleEditor {
 
   /** 删除当前编辑的班次（已落库）；新增未保存的"删除"退化为取消编辑。 */
   askDelete(): void {
+    if (this.submitting) {
+      return;
+    }
     if (this.editing == null) {
       return;
     }
     if (!this.persisted) {
-      this.editing = null;
+      this.closeEditor();
       return;
     }
     const target = this.editing;
     askConfirm(this.getUIContext(), {
-      message: '删除班次「' + target.name + '」？循环模板中引用该班次的格子会显示为空。',
+      message: '删除班次「' + target.name + '」？已保存的周班表不会改变；旧循环中的引用会失效。',
       confirmText: '删除',
       onConfirm: () => {
         this.doDelete(target.id);
@@ -147,7 +168,7 @@ struct ScheduleEditor {
   /** 删除班次二次确认（列表行级入口，与编辑表单内删除并行）。 */
   askDeleteRow(st: ShiftType): void {
     askConfirm(this.getUIContext(), {
-      message: '删除班次「' + st.name + '」？循环模板中引用该班次的格子会显示为空。',
+      message: '删除班次「' + st.name + '」？已保存的周班表不会改变；旧循环中的引用会失效。',
       confirmText: '删除',
       onConfirm: () => {
         this.doDelete(st.id);
@@ -156,26 +177,29 @@ struct ScheduleEditor {
   }
 
   async doDelete(id: string): Promise<void> {
+    if (this.submitting) {
+      return;
+    }
+    this.submitting = true;
     const r = await ScheduleCommandService.removeShiftType(id, this.owner);
+    this.submitting = false;
     toastCommand(r, '已删除');
     if (r.changed) {
-      this.editing = null;
+      this.closeEditor();
       this.reload();
     }
   }
 
   async save(): Promise<void> {
-    const start = hhmmToMin(this.startText);
-    const end = hhmmToMin(this.endText);
-    if (this.name === '' || start < 0 || end < 0) {
-      appToast('名称要填，时间写成 08:00 这样');
+    if (this.submitting) {
       return;
     }
+    if (this.segments.length === 0) { appToast('请添加工作时段'); return; }
     const st: ShiftType = {
       id: this.editing != null ? this.editing.id : util.generateRandomUUID(),
       name: this.name, color: this.color,
-      startMin: start, endMin: end,
-      crossDay: end <= start,
+      startMin: this.segments[0].startMin, endMin: this.segments[0].endMin,
+      crossDay: this.segments[0].crossDay, segments: this.segments,
       commuteInMin: this.toInt(this.commuteIn, 0),
       commuteOutMin: this.toInt(this.commuteOut, 0),
       recoveryMin: this.toInt(this.recovery, 0),
@@ -183,12 +207,21 @@ struct ScheduleEditor {
       allowActivity: false,
       kind: 'WORK'
     };
+    this.submitting = true;
+    const invalid = shiftError(st);
+    if (invalid !== '') { this.submitting = false; appToast(invalid); return; }
     const r = await ScheduleCommandService.saveShiftType(st, this.owner);
+    this.submitting = false;
     if (r.changed) {
-      this.editing = null;
+      this.closeEditor();
       this.reload();
     }
     toastCommand(r, '已保存');
+  }
+
+  private timesLabel(st: ShiftType): string {
+    return shiftSegments(st).map((s: ShiftSegment): string =>
+      minToHHmm(s.startMin) + '–' + minToHHmm(s.endMin) + (s.crossDay || s.endMin <= s.startMin ? ' 次日' : '')).join(' · ');
   }
 
   toInt(text: string, dft: number): number {
@@ -204,7 +237,7 @@ struct ScheduleEditor {
           Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
         }.onClick(() => router.back())
         Blank()
-        Text(this.owner === OWNER_ME ? '班次类型' : 'TA 的班次类型').fontSize(17).fontWeight(FontWeight.Bold)
+        Text(this.owner === OWNER_ME ? '常用班次' : 'TA 的常用班次').fontSize(17).fontWeight(FontWeight.Bold)
         Blank()
         Text('+ 新增').fontSize(15).fontColor($r('app.color.brand_pink')).onClick(() => this.newOne())
       }
@@ -230,10 +263,7 @@ struct ScheduleEditor {
               Circle().width(14).height(14).fill(st.color)
               Column({ space: 2 }) {
                 Text(st.name).fontSize(15).fontWeight(FontWeight.Medium)
-                Text(minToHHmm(st.startMin) + '–' + minToHHmm(st.endMin)
-                  + (st.crossDay ? '（次日）' : '')
-                  + ' · 通勤 ' + st.commuteInMin + '/' + st.commuteOutMin
-                  + '分 · 恢复 ' + st.recoveryMin + '分')
+                Text(this.timesLabel(st))
                   .fontSize(11).fontColor($r('app.color.text_tertiary'))
               }.alignItems(HorizontalAlign.Start)
               Blank()
@@ -256,116 +286,10 @@ struct ScheduleEditor {
           })
         }, (st: ShiftType) => this.rowKey(st))
 
-        if (this.editing != null) {
-          ListItem() {
-            Column({ space: 8 }) {
-              Text('编辑：' + this.editing.name).fontSize(13).fontColor($r('app.color.brand_pink'))
-              Row({ space: 8 }) {
-                Text('名称').fontSize(13)
-                TextInput({ text: this.name }).onChange((v: string) => this.name = v)
-                  .layoutWeight(1).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-              }.width('100%')
-              Row({ space: 8 }) {
-                Text('上班').fontSize(13)
-                TextInput({ text: this.startText }).onChange((v: string) => this.startText = v)
-                  .width(76).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-                Text('下班').fontSize(13)
-                TextInput({ text: this.endText }).onChange((v: string) => this.endText = v)
-                  .width(76).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-                Text('跨天自动识别').fontSize(10).fontColor($r('app.color.text_tertiary'))
-              }.width('100%')
-              Row({ space: 8 }) {
-                Text('前通勤(分)').fontSize(13)
-                TextInput({ text: this.commuteIn }).onChange((v: string) => this.commuteIn = v).width(56).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-                Text('后通勤(分)').fontSize(13)
-                TextInput({ text: this.commuteOut }).onChange((v: string) => this.commuteOut = v).width(56).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-              }.width('100%')
-              // D-35：三对「标签＋输入框」同排时 Row 不折行，第三枚被推到屏外只剩 5 px。
-              // 恢复值是 recovery 分钟数的唯一入口，必须单独占一排才够得着。
-              Row({ space: 8 }) {
-                Text('夜班恢复(分)').fontSize(13)
-                TextInput({ text: this.recovery }).onChange((v: string) => this.recovery = v).width(56).height(42)
-                  .borderRadius(DesignTokens.radiusInput)
-                  .border({ width: 1.5, color: DesignTokens.primaryBorder })
-                  .backgroundColor(DesignTokens.card)
-              }.width('100%')
-              Row({ space: 8 }) {
-                Text('夜班判定').fontSize(13)
-                Select(NIGHT_MODE_OPTIONS)
-                  .selected(this.nightIdx)
-                  .value(NIGHT_MODE_LABELS[this.nightIdx])
-                  .fontColor($r('app.color.text_primary'))
-                  .font({ size: 13 })
-                  .onSelect((idx: number, text: string) => {
-                    this.nightIdx = idx;
-                  })
-                Text(nightModeHint(this.nightIdx))
-                  .fontSize(10).fontColor($r('app.color.text_tertiary')).layoutWeight(1)
-              }.width('100%')
-              Row({ space: 10 }) {
-                ForEach(COLORS, (c: string) => {
-                  Circle().width(26).height(26).fill(c)
-                    .stroke(c === this.color ? $r('app.color.text_primary') : c).strokeWidth(2)
-                    .onClick(() => this.color = c)
-                }, (c: string) => c)
-                // 自定义颜色：打开 HdsColorPicker（网格 / 光谱 / 滑块）
-                // Circle 默认 fill 是纯黑，不显式置透明会盖住 linearGradient（实测岛心 #000000）。
-                Circle().width(26).height(26)
-                  .fill(Color.Transparent)
-                  .linearGradient({
-                    angle: 135,
-                    colors: [['#F0568C', 0], ['#4E97DB', 0.5], ['#3A9E6E', 1]]
-                  })
-                  .stroke($r('app.color.text_disabled')).strokeWidth(2)
-                  .onClick(() => {
-                    this.colorSheetVisible = true;
-                  })
-              }.width('100%')
-              Row({ space: 10 }) {
-                Button('保存班次').layoutWeight(1).height(44).borderRadius(22)
-                  .backgroundColor($r('app.color.brand_pink'))
-                  .fontWeight(FontWeight.Bold)
-                  .shadow(DesignTokens.jelly(DesignTokens.primaryDeep, DesignTokens.jellyDepth))
-                  .onClick(() => this.save())
-                Button(this.persisted ? '删除' : '取消')
-                  .layoutWeight(1).height(44).borderRadius(22)
-                  .backgroundColor($r('app.color.fill_weak')).fontColor(this.persisted ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
-                  .fontWeight(FontWeight.Bold)
-                  .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
-                  .onClick(() => this.askDelete())
-              }.width('100%')
-            }
-            .width('100%').padding(12).borderRadius(DesignTokens.cardRadius(false))
-            .backgroundColor($r('app.color.fill_weakest'))
-            .shadow(DesignTokens.cardShadow())
-          }
-        }
 
-        // D-12 页脚。原型那句「跨天自动识别为夜班」与代码不符（判定看的是夜班窗口相交，见
-        // AvailabilityBuilder.isNightShift），所以这里念规则本身而不是抄文案。
         ListItem() {
-          Column({ space: 4 }) {
-            Text('夜班看的是班次时段和夜班窗口有没有重叠，跨天不等于夜班。')
-              .fontSize(11).fontColor($r('app.color.text_hint'))
-            Text('「夜班恢复」填 0 就不生成恢复块；班次删光后，内置的六个班次会回来。')
-              .fontSize(11).fontColor($r('app.color.text_hint'))
-          }
-          .alignItems(HorizontalAlign.Start).width('100%').padding({ top: 4 })
+          Text('休息间隔不占用；修改班次不影响已排日期。')
+            .fontSize(11).fontColor($r('app.color.text_hint')).width('100%').padding({ top: 4 })
         }
       }
       .padding(12).width('100%').layoutWeight(1)
@@ -373,36 +297,135 @@ struct ScheduleEditor {
     // D-38：根容器停在安全区里侧，状态栏与导航条那两条露出窗口默认底色；扩绘制区消掉白条。
     .width('100%').height('100%').linearGradient(DesignTokens.pageGradient())
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .bindSheet($$this.colorSheetVisible, this.colorPickerSheet(), {
-      detents: [SheetSize.LARGE],
+    .bindSheet($$this.editorVisible, this.editorSheet(), {
+      detents: ['72%'],
       dragBar: false,
-      showClose: true,
+      showClose: false,
       // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
       radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
-      blurStyle: BlurStyle.Thick,
-      maskColor: DesignTokens.scrim
+      backgroundColor: Color.Transparent,
+      blurStyle: BlurStyle.NONE,
+      maskColor: DesignTokens.scrim,
+      onWillDismiss: (action: DismissSheetAction) => {
+        if (!this.submitting) {
+          action.dismiss();
+          this.closeEditor();
+        }
+      }
     })
   }
 
-  /** 自定义取色 sheet：HdsColorPicker 三模式（网格 / 光谱 / 滑块），选色即回填并收回。 */
   @Builder
-  colorPickerSheet() {
-    Column() {
-      HdsColorPicker({
-        initialColor: this.color,
-        onColorSelected: (c: string) => {
-          this.color = c;
-          this.colorSheetVisible = false;
-        },
-        initialFavoriteColors: COLORS,
-        options: {
-          tabs: [HdsColorPickerTabType.GRID, HdsColorPickerTabType.SPECTRUM, HdsColorPickerTabType.SLIDERS]
-        }
-      })
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.page_bg_warm'))
+  shiftForm() {
+    Column({ space: 12 }) {
+      Row({ space: 8 }) {
+        Text('名称').fontSize(DesignTokens.fontBody).fontColor(DesignTokens.textSecondary)
+        TextInput({ text: this.name }).onChange((v: string) => this.name = v)
+          .layoutWeight(1).constraintSize({ minHeight: 44 })
+          .borderRadius(DesignTokens.radiusInput)
+          .border({ width: 1.5, color: DesignTokens.primaryBorder })
+          .backgroundColor(DesignTokens.card).enabled(!this.submitting)
+          .accessibilityText('班次名称')
+      }.width('100%')
+      TimeSegmentsEditor({ segments: this.segments, editable: !this.submitting,
+        onChange: (segments: ShiftSegment[]) => { this.segments = segments; } })
+      Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) } }) {
+        Row({ space: 8 }) {
+          Text('上班通勤\n（分钟）').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+          TextInput({ text: this.commuteIn }).type(InputType.Number)
+            .onChange((v: string) => this.commuteIn = v)
+            .layoutWeight(1).constraintSize({ minWidth: 56, minHeight: 44 })
+            .borderRadius(DesignTokens.radiusInput).backgroundColor(DesignTokens.fillWeakest)
+            .enabled(!this.submitting).accessibilityText('上班前通勤分钟数')
+        }.layoutWeight(1).constraintSize({ minWidth: 136 })
+        Row({ space: 8 }) {
+          Text('下班通勤\n（分钟）').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+          TextInput({ text: this.commuteOut }).type(InputType.Number)
+            .onChange((v: string) => this.commuteOut = v)
+            .layoutWeight(1).constraintSize({ minWidth: 56, minHeight: 44 })
+            .borderRadius(DesignTokens.radiusInput).backgroundColor(DesignTokens.fillWeakest)
+            .enabled(!this.submitting).accessibilityText('下班后通勤分钟数')
+        }.layoutWeight(1).constraintSize({ minWidth: 136 })
+      }.width('100%')
+      Row({ space: 8 }) {
+        Text('夜班恢复（分钟）').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+        TextInput({ text: this.recovery }).type(InputType.Number)
+          .onChange((v: string) => this.recovery = v).layoutWeight(1)
+          .constraintSize({ minWidth: 56, minHeight: 44 })
+          .borderRadius(DesignTokens.radiusInput).backgroundColor(DesignTokens.fillWeakest)
+          .enabled(!this.submitting).accessibilityText('夜班恢复分钟数，零表示不额外计算')
+      }.width('100%')
+      Row({ space: 8 }) {
+        Text('夜班判定').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+        Select(NIGHT_MODE_OPTIONS).selected(this.nightIdx).value(NIGHT_MODE_LABELS[this.nightIdx])
+          .fontColor(DesignTokens.textPrimary).layoutWeight(1).enabled(!this.submitting)
+          .accessibilityText('夜班判定方式')
+          .onSelect((idx: number) => { this.nightIdx = idx; })
+      }.width('100%')
+      Text(nightModeHint(this.nightIdx)).fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+
+      Text('班次颜色').fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+      Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+        ForEach(COLORS, (c: string) => {
+          Row() {
+            Circle().width(26).height(26).fill(c)
+              .stroke(c === this.color ? DesignTokens.textPrimary : c).strokeWidth(2)
+          }.width(44).height(44).justifyContent(FlexAlign.Center)
+            .borderRadius(22).focusable(true)
+            .accessibilityText('班次颜色 ' + c).accessibilityChecked(c === this.color)
+            .clickEffect(DesignTokens.tapChip())
+            .onClick(() => {
+              if (!this.submitting) {
+                this.color = c;
+                this.pickerInitialColor = c;
+              }
+            })
+        }, (c: string) => c)
+        Stack({ alignContent: Alignment.Center }) {
+          HdsColorPicker({
+            initialColor: this.pickerInitialColor,
+            onColorSelected: (c: string) => {
+              if (this.editorVisible && !this.submitting) {
+                this.color = c;
+                this.pickerInitialColor = c;
+              }
+            },
+            initialFavoriteColors: COLORS,
+            options: COLOR_PICKER_OPTIONS
+          }).width(26).height(26).enabled(!this.submitting)
+            .accessibilityText('选择自定义班次颜色')
+        }.width(44).height(44)
+      }.width('100%')
+      Row({ space: 8 }) {
+        Circle().width(18).height(18).fill(this.color)
+        Text('当前颜色 ' + this.color).fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+      }
+      if (this.persisted) {
+        Button('删除这个班次').width('100%').height(44)
+          .backgroundColor(DesignTokens.fillWeak).fontColor(DesignTokens.danger)
+          .enabled(!this.submitting).onClick(() => this.askDelete())
+      }
+    }.width('100%').alignItems(HorizontalAlign.Start).padding({ bottom: 12 })
+  }
+
+  @Builder
+  editorSheet() {
+    Column({ space: 12 }) {
+      Text(this.persisted ? '编辑班次' : '新增班次')
+        .fontSize(DesignTokens.fontTitle).fontWeight(FontWeight.Bold).fontColor(DesignTokens.textPrimary)
+        .width('100%')
+      Scroll() {
+        this.shiftForm()
+      }.width('100%').layoutWeight(1).align(Alignment.TopStart).scrollBar(BarState.Off)
+      Row({ space: 10 }) {
+        Button('取消').layoutWeight(1).height(44).backgroundColor(DesignTokens.fillWeak)
+          .fontColor(DesignTokens.textPrimary).enabled(!this.submitting).onClick(() => this.closeEditor())
+        Button(this.submitting ? '保存中…' : '保存班次').layoutWeight(1).height(44)
+          .backgroundColor(DesignTokens.primary).fontColor(DesignTokens.heroText)
+          .enabled(!this.submitting).onClick(() => this.save())
+      }.width('100%')
+    }.width('100%').height('100%').padding(20).backgroundColor(DesignTokens.card)
+      .borderRadius({ topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet }).clip(true)
   }
 
   /** 左滑露出的"删除"按钮（红色，点击走二次确认）。 */

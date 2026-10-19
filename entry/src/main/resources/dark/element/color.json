@@ -25,6 +25,10 @@
       "value": "#3A2230"
     },
     {
+      "name": "share_selected_bg",
+      "value": "#472C42"
+    },
+    {
       "name": "brand_pink_border",
       "value": "#5A3A4C"
     },
@@ -47,6 +51,10 @@
     {
       "name": "text_hint",
       "value": "#7E6E85"
+    },
+    {
+      "name": "text_accent",
+      "value": "#FF9BBB"
     },
     {
       "name": "text_disabled",
@@ -329,12 +337,28 @@
       "value": "#2E2445"
     },
     {
+      "name": "page_grad_clear",
+      "value": "#002E2445"
+    },
+    {
       "name": "page_grad_mid",
       "value": "#241C3B"
     },
     {
       "name": "page_grad_bottom",
       "value": "#1B1430"
-    }
+    },
+    {
+      "name": "plan_success_action",
+      "value": "#237A50"
+    },
+    { "name": "plan_surface", "value": "#352944" },
+    { "name": "plan_accent", "value": "#B89AE8" },
+    { "name": "plan_ink", "value": "#F0E5FF" },
+    { "name": "plan_muted", "value": "#D1BFE3" },
+    { "name": "drawer_calendar_bg", "value": "#253247" },
+    { "name": "drawer_calendar_ink", "value": "#C8DCFA" },
+    { "name": "drawer_cancel_bg", "value": "#472937" },
+    { "name": "drawer_cancel_ink", "value": "#FFB6CE" }
   ]
 }

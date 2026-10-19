@@ -15,15 +15,18 @@ function hasLabel(v: ResourceStr): boolean {
 
 /**
  * 睡觉的休休：7 分甜把空态当情绪位，用它替掉 ○ 记号，静立不动效（原型 .empty-bunny）。
- * 空态在 StatePanel 和各页自绘卡片里都有，所以单独成件，两处共用同一份几何。
+ * 空态在 StatePanel 和各页自绘卡片里都有，所以单独成件，共用原造型的睡眠素材。
  */
 @Component
 export struct SleepBunny {
   build() {
     Stack({ alignContent: Alignment.TopEnd }) {
-      Image($r('app.media.mascot_bunny_sleep'))
+      Image($r('app.media.xiuxiu_sleep'))
         .width(76)
         .height(76)
+        .objectFit(ImageFit.Contain)
+        .sourceSize({ width: 304, height: 293 })
+        .draggable(false)
         // 吉祥物是装饰，下面两行文字才是状态说明
         .accessibilityLevel('no')
       Text('Z z…')

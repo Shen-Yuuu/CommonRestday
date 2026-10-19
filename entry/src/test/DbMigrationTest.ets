@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import {
-  MigrationDb, MigrationRunner, OWNER_KEY_CLAUSE, OWNER_SCOPED_TABLES, SCHEMA_VERSION, SCHEMA_VERSION_KEY
+  MigrationDb, MigrationRunner, OWNER_KEY_CLAUSE, OWNER_SCOPED_TABLES, SCHEMA_VERSION, SCHEMA_VERSION_KEY,
+  SHARED_PLAN_DDL
 } from 'data';
 
 /**
@@ -20,6 +21,7 @@ function key(table: string, column: string): string {
  * MigrationDb 内存替身：
  * - execute 记账所有语句（stmts），ADD COLUMN 额外改变列集合，且事务内只挂起、commit 才落地；
  * - canSelect 按 'SELECT <col> FROM <table> LIMIT 0' 解析后查表；
+ * - 查询按独立读连接处理，不看写事务尚未提交的结构；
  * - tableDDL 查 addTable 登记的建表原话，未登记的表返回空串；
  * - failPattern 命中时 execute 抛出，用于模拟迁移/清理中途失败。
  */
@@ -38,6 +40,8 @@ class FakeMigrationDb implements MigrationDb {
   rollbacks: number = 0;
   metaWrites: number = 0;
   failPattern: string = '';
+  readsInsideTx: number = 0;
+  failPostCommitProbe: boolean = false;
   private inTx: boolean = false;
   private pendingAlters: string[] = [];
   private pendingRenames: string[] = [];
@@ -136,16 +140,29 @@ class FakeMigrationDb implements MigrationDb {
   }
 
   async canSelect(sql: string): Promise<boolean> {
+    if (this.inTx) {
+      this.readsInsideTx++;
+    }
+    if (this.failPostCommitProbe && this.commits > 0
+      && sql === 'SELECT weekdays_mask FROM cycle_template LIMIT 0') {
+      return false;
+    }
     const parts: string[] = sql.split(' ');
     // SELECT <col> FROM <table> ...
     return this.hasColumn(parts[3], parts[1]);
   }
 
   async tableDDL(name: string): Promise<string> {
+    if (this.inTx) {
+      this.readsInsideTx++;
+    }
     return this.ddlOf(name);
   }
 
   async getMeta(k: string): Promise<string> {
+    if (this.inTx) {
+      this.readsInsideTx++;
+    }
     const i: number = this.metaKeys.indexOf(k);
     if (i < 0) {
       return '';
@@ -224,6 +241,11 @@ function v2Db(): FakeMigrationDb {
   db.addTable('plan', ['updated_at', 'calendar_state', 'sync_state']);
   db.addTable('computed_window', ['computed_at', 'channel']);
   addOwnerScopedTables(db, true);
+  db.addTable('cycle_template', ['weekdays_mask']);
+  for (const ddl of SHARED_PLAN_DDL) {
+    const name = ddl.slice('CREATE TABLE IF NOT EXISTS '.length, ddl.indexOf(' ('));
+    db.addTable(name, [], ddl);
+  }
   return db;
 }
 
@@ -357,8 +379,8 @@ export default function dbMigrationTest() {
       await db.setMeta(SCHEMA_VERSION_KEY, String(SCHEMA_VERSION));
       await db.setMeta(MigrationRunner.RESTORE_PENDING_KEY, MigrationRunner.RESTORE_PENDING_ON);
       expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
-      expect(MigrationRunner.RESTORE_CLEANUP_SQL.length).assertEqual(3);
-      expect(db.stmts.length).assertEqual(3);
+      expect(MigrationRunner.RESTORE_CLEANUP_SQL.length).assertEqual(13);
+      expect(db.stmts.length).assertEqual(13);
       expect(db.begins).assertEqual(1);
       expect(db.commits).assertEqual(1);
       // 口径：日历投影降级并清空来源设备的事件 id；提醒句柄归 -1；云端声明回到仅本地
@@ -383,9 +405,9 @@ export default function dbMigrationTest() {
       await MigrationRunner.upgrade(db);
       // 清理写的正是迁移补出来的列，所以顺序必须是先 5 条 ALTER 再 3 条 UPDATE
       expect(db.alters.length).assertEqual(5);
-      expect(db.stmts.length).assertEqual(8);
+      expect(db.stmts.length).assertEqual(27);
       expect(db.stmts[4].indexOf('ALTER TABLE') === 0).assertTrue();
-      expect(db.stmts[5].indexOf('UPDATE plan') === 0).assertTrue();
+      expect(db.stmts[14].indexOf('UPDATE plan') === 0).assertTrue();
       expect(db.begins).assertEqual(2);
       expect(db.commits).assertEqual(2);
       expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION));
@@ -416,12 +438,12 @@ export default function dbMigrationTest() {
     it('schema_from_a_newer_build_is_left_untouched', 0, async () => {
       const db = v2Db();
       await db.setMeta(MigrationRunner.RESTORE_PENDING_KEY, MigrationRunner.RESTORE_PENDING_ON);
-      await db.setMeta(SCHEMA_VERSION_KEY, '4');
-      // 从更新的装机恢复/回滚安装回来：本包不懂 v4，也不能把它的 stamp 改小
-      expect(await MigrationRunner.upgrade(db)).assertEqual(4);
+      await db.setMeta(SCHEMA_VERSION_KEY, String(SCHEMA_VERSION + 1));
+      // 更新装机的结构与恢复标记都不由本包处理。
+      expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION + 1);
       expect(db.stmts.length).assertEqual(0);
       expect(db.begins).assertEqual(0);
-      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual('4');
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION + 1));
       expect(await db.getMeta(MigrationRunner.RESTORE_PENDING_KEY))
         .assertEqual(MigrationRunner.RESTORE_PENDING_ON);
     });
@@ -442,9 +464,11 @@ export default function dbMigrationTest() {
       expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
       // 三张表各四条：建临时表 / 搬数据 / 删旧表 / 换名，一条不多一条不少
       expect(db.rebuiltTables().length).assertEqual(OWNER_SCOPED_TABLES.length);
-      expect(db.stmts.length).assertEqual(OWNER_SCOPED_TABLES.length * 4);
-      // 换名不是加列：重建不许被算进补列账上，否则补列回归就看不出变化了
-      expect(db.alters.length).assertEqual(0);
+      expect(db.stmts.length).assertEqual(OWNER_SCOPED_TABLES.length * 4 + 1);
+      // v3 重建之后补一条 v4 星期列，历史列搬运仍然不包含新列。
+      expect(db.alters.length).assertEqual(1);
+      expect(db.stmts[db.stmts.length - 1])
+        .assertEqual('ALTER TABLE cycle_template ADD COLUMN weekdays_mask INTEGER NOT NULL DEFAULT 127');
       expect(db.begins).assertEqual(1);
       expect(db.commits).assertEqual(1);
     });
@@ -503,6 +527,107 @@ export default function dbMigrationTest() {
       await MigrationRunner.upgrade(db);
       expect(db.rebuiltTables().length).assertEqual(2);
       expect(db.rebuiltTables().indexOf('course') < 0).assertTrue();
+    });
+
+    it('v3_adds_only_weekday_column_without_rebuilding_rows', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '3');
+      await MigrationRunner.upgrade(db);
+      expect(db.rebuiltTables().length).assertEqual(0);
+      expect(db.alters.length).assertEqual(1);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION));
+      await MigrationRunner.upgrade(db);
+      expect(db.alters.length).assertEqual(1);
+    });
+
+    it('v4_column_failure_rolls_back_and_keeps_v3_for_retry', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '3');
+      db.failPattern = 'ADD COLUMN weekdays_mask';
+      let threw = false;
+      try {
+        await MigrationRunner.upgrade(db);
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertTrue();
+      expect(db.rollbacks).assertEqual(1);
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual('3');
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertFalse();
+      db.failPattern = '';
+      await MigrationRunner.upgrade(db);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+    });
+
+    it('v4_stamp_without_weekday_column_is_repaired_in_place', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '4');
+      expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
+      expect(db.rebuiltTables().length).assertEqual(0);
+      expect(db.alters.length).assertEqual(1);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION));
+      await MigrationRunner.upgrade(db);
+      expect(db.alters.length).assertEqual(1);
+    });
+
+    it('repair_of_wrong_v4_stamp_rolls_back_and_can_retry', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '4');
+      db.failPattern = 'ADD COLUMN weekdays_mask';
+      let threw = false;
+      try {
+        await MigrationRunner.upgrade(db);
+      } catch (e) {
+        threw = true;
+      }
+      expect(threw).assertTrue();
+      expect(db.rollbacks).assertEqual(1);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertFalse();
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual('4');
+      db.failPattern = '';
+      expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+    });
+
+    it('migration_probes_only_committed_structure', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '3');
+      expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
+      expect(db.readsInsideTx).assertEqual(0);
+      expect(db.commits).assertEqual(1);
+      expect(db.rollbacks).assertEqual(0);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+    });
+
+    it('post_commit_probe_failure_does_not_roll_back_committed_schema', 0, async () => {
+      const db = v2Db();
+      db.columns = db.columns.filter((c: string) => c !== 'cycle_template.weekdays_mask');
+      await db.setMeta(SCHEMA_VERSION_KEY, '3');
+      db.failPostCommitProbe = true;
+      let errorMessage = '';
+      try {
+        await MigrationRunner.upgrade(db);
+      } catch (e) {
+        errorMessage = (e as Error).message;
+      }
+      expect(errorMessage).assertEqual('cycle_template weekdays_mask is not readable after committed migration');
+      expect(db.commits).assertEqual(1);
+      expect(db.rollbacks).assertEqual(0);
+      expect(db.hasColumn('cycle_template', 'weekdays_mask')).assertTrue();
+      expect(await db.getMeta(SCHEMA_VERSION_KEY)).assertEqual(String(SCHEMA_VERSION));
+      const alters = db.alters.length;
+      db.failPostCommitProbe = false;
+      expect(await MigrationRunner.upgrade(db)).assertEqual(SCHEMA_VERSION);
+      expect(db.alters.length).assertEqual(alters);
+      expect(db.commits).assertEqual(1);
+      expect(db.readsInsideTx).assertEqual(0);
     });
   });
 }

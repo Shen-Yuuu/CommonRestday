@@ -10,19 +10,20 @@
 
 | 字段 | 当前值 | 状态 | 需要什么 |
 |---|---|---|---|
-| `bundleName` | `com.rest.common` | **已定稿（2026-09-23）**，由 `com.huawei.commonrestday` 改来 | AGC 侧要用**这个**包名创建应用；备案材料的包名与之一致；`docs/testing-checklist.md` §1 的按包名命令已同步 |
+| `bundleName` | `com.common.fortwo` | **2026-09-25 品牌更新**，由 `com.rest.common` 改来 | AGC 应用、签名 Profile、备案材料均须使用新包名；`docs/testing-checklist.md` 的当前设备命令已同步 |
 | `vendor` | `example` | **模板占位值，未改** | 换成与 AGC 账号主体一致的标识（个人开发者填自己的名字/域名前缀即可，但必须是**有意填的**而不是留着的） |
 | `versionCode` / `versionName` | `1000000` / `1.0.0` | 一致 | 首个正式包定档后不再回退 versionCode |
 
 **关于旧的 `com.huawei.*` 前缀（判断，缺官方条款证据）**：`com.huawei` 通常留给华为自身的包，
 第三方应用使用这一前缀在提审或备案环节可能被要求说明主体归属。
 **本仓库没有华为官方"禁用该前缀"的条款可引**，所以这只是一条需要复核的风险提示，不是已确认的阻断项。
-2026-09-23 由开发者直接决定换包名，因此这条判断不再需要复核——改动的成本项在换之前已经核过：
-**本应用从未上架，也没有已安装过旧包名的设备**（全程 `hdc list targets` 为 `[Empty]`），
-所以没有线上包、已授权用户或卡片实例被牵动。实际被改的只有两处：bundleName 本身
-（`AppScope/app.json5`）与按包名寻址的设备侧命令（`bm clean`/`aa start`，见 `docs/testing-checklist.md` §1）。
+2026-09-23 从 `com.huawei.commonrestday` 改为 `com.rest.common` 时没有已安装旧包名的设备；
+**这条历史结论不适用于 2026-09-25 的再次改名**。若设备上已安装 `com.rest.common`，
+新包 `com.common.fortwo` 会作为另一款应用安装；旧数据、权限授权与桌面卡片**不会自动迁移**。
+本次只更改包配置与按包名寻址的当前设备命令（`bm clean`/`aa start`，见 `docs/testing-checklist.md`）。
+**不要为验证改名直接卸载旧包或清除其数据**；先完成备份、迁移或明确接受重新录入。
 深链 scheme `crdpair`、卡片标识、数据库文件名 `commonrestday.db` 都不含包名，未动。
-**换包名之后 §2/§3 全部要按新值走**：签名 Profile（p7b 里绑 bundleName）、AGC 应用、备案、隐私政策托管页里的应用名。
+**换包名之后 §2/§3 全部要按新值走**：签名 Profile（p7b 里绑 bundleName）、AGC 应用、备案、隐私政策托管页里的应用名。系统中已创建的「同休日」专属日历仍沿用原账户名，以便既有事件可继续被应用识别；此处是持久化数据身份，不是当前应用品牌。
 
 ## 2. 签名（`build-profile.json5`）
 
@@ -52,11 +53,14 @@
 
 ## 4. 隐私政策
 
-- 代码侧已完成（阶段 6R.4 + 最终验收 R1）：全文随包出厂，首启弹窗与「我的」页共用 `PrivacyPolicySheet`，
-  不再有"即将上线"的死胡同；首启摘要**五条**与全文同口径（含"云端未开放""本包无联网权限""导出那条管不了"
-  三句实话，以及 R1 补的"系统备份/换机迁移会把数据带到你的其他设备"）。全文现为**十一节**。
+- 代码侧已完成（阶段 6R.4 + 最终验收 R1 + 批次 U·U3b 开闸）：全文随包出厂，首启弹窗与「我的」页共用 `PrivacyPolicySheet`，
+  不再有"即将上线"的死胡同；首启摘要**五条**与全文同口径（v1.1 改的是其中两条：`privacy_point_local` 从"本应用不联网"
+  改成"文字内容只写在本机、不会原样上传"，`privacy_point_cloud` 从"云端配对当前未开放"改成"可选功能：只上传按你选的等级
+  降维并加密后的忙闲快照"；另外三条"导出那条管不了""照片仅本地识别""系统备份会带走数据"未变）。全文现为**十一节**，版本 **v1.1 / 2026-09-27**。
   三处全文（应用内 `pp_*` / canonical md / 托管 html）与五条摘要的逐字同源已是门禁条目：
   `node tools/test/run.mjs` 里的 `copy` 审计会禁止"只存在这台手机上"类绝对化表述，冲突即退出码 1。
+  **开闸改的就是这一批文字**：v1.0 是"纯离线版"，那句"这个安装包没有联网权限"在带 INTERNET 的包里就是一句假话，
+  所以政策、`module.json5`、档位三者必须同批改（`docs/release/rollout-and-rollback.md` §3.3 的第 ③ 条）。
 - **托管时的注意**：`privacy-policy.html` 的「版本与联系」一节允许与应用内文字不同（托管页要就地写出
   在线版地址与联系方式，应用内只能指向提审材料），这是 `copy-audit.mjs` 里唯一的豁免节；其余十节必须逐字一致。
 - 仍缺（账号侧，两步）：
@@ -64,8 +68,25 @@
   2. 把 URL 回填 `commons/src/main/ets/constant/AppConst.ets` 的 `PRIVACY_POLICY_URL`，
      并同步进 `docs/legal/privacy-policy.md` 的「版本与联系」与本页 §6 的开发者信息。
 - 完成判据：应用内《隐私政策》全文页底部出现「在线版地址：…」；商店详情链接可打开同一份文字。
-- **提醒**：`INTERNET` 权限的加回条件见 `docs/release/rollout-and-rollback.md` §3.3，
-  与"云端档位"绑定，**不要**为了放隐私政策链接而加回联网权限（应用内阅读根本不需要它）。
+- **提醒（口径已随开闸变化，但原则没变）**：`INTERNET` 现在确实在包里，它的原因是**可选的云端配对**，
+  不是"为了在应用内打开隐私政策链接"——后者仍然是禁止的理由（应用内阅读根本不需要联网）。
+  加回它的三条同批条件与整批回退方式见 `docs/release/rollout-and-rollback.md` §3.3 与 §5。
+
+## 4b. 权限用途说明（提审表单逐条，与 `entry/src/main/module.json5` 同源）
+
+三条权限，两条要用户点授权、一条不需要。下表第三列是**提审表单里要填的话**，
+必须与 `string.json` 的 `reason` 值同口径（前两条逐字相同，第三条是 `internet_perm_reason` 原文）。
+
+| 权限 | 授权方式 | 用途说明（提审表单） | 关掉它靠什么 |
+|---|---|---|---|
+| `ohos.permission.READ_CALENDAR` | user_grant（首次写入时弹系统授权） | 用于将共同计划写入系统日历，并在取消计划时同步移除 | `calendarFlow`（rollout §3.2） |
+| `ohos.permission.WRITE_CALENDAR` | user_grant（同上） | 同上：专属「同休日」日历的受管写入与同步移除 | `calendarFlow` |
+| `ohos.permission.INTERNET` | **system_grant，不弹授权框** | 仅用于可选的云端配对：把按共享等级降维并加密后的忙闲快照同步到你自己的华为云开发实例 | `cloudPairing`（rollout §3.3，回退要整批） |
+
+两点提审时容易被问到的实话：
+① 本应用**没有**远端推送、统计、广告、崩溃上报，联网只走 AGC 云函数这一个出口；
+② 通知为零（2026-09-24 D-20 定稿），所以**不申请** `NOTIFICATION`、也不注册后台代理提醒，
+到点报时由用户自己在系统日历里看——这一条与 §5 的 Age rating / 隐私问卷都要一致。
 
 ## 5. 商店材料（全部人工）
 
@@ -76,7 +97,7 @@
 | 分类 | 待定稿 | 生活或效率；发布清单 §5 未选定 |
 | Age rating | 待定稿 | 按商店问卷如实填；应用内无 UGC、无聊天、无内购，隐私政策已声明不面向儿童 |
 | 版权 / 开发者信息 | 未填 | 与 §1 主体一致 |
-| AGC 云资源 | **首版不开通** | 与 `docs/cloud/operations-runbook.md` §1 前置清单一并记录；`cloudPairing=false` 且无 `INTERNET` 权限 |
+| AGC 云资源 | **已开通**（2026-09-27 批次 U·U3b） | 云存储区 + 两个云对象（`pairing`/`snapshot`）已部署，24 步探针全绿；端侧 `cloudPairing=true` 且带 `INTERNET`。前置与停服口径见 `docs/cloud/operations-runbook.md` §1/§5，免费档限制（按天配额、6 个月闲置回收、仅中国大陆节点）见其 §6。**备案仍未完成（§3）**，这条是提审的硬缺口 |
 
 ## 6. 开发者信息（提审必填，本仓库不代填）
 

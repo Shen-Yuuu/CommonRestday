@@ -27,11 +27,16 @@ export struct NextWindowHero {
   /** 分类摘要（如"旅行窗口 · 完整同休日"），由查询服务给出，页面不再映射标签。 */
   @Prop winSubtitle: string = '';
   onTapHero: () => void = () => {};
+  @Prop refreshCue: number = 0;
+  @State private hovered: boolean = false;
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') @Watch('onReduceMotionChanged') reduceMotion: boolean = false;
+  @StorageProp('crd_app_foreground') @Watch('onReduceMotionChanged') foreground: boolean = true;
+  @StorageProp('crd_root_page_visible') @Watch('onReduceMotionChanged') rootVisible: boolean = true;
   @State private beat: number = 1;
   /** 心跳的驱动器：animateTo 挂上的无限循环停不掉，只有 animator 能被"中途打开减少动效"指挥。 */
   private beatAnim: AnimatorResult | undefined = undefined;
+  private beatVisible: boolean = false;
 
   /**
    * 原型 .hb 那颗白心是全 App 唯一的常驻动效，所以它必须能被当场收住：
@@ -39,7 +44,8 @@ export struct NextWindowHero {
    * 用 animateTo({ iterations: -1 }) 起的心跳一旦起来就没有取消入口，只能等节点销毁。
    */
   private startBeat(): void {
-    if (this.reduceMotion || this.beatAnim !== undefined) {
+    if (this.reduceMotion || !this.foreground || !this.rootVisible || !this.beatVisible
+      || this.beatAnim !== undefined) {
       return;
     }
     const anim = this.getUIContext().createAnimator({
@@ -53,7 +59,7 @@ export struct NextWindowHero {
       end: DesignTokens.beatScale
     });
     anim.onFrame = (value: number) => {
-      this.beat = value;
+      if (this.beatAnim === anim) { this.beat = value; }
     };
     this.beatAnim = anim;
     anim.play();
@@ -70,7 +76,7 @@ export struct NextWindowHero {
   }
 
   onReduceMotionChanged(): void {
-    if (this.reduceMotion) {
+    if (this.reduceMotion || !this.foreground || !this.rootVisible || !this.beatVisible) {
       this.stopBeat();
     } else {
       this.startBeat();
@@ -99,20 +105,20 @@ export struct NextWindowHero {
 
   private needBody(): string {
     if (this.experience === ExperienceMode.SOLO) {
-      return '到「我的」里替 TA 记上班表，这里就会出现你们的第一个共同时间。';
+      return '到「我的」添加伴侣或代录班表。';
     }
-    return '今天的共同时间还缺 TA 的数据，同步或补录之后再看。';
+    return '同步或补录 TA 的日程后查看。';
   }
 
   build() {
     if (this.variant === HeroVariant.NO_WINDOW) {
       // 没有窗口时不占 Hero：纸面卡片说明事实与下一步，不假装"很快会有"
-      EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+      EditorialCard({ hero: false, cutTopLeft: true, tappable: false, refreshCue: this.refreshCue }) {
         Text('近期没有可安排的共同时间')
           .fontSize(DesignTokens.fontBody)
           .fontFamily(DesignTokens.fontRound)
           .fontColor(DesignTokens.textSecondary)
-        Text('两人的班表可能完全错开了。检查一下班次和作息，或者到共同时间页放宽筛选。')
+        Text('可检查双方日程、作息，或放宽筛选。')
           .fontSize(DesignTokens.fontCaption)
           .fontColor(DesignTokens.textTertiary)
           .lineHeight(DesignTokens.space5)
@@ -124,6 +130,9 @@ export struct NextWindowHero {
         cutTopLeft: true,
         tappable: true,
         glass: true,
+        hoverLift: true,
+        refreshCue: this.refreshCue,
+        onHoverChange: (hovered: boolean) => { this.hovered = hovered; },
         onTapCard: () => this.onTapHero()
       }) {
         if (this.variant === HeroVariant.WINDOW) {
@@ -146,6 +155,8 @@ export struct NextWindowHero {
               .borderRadius(DesignTokens.radiusPill)
               .backgroundColor(DesignTokens.heroGlow)
               .margin({ left: DesignTokens.space2 })
+              .scale({ x: this.hovered ? 1.08 : 1, y: this.hovered ? 1.08 : 1 })
+              .animation({ duration: DesignTokens.motion(this.reduceMotion, 150), curve: Curve.EaseOut })
               // 箭头只作视觉提示，"去计划"已经在旁边的文字里
               .accessibilityLevel('no')
           }
@@ -159,9 +170,12 @@ export struct NextWindowHero {
               .height(17)
               .alignSelf(ItemAlign.Center)
               .scale({ x: this.beat, y: this.beat })
-              .onAppear(() => this.startBeat())
+              .onVisibleAreaChange([0.01], (visible: boolean) => {
+                this.beatVisible = visible;
+                this.onReduceMotionChanged();
+              })
               // 换成 NEED_PARTNER／NO_WINDOW 时这颗心不在了，驱动器也别留在后台一帧帧写 beat
-              .onDisAppear(() => this.stopBeat())
+              .onDisAppear(() => { this.beatVisible = false; this.stopBeat(); })
               .accessibilityLevel('no')
             Text(DateLabel.duration(this.winDuration))
               .fontSize(DesignTokens.fontDisplay)

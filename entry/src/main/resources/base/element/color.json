@@ -25,6 +25,10 @@
       "value": "#FFF0F5"
     },
     {
+      "name": "share_selected_bg",
+      "value": "#F8DEE8"
+    },
+    {
       "name": "brand_pink_border",
       "value": "#FFD3E1"
     },
@@ -38,15 +42,19 @@
     },
     {
       "name": "text_secondary",
-      "value": "#8F7A82"
+      "value": "#705760"
     },
     {
       "name": "text_tertiary",
-      "value": "#AC98A0"
+      "value": "#785F68"
     },
     {
       "name": "text_hint",
-      "value": "#C4B2BA"
+      "value": "#806670"
+    },
+    {
+      "name": "text_accent",
+      "value": "#5C4750"
     },
     {
       "name": "card_bg",
@@ -329,12 +337,28 @@
       "value": "#FFF0E7"
     },
     {
+      "name": "page_grad_clear",
+      "value": "#00FFF0E7"
+    },
+    {
       "name": "page_grad_mid",
       "value": "#FFF0F0"
     },
     {
       "name": "page_grad_bottom",
       "value": "#FFF6F3"
-    }
+    },
+    {
+      "name": "plan_success_action",
+      "value": "#237A50"
+    },
+    { "name": "plan_surface", "value": "#ECE3F5" },
+    { "name": "plan_accent", "value": "#9A6BDC" },
+    { "name": "plan_ink", "value": "#584565" },
+    { "name": "plan_muted", "value": "#695774" },
+    { "name": "drawer_calendar_bg", "value": "#E1EAF5" },
+    { "name": "drawer_calendar_ink", "value": "#39577D" },
+    { "name": "drawer_cancel_bg", "value": "#F8DCE5" },
+    { "name": "drawer_cancel_ink", "value": "#A42B50" }
   ]
 }

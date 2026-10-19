@@ -1,4 +1,5 @@
 import localUnitTest from './LocalUnit.test';
+import weeklyRosterServiceTest from './WeeklyRosterServiceTest';
 import presentationModelsTest from './PresentationModelsTest';
 import commonTimeQueryServiceTest from './CommonTimeQueryServiceTest';
 import rhythmRulesTest from './RhythmRulesTest';
@@ -12,9 +13,15 @@ import profileSettingsGuardTest from './ProfileSettingsGuardTest';
 import dateLabelTest from './DateLabelTest';
 import serialQueueTest from './SerialQueueTest';
 import swatchInkTest from './SwatchInkTest';
+import todayAgendaTest from './TodayAgendaTest';
+import dockSparkMotionTest from './DockSparkMotionTest';
+import planSaveCueTest from './PlanSaveCueTest';
+import sharedPlanFlowTest from './SharedPlanFlowTest';
+import sharedPlanUseCaseTest from './SharedPlanUseCaseTest';
 
 export default function testsuite() {
   localUnitTest();
+  weeklyRosterServiceTest();
   presentationModelsTest();
   commonTimeQueryServiceTest();
   rhythmRulesTest();
@@ -28,4 +35,9 @@ export default function testsuite() {
   dateLabelTest();
   serialQueueTest();
   swatchInkTest();
+  todayAgendaTest();
+  dockSparkMotionTest();
+  planSaveCueTest();
+  sharedPlanFlowTest();
+  sharedPlanUseCaseTest();
 }

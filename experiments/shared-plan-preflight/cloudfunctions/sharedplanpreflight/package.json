@@ -1,0 +1,9 @@
+{
+  "name": "fortwo-shared-plan-preflight",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated verified-identity preflight; no production plan, pairing or push writes",
+  "dependencies": {
+    "@hw-agconnect/cloud-server": "1.0.5"
+  }
+}

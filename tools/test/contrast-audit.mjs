@@ -1,5 +1,5 @@
 /**
- * 色块前景对比度的离线静态审计（差异文档 D-54 的防回潮判据，批次 AD）。
+ * 色块前景与信息文字对比度的离线静态审计（D-54、D-64 与浅色文字阶梯）。
  *
  * 要拦住的事实：班次的底色是用户拿取色器随便挑的（`HdsColorPicker` 的 GRID/SPECTRUM/SLIDERS 三档，
  * 回调直接给十六进制串），而画它的那几处原先把前景写死成暖白——浅色档下白字压在近白底色上实测
@@ -293,13 +293,70 @@ function auditInkLiterals(repo) {
   return violations;
 }
 
+/** WCAG 相对亮度；这里只接收不带透明度的 #RRGGBB，避免把半透明玻璃误算成实底。 */
+function luminance(hex) {
+  if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+    return null;
+  }
+  const linear = [1, 3, 5].map((at) => {
+    const v = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function textContrast(fg, bg) {
+  const a = luminance(fg);
+  const b = luminance(bg);
+  if (a === null || b === null) {
+    return null;
+  }
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/**
+ * C3：浅色档的信息墨须在实际会用到的白卡、暖页与浅填充上达到普通字 4.5:1。
+ * 深色档目前只新加了 text_accent，故只核它；其它深色信息墨留待冷启七页的设备证据。
+ * 这不是任意文字/半透明玻璃的像素审计，更不能用它替代设备验收。
+ */
+export function auditTextPalette(repo) {
+  const violations = [];
+  const groups = [
+    { tier: 'base', texts: ['text_primary', 'text_secondary', 'text_tertiary', 'text_hint', 'text_accent'],
+      backgrounds: ['card_bg', 'page_bg_warm', 'fill_weak', 'brand_pink_bg'] },
+    { tier: 'dark', texts: ['text_accent'], backgrounds: ['card_bg', 'page_bg_warm', 'fill_weak'] },
+    { tier: 'base', texts: ['text_accent', 'text_secondary'], backgrounds: ['share_selected_bg'] },
+    { tier: 'dark', texts: ['text_accent', 'text_secondary'], backgrounds: ['share_selected_bg'] }
+  ];
+  for (const group of groups) {
+    const rel = COLOR_JSON[group.tier];
+    for (const textName of group.texts) {
+      const fg = resourceColor(repo, rel, textName);
+      for (const bgName of group.backgrounds) {
+        const bg = resourceColor(repo, rel, bgName);
+        const value = fg === null || bg === null ? null : textContrast(fg, bg);
+        if (value === null || value < 4.5) {
+          violations.push(rel + '：' + textName + ' ' + (fg ?? '缺失') + ' / ' + bgName + ' '
+            + (bg ?? '缺失') + '＝' + (value === null ? '不可计算' : value.toFixed(2))
+            + ':1，小字信息墨须 ≥4.5:1');
+        }
+      }
+    }
+  }
+  const cycle = fs.readFileSync(path.join(repo, 'entry/src/main/ets/pages/CycleEditor.ets'), 'utf8');
+  if (/Text\('序列为空'\)[^\n]*text_disabled/.test(cycle)) {
+    violations.push('CycleEditor.ets：「序列为空」是行动信息，不能用禁用墨（D-64）');
+  }
+  return violations;
+}
+
 /**
  * 扫 UI 侧，返回 `{ violations, ...水位 }`。`violations` 把 C1 与 C2 并成一条口径，门禁只看它空不空；
  * 分开的计数留给清单，免得下一个人把 wired 当成全仓覆盖数。
  */
 export function auditContrast(repo) {
   const fg = auditForeground(repo);
-  const violations = fg.violations.concat(auditInkLiterals(repo));
+  const violations = fg.violations.concat(auditInkLiterals(repo), auditTextPalette(repo));
   return { violations: violations, wired: fg.wired, exempt: fg.exempt, textless: fg.textless,
     helper: fg.helper, skipped: fg.skipped };
 }

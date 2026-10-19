@@ -25,6 +25,20 @@ import { auditAccessibility } from './a11y-audit.mjs';
 import { auditLanding } from './landing-audit.mjs';
 import { auditPress } from './press-audit.mjs';
 import { auditContrast } from './contrast-audit.mjs';
+import './contrast-regression.mjs';
+import './header-fade-regression.mjs';
+import './me-settings-regression.mjs';
+import './start-window-regression.mjs';
+import './ui-refinement-regression.mjs';
+import './feedback-motion-regression.mjs';
+import './visual-motion-regression.mjs';
+import './companion-motion-regression.mjs';
+import './companion-assets-regression.mjs';
+import './companion-narrative-regression.mjs';
+import './real-device-feedback-regression.mjs';
+import './conservative-cleanup-regression.mjs';
+import './plan-form-regression.mjs';
+import './schedule-editing-regression.mjs';
 import { auditHorizonCeiling } from './horizon-audit.mjs';
 import { auditEndRead } from './endread-audit.mjs';
 import { auditDaySpan } from './span-audit.mjs';
@@ -56,13 +70,14 @@ const TREES = [
       // ScheduleUseCase 与概览查询要 @kit/taskpool。ProfileSettingsService 已从 skip 里移出：
       // 它只依赖 SettingsStore/ScheduleRepo/云客户端，三者下面都有同名桩，而验收报告 B1 要求
       // "关闭态云调用 0 次、pairId/key/state 不变"必须在离线侧断言，不能只写在真机清单里。
-      'ScheduleUseCase.ets', 'ScheduleOverviewQueryService.ets',
+      'ScheduleUseCase.ets', 'ScheduleOverviewQueryService.ets', 'SharedPlanPersistence.ets', 'SecurePlanAdapters.ets',
+      'SecurePairingAdapters.ets', 'UnifiedPairingAdapters.ets',
+      'SharedPlanLocalAdapters.ets', 'SecureCleanupAdapters.ets', 'SharedPlanViewService.ets',
       // 门面包 @kit.CalendarKit；PlanUseCase 通过能力端口调用它，单测注入确定性端口实现，
       // 这里只需要类型壳让默认适配器过编译。
       'CalendarGateway.ets',
-      // 扫码/分享门面包 @kit.ScanKit / @kit.ShareKit / 剪贴板；一次性凭据口径由 domain 的
-      // PairLinkTest 离线覆盖，这里不参与转译（真机侧行为见 docs/testing-checklist.md）。
-      'PairingShareGateway.ets',
+      // 剪贴板门面依赖 @kit.BasicServicesKit；设备侧验收只核对复制六位码。
+      'PairCodeClipboard.ets',
       // 预算门槛与线程归属：@kit.ArkTS(taskpool) + @kit.BasicServicesKit(systemDateTime)，
       // 离线只留同名口径的桩（计算照跑、永远内联）。
       'RecomputeExecutor.ets']
@@ -120,7 +135,9 @@ declare const AppStorage: {
  * ——按设备侧同名键累加 recomputeCount，用例据此断言一次保存只重算一次。
  */
 const STUB_SCHEDULE_USECASE = `
-import { defaultParams, EngineParams, Interval, SectionTime, Window } from '../../../../main/ets/model/Types';
+import { defaultParams, EngineParams, Interval, MySchedule, SectionTime, Window } from '../../../../main/ets/model/Types';
+import { ScheduleRepo } from '../../../../dataIndex';
+import { decodeWeeklyState } from './WeeklyRosterService';
 
 export const RECOMPUTE_COUNT_KEY = 'recomputeCount';
 
@@ -136,7 +153,13 @@ export interface DayViewData {
 }
 
 export class ScheduleUseCase {
-  static async onScheduleChanged(): Promise<void> {
+  static async loadMySchedule(start: number, params: EngineParams, owner: string): Promise<MySchedule> {
+    const weekly = decodeWeeklyState(await ScheduleRepo.getMeta('weekly_roster_v1:' + owner));
+    return { shiftTypes: [], template: null, overrides: [], courses: [], sectionTimes: [], termStartEpochDay: 0,
+      plans: [], wakeMin: params.wakeMin, bedMin: params.bedMin, windDownMin: params.windDownMin,
+      datedDays: weekly.days, personalEntries: weekly.personal, weeklyMode: weekly.enabled };
+  }
+  static async onScheduleChanged(cachedPartnerOnly: boolean = false): Promise<void> {
     const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
     AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
   }
@@ -227,6 +250,7 @@ export interface PartnerProfile { nick: string; wakeMin: number; bedMin: number;
 
 /** 离线计划表：upsertPlan 存行，后续 update* 就地改字段（设备侧同一段是 SQL UPDATE）。 */
 const planRows = new Map<string, PlanRow>();
+const metaRows = new Map<string, string>();
 
 /**
  * 仓储桩：写入按"内存表"记账（设备侧是 SQLite），好让用例能用同名公开 API
@@ -234,6 +258,8 @@ const planRows = new Map<string, PlanRow>();
  * runInTransaction 保留"整批要么全成要么回滚"的传播语义，好让命令层的失败分支可测。
  */
 export class ScheduleRepo {
+  static async getMeta(key: string): Promise<string> { return metaRows.get(key) ?? ''; }
+  static async setMeta(key: string, value: string): Promise<void> { metaRows.set(key, value); }
   static async listWindows(): Promise<Window[]> { return []; }
   static async windowCacheComputedAt(): Promise<number> { return 0; }
   static async runInTransaction(work: () => Promise<void>): Promise<void> { await work(); }
@@ -297,6 +323,7 @@ export class ScheduleRepo {
   }
   static async clearAllData(): Promise<void> {
     planRows.clear();
+    metaRows.clear();
   }
 }
 
@@ -323,6 +350,8 @@ function settingOf(key: string, dflt: Object): Object {
 }
 
 export class SettingsStore {
+  static getUnifiedPairConsent(): string { return settingOf('unified_pair_consent', '') as string; }
+  static async setUnifiedPairConsent(pairId: string): Promise<void> { settingsRows.set('unified_pair_consent', pairId); }
   static async setParams(p: EngineParams): Promise<void> {
     settingsRows.set('engine_params', JSON.stringify(p));
   }
@@ -362,7 +391,46 @@ export class SettingsStore {
     return settingOf('pair_id', '') as string;
   }
   static async savePairId(pairId: string): Promise<void> {
+    if (pairId !== SettingsStore.getPairId()) {
+      settingsRows.delete('unified_pair_consent');
+      settingsRows.delete('cloud_partner_name');
+      settingsRows.delete('cloud_partner_name_pair');
+    }
     settingsRows.set('pair_id', pairId);
+  }
+  static getCloudPartnerName(): string {
+    return SettingsStore.isCloudPartnerNamePrompted()
+      ? String(settingOf('cloud_partner_name', '')).trim() : '';
+  }
+  static isCloudPartnerNamePrompted(): boolean {
+    const pairId = SettingsStore.getPairId();
+    return pairId !== '' && settingOf('cloud_partner_name_pair', '') === pairId;
+  }
+  static async saveCloudPartnerName(pairId: string, name: string): Promise<void> {
+    if (pairId === '' || pairId !== SettingsStore.getPairId() || SettingsStore.getPairState() !== PAIRED) {
+      throw new Error('配对已变化，请重新打开称呼设置');
+    }
+    const value = name.trim();
+    if (value.length > 20) { throw new Error('称呼最多 20 个字符'); }
+    settingsRows.set('cloud_partner_name', value);
+    settingsRows.set('cloud_partner_name_pair', pairId);
+  }
+  static getPartnerDisplayName(): string {
+    if (SettingsStore.getPairState() === PAIRED) {
+      return SettingsStore.getCloudPartnerName() || 'TA';
+    }
+    const profile = SettingsStore.getPartnerProfile();
+    return profile === null ? '' : profile.nick;
+  }
+  static getInviteProof(pairId: string): string {
+    const r = settingOf('invite_proof', null) as { pairId: string; envelope: string } | null;
+    return r !== null && r.pairId === pairId ? r.envelope : '';
+  }
+  static async saveInviteProof(pairId: string, envelope: string): Promise<void> {
+    settingsRows.set('invite_proof', { pairId: pairId, envelope: envelope });
+  }
+  static async clearInviteProof(): Promise<void> {
+    settingsRows.delete('invite_proof');
   }
   /** 只清理，不读取：密钥材料的读写口都在 HUKS（cloud/PairKeyStore），本应用侧不存在读密钥的 API。 */
   static async clearPairKey(): Promise<void> {
@@ -483,6 +551,12 @@ export class SettingsStore {
  * 这类断言在结构上不成立，只能断言调用次数为 0。
  */
 const STUB_CLOUD = `
+export interface EncryptedPayload {
+  iv: string;
+  authTag: string;
+  ciphertext: string;
+  algorithm: string;
+}
 export interface PairSession {
   pairId: string;
   status: string;
@@ -516,6 +590,7 @@ export function newRequestId(): string {
 export class AgcPairingClient {
   /** 云对象调用计数（设备侧同名字段）：关闭态的断言就打这里。 */
   static calls: number = 0;
+  static statusResult: string = 'WAITING';
   /**
    * 让 unpair 抛一次的开关（null = 正常返回）。设备侧的"云端删不动"是断网/配额/服务端拒绝
    * 撞出来的，离线复现不了，所以这一格只能靠桩注入——批次 U·U5 那三条用例打的就是它。
@@ -550,7 +625,7 @@ export class AgcPairingClient {
 
   async pairStatus(pairId: string, uid: string): Promise<PairSession> {
     AgcPairingClient.calls = AgcPairingClient.calls + 1;
-    return mkSession('WAITING', uid);
+    return mkSession(AgcPairingClient.statusResult, uid);
   }
 
   async unpair(pairId: string, uid: string, requestId: string): Promise<number> {
@@ -574,6 +649,7 @@ export class AgcPairingClient {
 export class PairKeyStore {
   /** HUKS 别名操作计数（设备侧同名字段）：关闭态一条别名都不许建。 */
   static calls: number = 0;
+  private static proofs: Map<string, string> = new Map<string, string>();
 
   static async ensureIdentity(uid: string): Promise<string> {
     PairKeyStore.calls = PairKeyStore.calls + 1;
@@ -592,12 +668,29 @@ export class PairKeyStore {
   static async dropPairKey(pairId: string): Promise<void> {
     PairKeyStore.calls = PairKeyStore.calls + 1;
   }
+
+  static async sealInviteProof(pairId: string, token: string): Promise<EncryptedPayload> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+    PairKeyStore.proofs.set(pairId, token);
+    return { iv: 'offline-iv', authTag: 'offline-tag', ciphertext: 'sealed', algorithm: 'AES-256-GCM' };
+  }
+
+  static async openInviteProof(pairId: string, payload: EncryptedPayload): Promise<string | null> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+    return PairKeyStore.proofs.get(pairId) ?? null;
+  }
+
+  static async dropInviteProof(pairId: string): Promise<void> {
+    PairKeyStore.calls = PairKeyStore.calls + 1;
+    PairKeyStore.proofs.delete(pairId);
+  }
 }
 
 function mkSession(status: string, uid: string): PairSession {
   const s: PairSession = {
     pairId: 'session-from-the-cloud', status: status, code: '246810',
-    peerUid: 'peer-' + uid, peerPublicKey: 'pk-peer', confirmToken: 'token-from-the-cloud',
+    peerUid: 'peer-' + uid, peerPublicKey: 'pk-peer',
+    confirmToken: status === 'WAITING' ? 'token-from-the-cloud-1234567890' : '',
     expiresAt: 0, serverTime: 0
   };
   return s;
@@ -672,13 +765,21 @@ function prepare() {
     "export * from './feature/main/ets/model/PresentationModels';\n"
     + "export * from './feature/main/ets/model/RhythmRules';\n"
     + "export * from './feature/main/ets/model/PlanKinds';\n"
+    + "export * from './feature/main/ets/model/TodayAgenda';\n"
     + "export * from './feature/main/ets/model/PlanFlow';\n"
+    + "export * from './feature/main/ets/model/SharedPlanFlow';\n"
+    + "export * from './feature/main/ets/model/SharedPlanPresentation';\n"
+    + "export * from './feature/main/ets/model/SharedPlanDiagnostic';\n"
+    + "export * from './feature/main/ets/usecase/SharedPlanUseCase';\n"
+    + "export * from './feature/main/ets/usecase/SecurePairingUseCase';\n"
+    + "export * from './feature/main/ets/usecase/SecureLifecycle';\n"
     + "export * from './feature/main/ets/model/CloudSyncRules';\n"
     + "export * from './feature/main/ets/model/SerialQueue';\n"
     + "export * from './feature/main/ets/config/FeatureFlags';\n"
     + "export * from './feature/main/ets/usecase/CommonTimeQueryService';\n"
     + "export * from './feature/main/ets/usecase/CardSummaryService';\n"
     + "export * from './feature/main/ets/usecase/ScheduleUseCase';\n"
+    + "export * from './feature/main/ets/usecase/WeeklyRosterService';\n"
     + "export * from './feature/main/ets/usecase/ScheduleCommandService';\n"
     + "export * from './feature/main/ets/usecase/PlanUseCase';\n"
     + "export * from './feature/main/ets/usecase/PlanProjectionCleanupService';\n"
@@ -694,10 +795,14 @@ function prepare() {
   fs.writeFileSync(path.join(OUT, 'commonsIndex.ts'),
     "export * from './commons/main/ets/util/DateLabel';\n"
     + "export * from './commons/main/ets/util/SwatchInk';\n"
+    + "export * from './commons/main/ets/util/ScrollHeaderMotion';\n"
+    + "export * from './commons/main/ets/util/DockSparkMotion';\n"
+    + "export * from './commons/main/ets/util/PlanSaveCue';\n"
+    + "export * from './commons/main/ets/util/PlanConnectionDiagnostic';\n"
     + "export * from './commons/main/ets/constant/AppConst';\n"
     + "export * from './commonsLogStub';\n");
   fs.writeFileSync(path.join(OUT, 'dataIndex.ts'),
-    "export * from './data/main/ets/db/MigrationRunner';\nexport * from './dataStubs';\n");
+    "export * from './data/main/ets/db/MigrationRunner';\nexport * from './data/main/ets/db/SharedPlanSchema';\nexport * from './dataStubs';\n");
   fs.writeFileSync(path.join(OUT, 'dataStubs.ts'), STUB_DATA);
   fs.writeFileSync(path.join(OUT, 'cloudIndex.ts'), STUB_CLOUD);
   fs.writeFileSync(path.join(OUT, 'feature/main/ets/usecase/ScheduleUseCase.ts'),
@@ -768,8 +873,8 @@ function main() {
   const contrast = auditContrast(REPO);
   say('contrast: ' + (contrast.violations.length === 0
     ? 'PASS（压在用户自选色上的前景都由底色算出来：接 ' + contrast.wired + ' 处，写明理由豁免 '
-      + contrast.exempt + ' 处，两档墨色字面量与 SwatchInk 同源）'
-    : 'FAILED（' + contrast.violations.length + ' 处色块对比度口径不达标）'));
+      + contrast.exempt + ' 处，两档墨色字面量与 SwatchInk 同源；浅色信息墨／强调墨配对 ≥4.5:1，D-64 不用禁用墨）'
+    : 'FAILED（' + contrast.violations.length + ' 处色块或信息文字对比度口径不达标）'));
   for (const v of contrast.violations) {
     say('  - ' + v);
   }
@@ -844,8 +949,63 @@ function main() {
   if (run.stderr) {
     say(run.stderr.trimEnd());
   }
-  const testsPassed = run.status === 0;
-  say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + (run.status ?? 'null') + ')'));
+  const sqlRun = spawnSync('node', [path.join(HERE, 'cycle-storage-sql-regression.cjs')], { encoding: 'utf8' });
+  if (sqlRun.stdout) {
+    say(sqlRun.stdout.trimEnd());
+  }
+  if (sqlRun.status !== 0 && sqlRun.stderr) {
+    say(sqlRun.stderr.trimEnd());
+  }
+  const adapterRun = spawnSync('node', [path.join(HERE, 'rdb-adapter-regression.cjs'), tsc], { encoding: 'utf8' });
+  if (adapterRun.stdout) {
+    say(adapterRun.stdout.trimEnd());
+  }
+  if (adapterRun.status !== 0 && adapterRun.stderr) {
+    say(adapterRun.stderr.trimEnd());
+  }
+  const sharedStorageRun = spawnSync('node', [path.join(HERE, 'shared-plan-storage-regression.cjs')], { encoding: 'utf8' });
+  if (sharedStorageRun.stdout) say(sharedStorageRun.stdout.trimEnd());
+  if (sharedStorageRun.status !== 0 && sharedStorageRun.stderr) say(sharedStorageRun.stderr.trimEnd());
+  const secureRun = spawnSync('node', [path.join(HERE, 'shared-plan-secure-regression.cjs')], { encoding: 'utf8' });
+  if (secureRun.stdout) say(secureRun.stdout.trimEnd());
+  if (secureRun.status !== 0 && secureRun.stderr) say(secureRun.stderr.trimEnd());
+  const pairingRun = spawnSync('node', [path.join(HERE, 'secure-pairing-regression.cjs')], { encoding: 'utf8' });
+  if (pairingRun.stdout) say(pairingRun.stdout.trimEnd());
+  if (pairingRun.status !== 0 && pairingRun.stderr) say(pairingRun.stderr.trimEnd());
+  const unifiedRun = spawnSync('node', [path.join(HERE, 'unified-pairing-regression.cjs')], { encoding: 'utf8' });
+  if (unifiedRun.stdout) say(unifiedRun.stdout.trimEnd());
+  if (unifiedRun.status !== 0 && unifiedRun.stderr) say(unifiedRun.stderr.trimEnd());
+  const lifecycleRun = spawnSync('node', [path.join(HERE, 'shared-plan-lifecycle-regression.cjs')], { encoding: 'utf8' });
+  if (lifecycleRun.stdout) say(lifecycleRun.stdout.trimEnd());
+  if (lifecycleRun.status !== 0 && lifecycleRun.stderr) say(lifecycleRun.stderr.trimEnd());
+  const experienceRun = spawnSync('node', [path.join(HERE, 'shared-plan-experience-regression.cjs')], { encoding: 'utf8' });
+  if (experienceRun.stdout) say(experienceRun.stdout.trimEnd());
+  if (experienceRun.status !== 0 && experienceRun.stderr) say(experienceRun.stderr.trimEnd());
+  const ticketRun = spawnSync('node', [path.join(HERE, 'plan-ticket-drawer-regression.cjs')], { encoding: 'utf8' });
+  if (ticketRun.stdout) say(ticketRun.stdout.trimEnd());
+  if (ticketRun.status !== 0 && ticketRun.stderr) say(ticketRun.stderr.trimEnd());
+  const rosterRun = spawnSync('node', [path.join(HERE, 'weekly-roster-integration-regression.cjs')], { encoding: 'utf8' });
+  if (rosterRun.stdout) say(rosterRun.stdout.trimEnd());
+  if (rosterRun.status !== 0 && rosterRun.stderr) say(rosterRun.stderr.trimEnd());
+  const navigationRun = spawnSync('node', [path.join(HERE, 'schedule-cache-navigation-regression.cjs')], { encoding: 'utf8' });
+  if (navigationRun.stdout) say(navigationRun.stdout.trimEnd());
+  if (navigationRun.status !== 0 && navigationRun.stderr) say(navigationRun.stderr.trimEnd());
+  const performanceRun = spawnSync('node', [path.join(HERE, 'refresh-performance-regression.cjs')], { encoding: 'utf8' });
+  if (performanceRun.stdout) say(performanceRun.stdout.trimEnd());
+  if (performanceRun.status !== 0 && performanceRun.stderr) say(performanceRun.stderr.trimEnd());
+  const incrementalRun = spawnSync('node', [path.join(HERE, 'shared-plan-incremental-regression.cjs')], { encoding: 'utf8' });
+  if (incrementalRun.stdout) say(incrementalRun.stdout.trimEnd());
+  if (incrementalRun.status !== 0 && incrementalRun.stderr) say(incrementalRun.stderr.trimEnd());
+  const startupRun = spawnSync('node', [path.join(HERE, 'startup-sync-regression.cjs')], { encoding: 'utf8' });
+  if (startupRun.stdout) say(startupRun.stdout.trimEnd());
+  if (startupRun.status !== 0 && startupRun.stderr) say(startupRun.stderr.trimEnd());
+  const planTimeRun = spawnSync('node', [path.join(HERE, 'plan-time-list-regression.cjs')], { encoding: 'utf8' });
+  if (planTimeRun.stdout) say(planTimeRun.stdout.trimEnd());
+  if (planTimeRun.status !== 0 && planTimeRun.stderr) say(planTimeRun.stderr.trimEnd());
+  const failedRun = [run, sqlRun, adapterRun, sharedStorageRun, secureRun, pairingRun, unifiedRun, lifecycleRun, experienceRun, ticketRun, rosterRun, navigationRun, performanceRun, incrementalRun, startupRun, planTimeRun].find(result => result.status !== 0);
+  const testsPassed = failedRun === undefined;
+  const failingExit = failedRun?.status ?? 1;
+  say('tests: ' + (testsPassed ? 'passed' : 'FAILED (exit ' + failingExit + ')'));
   // 九条静态口径审计都不参与"用例绿"，所以用例全绿时还要各自为政地把退出码压回 1。
   const auditViolations = copyViolations.length + a11yViolations.length + landingViolations.length
     + press.violations.length + contrast.violations.length + horizon.violations.length
@@ -853,7 +1013,7 @@ function main() {
   if (testsPassed && auditViolations > 0) {
     say('--- 用例全绿但离线口径审计未通过（退出码 1）---');
   }
-  finish(testsPassed && auditViolations === 0 ? 0 : (testsPassed ? 1 : (run.status ?? 1)));
+  finish(testsPassed && auditViolations === 0 ? 0 : (testsPassed ? 1 : failingExit));
 }
 
 main();

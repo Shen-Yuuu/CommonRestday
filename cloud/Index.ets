@@ -7,3 +7,8 @@ export {
 export { EncryptedPayload, SnapshotCrypto, ALG_AES_256_GCM, SNAPSHOT_SCHEMA_VERSION }
   from './src/main/ets/api/SnapshotCrypto';
 export { PairKeyStore } from './src/main/ets/api/PairKeyStore';
+export { AnonymousIdentity, AnonymousCredential } from './src/main/ets/api/AnonymousIdentity';
+export { DatePlanCloudApi } from './src/main/ets/api/DatePlanCloudApi';
+export { SecurePlanKeyStore, planPublicPoint } from './src/main/ets/api/SecurePlanKeyStore';
+export { PlanPartnerLink } from './src/main/ets/api/PlanPartnerLink';
+export { PlanPairingBridge, PairingBridgeOffer } from './src/main/ets/api/PlanPairingBridge';

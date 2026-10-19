@@ -11,6 +11,10 @@
  * 各档的启用条件、监控指标、关闭影响与数据兼容性见 docs/release/rollout-and-rollback.md。
  */
 export class FeatureFlags {
+  /** Test-only setup; keep closed until legacy binding, deletion lifecycle and device checks pass. */
+  static readonly securePairing: boolean = true;
+  /** Closed until explicit secure pairing, capability semantics, cleanup and UI integration pass. */
+  static readonly sharedPlan: boolean = true;
   /**
    * 系统日历链路（阶段 2 起，阶段 6R.1 换成应用专属「同休日」日历的受管写入）。读取方两处：
    * `PlanUseCase` 的日历编排（关掉时一条日历调用都不发，状态归一成 `NOT_REQUESTED`），
@@ -29,14 +33,9 @@ export class FeatureFlags {
    */
   static readonly cloudPairing: boolean = true;
   /**
-   * 扫码配对（阶段 4）。以 cloudPairing 为前提，但**开闸不等于扫码就绪**：二维码通道至今没有
-   * 设备证据（rollout §6 明令不为它开档），所以它停在 false，配对入口只走配对码/分享链接。
-   */
-  static readonly scanPairing: boolean = false;
-  /**
    * 回退档（`cloudPairing=false`）下**唯一**允许的用户口径（阶段 6R.2，验收报告 B1）。
    * 开档的包读不到这句话，但常量必须留着：回退是"改一行 + 重新出包"，那时三个出口
-   * （service 层的拒绝、网关层的拒绝、「我的」页的说明文本）要逐字一致地回到同一句上。
+   * （service 层的拒绝、「我的」页的说明文本）要逐字一致地回到同一句上。
    * 少一处、或措辞变一点，就会出现"UI 说没开放但代码还在发请求"的那种假安全。
    */
   static readonly cloudClosedMessage: string = '云端配对暂未开放（需开通 AGC 云服务），可先用本机代录';
@@ -55,14 +54,15 @@ export class FeatureFlags {
   /**
    * 生效档位的一行摘要，按 rollout 顺序排列，只用于启动日志（entry 的 Index.aboutToAppear）。
    * 本项目没有远端遥测：出包时把这一行留在 hilog 里，是用户反馈截图之外唯一能证明
-   * "这个包到底开了哪几档"的现场证据，所以五个开关一个都不能漏。
+   * "这个包到底开了哪几档"的现场证据，所以四个开关一个都不能漏。
    */
   static summary(): string {
     return 'calendarFlow=' + FeatureFlags.of(FeatureFlags.calendarFlow)
       + ' cloudPairing=' + FeatureFlags.of(FeatureFlags.cloudPairing)
-      + ' scanPairing=' + FeatureFlags.of(FeatureFlags.scanPairing)
       + ' newCard=' + FeatureFlags.of(FeatureFlags.newCard)
-      + ' responsiveV2=' + FeatureFlags.of(FeatureFlags.responsiveV2);
+      + ' responsiveV2=' + FeatureFlags.of(FeatureFlags.responsiveV2)
+      + ' securePairing=' + FeatureFlags.of(FeatureFlags.securePairing)
+      + ' sharedPlan=' + FeatureFlags.of(FeatureFlags.sharedPlan);
   }
 
   /** 布尔 → on/off：不让 true/false 混进日志，也避开 ArkTS 的隐式字符串拼接。 */

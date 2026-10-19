@@ -161,7 +161,7 @@ export class CalendarGateway {
       title: title,
       startTime: epochMinToUtcMs(startMin),
       endTime: epochMinToUtcMs(endMin),
-      description: '同休日共同计划'
+      description: '两人份共同计划'
     };
   }
 

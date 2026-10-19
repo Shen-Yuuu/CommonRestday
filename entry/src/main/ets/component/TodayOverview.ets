@@ -1,6 +1,8 @@
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
 import { EditorialCard } from './EditorialCard';
+import { TodayAgendaItem } from 'feature';
+import { LocalTween } from '../util/LocalTween';
 
 /** @Builder 传两个及以上参数时不参与动态渲染（ArkUI 限制），所以整行合成一个对象字面量按引用传。 */
 interface BusyLineArg {
@@ -22,12 +24,112 @@ export struct TodayOverview {
   @Prop partnerVisible: boolean = false;
   @Prop partnerName: string = '';
   @Prop weekdayText: string = '';
+  @Prop agenda: TodayAgendaItem[] = [];
+  @Prop agendaFailed: boolean = false;
+  @State private agendaExpanded: boolean = false;
+  @State private agendaProgress: number = 0;
+  @State private extraAgendaHeight: number = 0;
+  private agendaTween: LocalTween = new LocalTween();
+  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   onEditSchedule: () => void = () => {};
   onAddPlan: () => void = () => {};
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   /** 两颗胶囊共用一个焦点位：-1 表示没有键盘焦点，0/1 是画焦点环的那一颗。 */
   @State private focusedPill: number = -1;
+
+  private visibleAgenda(): TodayAgendaItem[] {
+    return this.agenda.slice(0, 3);
+  }
+
+  aboutToDisappear(): void {
+    this.agendaTween.cancel();
+  }
+
+  private toggleAgenda(): void {
+    this.agendaExpanded = !this.agendaExpanded;
+    const target = this.agendaExpanded ? 1 : 0;
+    this.agendaTween.play(this.getUIContext(), this.agendaProgress, target,
+      DesignTokens.motion(this.reduceMotion, Math.round(180 * Math.abs(target - this.agendaProgress))),
+      (progress: number) => { this.agendaProgress = progress; });
+  }
+
+  private agendaColor(kind: string): Resource {
+    return kind === 'PLAN' ? DesignTokens.primary : (kind === 'COURSE' ? DesignTokens.info : DesignTokens.accent);
+  }
+
+  private agendaKind(kind: string): string {
+    return kind === 'PERSONAL' ? '个人安排' : kind === 'PLAN' ? '计划' : (kind === 'COURSE' ? '课程' : (kind === 'SHIFT_COMMUTE' ? '班次·含通勤' : '班次'));
+  }
+
+  @Builder
+  agendaRow(item: TodayAgendaItem) {
+    Row({ space: 10 }) {
+      Column() {
+        Circle().width(6).height(6).fill(this.agendaColor(item.kind))
+          .accessibilityLevel('no')
+        Column().width(1).layoutWeight(1).backgroundColor(DesignTokens.divider).margin({ top: 5 })
+      }.width(8).height(42).margin({ top: 5 })
+      Text(item.timeText)
+        .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+        .width(94).maxLines(3)
+      Column({ space: 4 }) {
+        Text(item.name).fontSize(DesignTokens.fontCaption).fontWeight(600)
+          .fontColor(DesignTokens.textPrimary).width('100%')
+        Text(this.agendaKind(item.kind))
+          .fontSize(11).fontColor(DesignTokens.textSecondary)
+          .padding({ left: 7, right: 7, top: 2, bottom: 2 })
+          .backgroundColor(DesignTokens.fillWeakest).borderRadius(8)
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+    }
+    .width('100%').alignItems(VerticalAlign.Top)
+    .constraintSize({ minHeight: 44 })
+    .accessibilityGroup(true)
+    .accessibilityText(item.timeText + '，' + item.name + '，' + this.agendaKind(item.kind))
+  }
+
+  @Builder
+  agendaList() {
+    Column({ space: 4 }) {
+      ForEach(this.visibleAgenda(), (item: TodayAgendaItem) => {
+        this.agendaRow(item)
+      }, (item: TodayAgendaItem) => item.id + '|' + item.timeText + '|' + item.name + '|' + item.kind)
+      if (this.agenda.length > 3) {
+        // Scroll 只提供无界的内容测量，禁止滚动交互；高度来自内容而不是外层标题。
+        Scroll() {
+          Column({ space: 4 }) {
+            ForEach(this.agenda.slice(3), (item: TodayAgendaItem) => {
+              this.agendaRow(item)
+            }, (item: TodayAgendaItem) => item.id + '|' + item.timeText + '|' + item.name + '|' + item.kind)
+          }.width('100%').alignItems(HorizontalAlign.Start)
+          .onAreaChange((_old: Area, area: Area) => {
+            const height = Number(area.height);
+            if (Number.isFinite(height) && Math.abs(height - this.extraAgendaHeight) > 0.5) {
+              this.extraAgendaHeight = height;
+            }
+          })
+        }
+        .width('100%').height(this.extraAgendaHeight * this.agendaProgress)
+        .scrollBar(BarState.Off).enableScrollInteraction(false).clip(true)
+        .opacity(this.agendaProgress)
+        .accessibilityLevel(this.agendaProgress === 0 ? 'no-hide-descendants' : 'auto')
+        Button() {
+          Row({ space: 6 }) {
+            Text(this.agendaExpanded ? '收起今日安排' : '展开今日安排（' + this.agenda.length + '）')
+              .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textAccent)
+            SymbolGlyph($r('sys.symbol.chevron_down'))
+              .fontSize(12).fontColor([DesignTokens.textAccent])
+              .rotate({ angle: this.agendaProgress * 180 })
+              .accessibilityLevel('no')
+          }.justifyContent(FlexAlign.Center).width('100%')
+        }
+          .width('100%').constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
+          .backgroundColor(DesignTokens.fillWeakest).stateEffect(false)
+          .accessibilityText(this.agendaExpanded ? '收起今日安排' : '展开今日安排，共' + this.agenda.length + '条')
+          .onClick(() => this.toggleAgenda())
+      }
+    }.width('100%').alignItems(HorizontalAlign.Start).margin({ top: 14 })
+  }
 
   @Builder
   busyLine(row: BusyLineArg) {
@@ -79,7 +181,7 @@ export struct TodayOverview {
 
       Text(this.commonText)
         .fontSize(DesignTokens.fontCaption)
-        .fontColor(DesignTokens.primary)
+        .fontColor(DesignTokens.textAccent)
         .fontWeight(700)
         .width('100%')
         .padding({
@@ -92,8 +194,16 @@ export struct TodayOverview {
         .backgroundColor(DesignTokens.primaryBg)
         .margin({ top: DesignTokens.space3 })
 
+      if (this.agendaFailed) {
+        Text('今天的安排暂时没读出来，下拉刷新再试。')
+          .fontSize(DesignTokens.fontCaption).fontColor(DesignTokens.textSecondary)
+          .margin({ top: DesignTokens.space3 })
+      } else if (this.agenda.length > 0) {
+        this.agendaList()
+      }
+
       Row({ space: DesignTokens.space2 }) {
-        this.actionPill(0, '改班表 / 加课程', '改班表或加课程', false, () => {
+        this.actionPill(0, '＋ 日程', '添加个人日程或调整工作排班', false, () => {
           this.onEditSchedule();
         })
         this.actionPill(1, '＋ 计划', '添加计划', true, () => {

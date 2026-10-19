@@ -29,13 +29,13 @@
 
 **Interface:** 继续返回 `PendingCloudUnpair[]`；旧形状 `{"pairId":"old","uid":"original"}` 应读成一条 `dead=false`，AO 数组形状保持原义。首次写入仍统一存 AO 数组形状。
 
-- [ ] **Step 1: 写失败用例。** 给存储键喂以下旧版原文，断言返回一条 `pairId=old, uid=original, dead=false`；再喂 AO 数组、坏 JSON、空对象，分别断言正常读取或空数组。测试应读取同一生产解码逻辑；若离线只能读桩，额外加一条设备侧真实 Preferences 用例，不把桩通过当作生产已证。
+- [x] **Step 1: 写失败用例。** 给存储键喂以下旧版原文，断言返回一条 `pairId=old, uid=original, dead=false`；再喂 AO 数组、坏 JSON、空对象，分别断言正常读取或空数组。测试应读取同一生产解码逻辑；若离线只能读桩，额外加一条设备侧真实 Preferences 用例，不把桩通过当作生产已证。
 
   ```json
   {"pairId":"old","uid":"original"}
   ```
-- [ ] **Step 2: 运行离线用例，确认旧对象一格先红。** `node tools/test/run.mjs`；记录失败断言及运行档位。
-- [ ] **Step 3: 最小修复。** `JSON.parse` 后用 `Array.isArray` 分辨数组与单对象，再逐条校验非空 `pairId`／`uid`；缺失的旧 `dead` 按 `false` 读。不能把有效旧对象当“非数组脏值”丢掉，也不要在读取时主动发云请求。核心分流是：
+- [x] **Step 2: 运行离线用例，确认旧对象一格先红。** `node tools/test/run.mjs`；记录失败断言及运行档位。
+- [x] **Step 3: 最小修复。** `JSON.parse` 后用 `Array.isArray` 分辨数组与单对象，再逐条校验非空 `pairId`／`uid`；缺失的旧 `dead` 按 `false` 读。不能把有效旧对象当“非数组脏值”丢掉，也不要在读取时主动发云请求。核心分流是：
 
   ```typescript
   const parsed = JSON.parse(text) as Object;
@@ -43,8 +43,8 @@
     ? parsed as Array<Record<string, Object>>
     : [parsed as Record<string, Object>];
   ```
-- [ ] **Step 4: 测“读旧、写新、重启再读”。** 调用一次现有 `addPendingCloudUnpair` 后，存储应成为数组，旧 `uid` 不变，重启后的补删仍使用这个 `uid`。
-- [ ] **Step 5: 跑完整门禁并独立提交本任务文件。** 出包编译不可由离线 TypeScript 检查替代。
+- [x] **Step 4: 测“读旧、写新、重启再读”。** 调用一次现有 `addPendingCloudUnpair` 后，存储应成为数组，旧 `uid` 不变，重启后的补删仍使用这个 `uid`。
+- [x] **Step 5: 跑完整门禁并独立提交本任务文件。** 出包编译不可由离线 TypeScript 检查替代。
 
 ### Task 2: 再次清空时保住终局欠账
 
@@ -54,19 +54,19 @@
 
 **Interface:** `dead` 记录仍不进 `cloudUnpairTargets()`；但它必须进入清库后的账目重建。按 `pairId` 去重，保留原 `uid`，不把 `dead` 改回可重试。
 
-- [ ] **Step 1: 写失败用例。** 预置以下两条旧账，模拟云网络失败后调用 `clearAllData()`；断言清库后两条仍在、终局条仍为 `dead`、旧 `uid` 逐字相同、终局条没有产生云调用。再测只有终局条且当前未配对的形状。
+- [x] **Step 1: 写失败用例。** 预置以下两条旧账，模拟云网络失败后调用 `clearAllData()`；断言清库后两条仍在、终局条仍为 `dead`、旧 `uid` 逐字相同、终局条没有产生云调用。再测只有终局条且当前未配对的形状。
 
   ```json
   [{"pairId":"cannot-delete","uid":"uid-a","dead":1},{"pairId":"retry-later","uid":"uid-b","dead":0}]
   ```
-- [ ] **Step 2: 跑用例确认“终局旧账消失”先红。** 当前 `sweepCloudUnpair()` 不枚举 `dead`，而 `clearAllSettings()` 会清掉整键；此处是待修的实际断点。
-- [ ] **Step 3: 最小修复。** 清库前复制既有 `dead` 条目；清库后将它们与 `sweep.kept` 按 `pairId` 合并写回。任何云删除成功的同一 `pairId` 不应再留“删不掉”徽标。不要把快照密文或 HUKS 别名写进队列。顺序不可倒置：
+- [x] **Step 2: 跑用例确认“终局旧账消失”先红。** 当前 `sweepCloudUnpair()` 不枚举 `dead`，而 `clearAllSettings()` 会清掉整键；此处是待修的实际断点。
+- [x] **Step 3: 最小修复。** 清库前复制既有 `dead` 条目；清库后将它们与 `sweep.kept` 按 `pairId` 合并写回。任何云删除成功的同一 `pairId` 不应再留“删不掉”徽标。不要把快照密文或 HUKS 别名写进队列。顺序不可倒置：
 
   ```text
   读取旧 dead 账 → 云端 sweep → 本机清库 → 合并旧 dead 与 sweep.kept → 落新队列 → 更新页面计数
   ```
-- [ ] **Step 4: 覆盖重复清空与重启。** 连续清空两次，徽标计数不下降也不虚增；重启后计数与队列一致。
-- [ ] **Step 5: 跑完整门禁并独立提交本任务文件。** 文档 §8.29 补“修补后设备待验”，不能直接勾设备格。
+- [x] **Step 4: 覆盖重复清空与重启。** 连续清空两次，徽标计数不下降也不虚增；重启后计数与队列一致。
+- [x] **Step 5: 跑完整门禁并独立提交本任务文件。** 文档 §8.29 补“修补后设备待验”，不能直接勾设备格。
 
 ### Task 3: 操作现场如实展示欠账
 
@@ -76,10 +76,10 @@
 
 **Interface:** `undeletableCloudSnapshots()` 仍只计终局条；待补删条和终局条在清空确认文案中分别说明，关闭态不承诺立刻联网删除。
 
-- [ ] **Step 1: 写状态判据。** 模拟 `unpair()` 收到终局拒绝后不离开“我的”页，数据卡应立即显示新增的终局计数；关闭态或已有待补删记录时，点“清空全部数据”应看到云端未清义务，而不是只有本机删除说明。
-- [ ] **Step 2: 修复刷新与确认文案。** `doUnpair()` 的成功、失败回调都刷新欠账读数；确认文案依据实际 `pairId` 与队列状态，而不是仅凭 `FeatureFlags.cloudPairing && pairState` 判断是否有云端欠账。
-- [ ] **Step 3: 校验三种话术。** 当前可删除、等待开通后补删、终局无法由本机删除，三者不得统一写成“云上已删”；对应隐私/发布文案若有变化，同步 `copy-audit` 管辖的三份文本。
-- [ ] **Step 4: 跑完整门禁并独立提交。** 随后执行设备验收计划，不以构建成功代替屏幕证据。
+- [x] **Step 1: 写状态判据。** 模拟 `unpair()` 收到终局拒绝后不离开“我的”页，数据卡应立即显示新增的终局计数；关闭态或已有待补删记录时，点“清空全部数据”应看到云端未清义务，而不是只有本机删除说明。
+- [x] **Step 2: 修复刷新与确认文案。** `doUnpair()` 的成功、失败回调都刷新欠账读数；确认文案依据实际 `pairId` 与队列状态，而不是仅凭 `FeatureFlags.cloudPairing && pairState` 判断是否有云端欠账。
+- [x] **Step 3: 校验三种话术。** 当前可删除、等待开通后补删、终局无法由本机删除，三者不得统一写成“云上已删”；对应隐私/发布文案若有变化，同步 `copy-audit` 管辖的三份文本。
+- [x] **Step 4: 跑完整门禁并独立提交。** 随后执行设备验收计划，不以构建成功代替屏幕证据。
 
 ## Self-review 与完成定义
 
@@ -88,3 +88,5 @@
 - 无关 WIP、现有配对设备、AGC 已部署对象均不改。
 
 执行时按任务顺序逐条提交；破坏性验收接续 `2026-09-29-ao-device-acceptance.md`。
+
+> 批次 AP 记账补正（2026-09-29）：Task 1–3 的代码、离线测试与完整构建门禁分别由 `9105c5c`、`028d90a`、`d9967bb`、`252403f` 完成；真实 Preferences 的设备侧用例由 `a87a06e` 加入测试包，并未因此宣称已在设备执行。破坏性验收仍以 AO 设备计划的未勾项为准。

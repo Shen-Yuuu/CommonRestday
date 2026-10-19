@@ -21,6 +21,7 @@ export struct WindowCard {
   @Prop displayTags: string = '';
   @Prop todayEpoch: number = 0;
   @Prop cutTopLeft: boolean = true;
+  @Prop selected: boolean = false;
   onTapCard: () => void = () => {};
 
   private startDay(): number {
@@ -59,6 +60,7 @@ export struct WindowCard {
       hero: false,
       cutTopLeft: this.cutTopLeft,
       tappable: true,
+      selected: this.selected,
       onTapCard: () => this.onTapCard()
     }) {
       Row() {
@@ -76,7 +78,7 @@ export struct WindowCard {
           .fontSize(DesignTokens.fontBody)
           .fontFamily(DesignTokens.fontRound)
           .fontWeight(FontWeight.Bolder)
-          .fontColor(DesignTokens.primary)
+          .fontColor(DesignTokens.textAccent)
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)

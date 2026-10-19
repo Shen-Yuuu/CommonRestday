@@ -1,29 +1,25 @@
-import { nowEpochMin, todayEpochDay } from 'domain';
+import { dayOfStart, nowEpochMin, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
-import { PAIRED } from 'data';
 import {
   AnswerAction,
   AnswerState,
   CommonTimeQueryService,
   ExperienceMode,
-  FeatureFlags,
   greetingOf,
   HomeSummary,
-  ProfileSettingsService,
   QuickAnswer,
   ScheduleUseCase,
-  SYNC_STATE_BLOCKED,
-  SyncState,
-  SYNC_STATE_OK,
-  syncStateNoteOf,
-  syncStateTitleOf,
-  syncTroubleOf,
+  ScheduleOverviewQueryService,
+  TodayAgendaItem,
   WindowSummary
 } from 'feature';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, navToCoTime } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
 import { LatestLanding } from '../util/LatestLanding';
+import { LatestReadQueue } from '../util/LatestReadQueue';
+import { homeContentKey } from '../util/VisualMotionMath';
+import { appToast } from '../util/AppToast';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { EditorialCard } from '../component/EditorialCard';
@@ -34,9 +30,11 @@ import { ConflictNotice } from '../component/ConflictNotice';
 import { HeroVariant, NextWindowHero } from '../component/NextWindowHero';
 import { QuickAnswerRow } from '../component/QuickAnswerRow';
 import { TodayOverview } from '../component/TodayOverview';
+import { ScheduleEntrySheet } from '../component/ScheduleEntrySheet';
 import { WindowDetailSheet } from '../component/WindowDetailSheet';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
+import { FadingScrollViewport, ScrollHeaderState, StickyPageHeader, HeaderDateBadge } from '../component/FadingHeader';
 
 const TAG = 'HomeView';
 /** 首次读取的重试次数与间隔：冷启动时 Db 可能还没 init 完。 */
@@ -54,22 +52,29 @@ const SETTLE_DELAY_MS = 300;
  */
 @Component
 export struct HomeView {
+  @Prop @Watch('onActiveChanged') active: boolean = true;
   /** 打开栈内路由（班表 / 配对），由 AppNavigator 注入：页面不持有 NavPathStack，也不解析路由种类。 */
   onOpenRoute: (name: string) => void = (name: string) => {
   };
   @State private home: HomeSummary | null = null;
+  @State private agenda: TodayAgendaItem[] = [];
+  @State private agendaFailed: boolean = false;
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
-  /** 配对状态 + 云同步三态：只为决定要不要挂那一条降级提示，页面不据此改算任何东西。 */
-  @State private pairState: string = '';
-  @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
   @State private refreshing: boolean = false;
+  @State private refreshCue: number = 0;
+  private pullInFlight: boolean = false;
+  private mounted: boolean = false;
   @State private sheetVisible: boolean = false;
+  @State private scheduleVisible: boolean = false;
+  private sheetOpening: boolean = false;
   @State private sheetStart: number = 0;
   @State private sheetEnd: number = 0;
   @State private sheetTags: string = '';
   /** 本页容器宽度档位：只影响留白与正文封顶，不改答案层级。 */
   @State private bp: Breakpoint = Breakpoint.COMPACT;
+  private pageScroller: Scroller = new Scroller();
+  @State private headerVisual: ScrollHeaderState = new ScrollHeaderState();
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
   /**
@@ -77,13 +82,26 @@ export struct HomeView {
    * 期间任何一次重算广播都会再起一读；先起的那读晚落地就把首页整体念回改前的答案。
    */
   private landing: LatestLanding = new LatestLanding();
+  private reads: LatestReadQueue = new LatestReadQueue();
+  private needsRecompute: boolean = false;
 
   aboutToAppear(): void {
+    this.mounted = true;
     this.load(true);
   }
 
+  aboutToDisappear(): void {
+    this.mounted = false;
+    this.landing.begin();
+    this.reads.cancel();
+  }
+
   onRecomputeChanged(): void {
-    this.load(false);
+    if (!this.pullInFlight) { this.load(false); }
+  }
+  onActiveChanged(): void {
+    if (!this.active) { this.landing.invalidate(); this.reads.cancel(); return; }
+    if (this.mounted) this.load(this.home === null);
   }
 
   // ---------- 数据 ----------
@@ -93,8 +111,18 @@ export struct HomeView {
    * 缓存为空或跨天过期才补一次本机重算；手动刷新传 false，只重读读模型，
    * 不触发重算、通知注册与云端推送。
    */
-  private async load(allowRecompute: boolean): Promise<void> {
+  private async load(allowRecompute: boolean): Promise<boolean> {
+    if (!this.mounted || !this.active) return false;
     const token = this.landing.begin();
+    this.needsRecompute = this.needsRecompute || allowRecompute;
+    await this.reads.run(async (): Promise<void> => {
+      if (!this.mounted || !this.active) return;
+      const recompute = this.needsRecompute; this.needsRecompute = false;
+      await this.readHome(recompute, token);
+    });
+    return this.mounted && this.active && this.home !== null && !this.failed;
+  }
+  private async readHome(allowRecompute: boolean, token: number): Promise<boolean> {
     // 一次加载只读一次表：三次读数各算各的"现在"，跨午夜那瞬能把同一次渲染劈成两天
     const now = nowEpochMin();
     for (let attempt = 1; attempt <= LOAD_ATTEMPTS; attempt++) {
@@ -104,7 +132,7 @@ export struct HomeView {
           // 冷启动重算可能还在路上：此时缓存为空或属于昨天，补算一次再渲染，
           // 否则首页会先告诉用户"没有窗口"，等到下一次广播才纠正
           await ScheduleUseCase.ensureSeeded();
-          await ScheduleUseCase.recompute(todayEpochDay());
+          await ScheduleUseCase.recompute(todayEpochDay(), true);
           summary = await CommonTimeQueryService.getHomeSummary(now);
           if (summary.computedAt <= 0) {
             // 自己刚写完就读到空表，只能是另一路重算正在 DELETE/INSERT：等它落盘再读一次
@@ -112,27 +140,36 @@ export struct HomeView {
             summary = await CommonTimeQueryService.getHomeSummary(now);
           }
         }
+        let agenda: TodayAgendaItem[] = [];
+        let agendaFailed = false;
+        try {
+          agenda = await ScheduleOverviewQueryService.getTodayAgenda(dayOfStart(now));
+        } catch (e) {
+          agendaFailed = true;
+          Logger.warn(TAG, 'today agenda unavailable: ' + (e as Error).message);
+        }
         if (!this.landing.isCurrent(token)) {
-          return;
+          return false;
         }
         this.home = summary;
+        this.agenda = agenda;
+        this.agendaFailed = agendaFailed;
         this.failed = false;
-        this.pairState = ProfileSettingsService.getPairState();
-        this.syncState = ProfileSettingsService.getCloudSyncState();
-        return;
+        return true;
       } catch (e) {
         if (attempt >= LOAD_ATTEMPTS) {
           if (!this.landing.isCurrent(token)) {
-            return;
+            return false;
           }
           // 有旧结果就不清空，只把状态标成可恢复错误（提示条在内容上方）
           this.failed = true;
           Logger.error(TAG, 'load home summary failed: ' + (e as Error).message);
-          return;
+          return false;
         }
         await this.delay(RETRY_DELAY_MS);
       }
     }
+    return false;
   }
 
   private delay(ms: number): Promise<void> {
@@ -145,11 +182,31 @@ export struct HomeView {
 
   /**
    * 下拉刷新：重算一遍视界，已配对时这一步就把对方最新的快照拉下来。
-   * 重算完成的广播会带动本页重读读模型，这里只负责把转圈落回地面。
+   * 等本次读模型落地才收转圈；反馈仅说明首页变化，不冒充云同步成功。
    */
   private async onRefresh(): Promise<void> {
-    await syncOnPull();
-    this.refreshing = false;
+    if (this.pullInFlight) { return; }
+    this.pullInFlight = true;
+    const before = homeContentKey(this.home, this.agenda, this.agendaFailed);
+    try {
+      const recomputed = await syncOnPull();
+      if (!this.mounted) { return; }
+      const loaded = await this.load(false);
+      if (!this.mounted) { return; }
+      if (!recomputed || !loaded) {
+        appToast('首页暂未更新，请再试一次');
+      } else if (this.agendaFailed) {
+        appToast('今日安排暂未读到，请再试一次');
+      } else if (before === homeContentKey(this.home, this.agenda, this.agendaFailed)) {
+        appToast('首页内容没有变化');
+      } else {
+        this.refreshCue++;
+        appToast('首页已更新');
+      }
+    } finally {
+      this.pullInFlight = false;
+      if (this.mounted) { this.refreshing = false; }
+    }
   }
 
   // ---------- 读模型取值（集中处理空值，build 里不做可空判断） ----------
@@ -162,16 +219,6 @@ export struct HomeView {
   private isStale(): boolean {
     const h = this.home;
     return h != null && h.stale;
-  }
-
-  /**
-   * 云同步那两格坏结论（待重试 / 已降级）要不要在这页挂出来（协议 §3.4 末行：UI 只消费这三态）。
-   * 判据与「我的 · 配对卡」逐字相同，两句用的是同一份 `syncStateTitleOf` / `syncStateNoteOf`，
-   * 不为首页另写一套说法——同一件事在两个页面两种口径，正是最终验收 R1 点过的那类问题。
-   * 未配对不出：偏好里残留的降级结论讲的是上一段配对时的事，挂在单人首页等于编造一个不存在的通路。
-   */
-  private cloudTrouble(): boolean {
-    return FeatureFlags.cloudPairing && this.pairState === PAIRED && syncTroubleOf(this.syncState);
   }
 
   private next(): WindowSummary | null {
@@ -357,9 +404,10 @@ export struct HomeView {
   }
 
   private async openWindow(start: number, end: number): Promise<void> {
-    if (start <= 0 || end <= start) {
+    if (this.sheetOpening || this.sheetVisible || start <= 0 || end <= start) {
       return;
     }
+    this.sheetOpening = true;
     let tags = '';
     try {
       const detail = await CommonTimeQueryService.getWindowDetail(start, end);
@@ -372,6 +420,7 @@ export struct HomeView {
     this.sheetEnd = end;
     this.sheetTags = tags;
     this.sheetVisible = true;
+    this.sheetOpening = false;
   }
 
   @Builder
@@ -380,6 +429,7 @@ export struct HomeView {
       winStart: this.sheetStart,
       winEnd: this.sheetEnd,
       winTags: this.sheetTags,
+      onCreated: () => navToCoTime(COTIME_SEG_PLANS),
       onClose: () => {
         this.sheetVisible = false;
       }
@@ -421,224 +471,199 @@ export struct HomeView {
 
   @Builder
   header() {
-    Row() {
-      Column({ space: 2 }) {
-        Text(this.greeting())
-          .fontSize(DesignTokens.fontTitle)
-          .fontFamily(DesignTokens.fontRound)
-          .fontWeight(FontWeight.Bolder)
-          .fontColor(DesignTokens.textPrimary)
-        Text(this.subtitle())
-          .fontSize(DesignTokens.fontCaption)
-          .fontColor(this.isSolo() ? DesignTokens.textTertiary : DesignTokens.primary)
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      // 问候语单独念没信息量，和"和谁的时间"合成一句
-      .accessibilityGroup(true)
-      .accessibilityText(this.greeting() + '，' + this.subtitle())
+    StickyPageHeader({
+      title: '两人份', subtitle: this.greeting() + ' · ' + this.subtitle(),
+      visual: this.headerVisual, horizontalPadding: Breakpoints.hPadding(this.bp),
+      maxContentWidth: Breakpoints.contentMaxWidth(this.bp),
+      trailing: () => { this.dateBadge(); }
+    })
+    .hitTestBehavior(HitTestMode.Transparent)
+  }
 
-      // 日期印章：7 分甜把它从"旋转的圆章"改成"浮在页眉上的一颗白方块"
-      Column() {
-        Text(this.sealDay())
-          .fontSize(DesignTokens.fontCaption)
-          .fontFamily(DesignTokens.fontRound)
-          .fontWeight(800)
-          .fontColor(DesignTokens.primary)
-        Text(this.sealMonth())
-          .fontSize(DesignTokens.fontCaption)
-          .fontFamily(DesignTokens.fontRound)
-          .fontWeight(800)
-          .fontColor(DesignTokens.primary)
-          .opacity(0.72)
-      }
-      .width(48)
-      .height(48)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(DesignTokens.radiusHeroCut)
-      .backgroundColor(DesignTokens.card)
-      .shadow(DesignTokens.floatShadow())
-      .margin({ left: DesignTokens.space3 })
-      // 「22 / 9月」两行分开读会变成一个孤零零的数字，这里念成完整日期
-      .accessibilityGroup(true)
-      .accessibilityText('今天 ' + DateLabel.mdw(todayEpochDay()))
-    }
-    .width('100%')
-    .alignItems(VerticalAlign.Top)
-    .padding({ top: DesignTokens.space5, bottom: DesignTokens.space1 })
+  @Builder
+  dateBadge() {
+    HeaderDateBadge({ day: this.sealDay(), month: this.sealMonth(), visual: this.headerVisual,
+      spokenDate: '今天 ' + DateLabel.mdw(todayEpochDay()) })
   }
 
   build() {
     ResponsiveContainer({ breakpoint: this.bp }) {
-      Stack() {
-        Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-          Scroll() {
-            Column({ space: DesignTokens.space3 }) {
-              this.header()
-
-              if (this.home == null) {
-                if (this.failed) {
-                  StatePanel({
-                    kind: StatePanelKind.ERROR,
-                    title: '首页读取失败',
-                    description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
-                    actionLabel: '重试',
-                    onAction: () => {
-                      this.load(true);
+      Column() {
+        this.header()
+        Column() {
+          FadingScrollViewport({ fadeHeight: 16, visual: this.headerVisual }) {
+            Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+              Scroll(this.pageScroller) {
+                Column({ space: DesignTokens.space3 }) {
+                  if (this.home == null) {
+                    if (this.failed) {
+                      StatePanel({
+                        kind: StatePanelKind.ERROR,
+                        title: '首页读取失败',
+                        description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
+                        actionLabel: '重试',
+                        onAction: () => {
+                          this.load(true);
+                        }
+                      })
+                    } else {
+                      this.skeleton()
                     }
-                  })
-                } else {
-                  this.skeleton()
-                }
-              } else {
-                if (this.failed) {
-                  // 这一串四种说法各挂一颗节点，门槛与句子一一对得上（共同页与「我的」配对卡同一口径）。
-                  // 换句子这件事本身由 NoticeBar 的说法字段是 @Prop 保证（D-46）。
-                  NoticeBar({
-                    tone: NoticeTone.ERROR,
-                    title: '刷新失败，下面是上次的结果',
-                    body: '数据没变，稍后再下拉一次就行',
-                    actionLabel: '重试',
-                    onAction: () => {
-                      this.load(true);
+                  } else {
+                    if (this.failed) {
+                      // 这一串四种说法各挂一颗节点，门槛与句子一一对得上（共同页与「我的」配对卡同一口径）。
+                      // 换句子这件事本身由 NoticeBar 的说法字段是 @Prop 保证（D-46）。
+                      NoticeBar({
+                        tone: NoticeTone.ERROR,
+                        title: '刷新失败，下面是上次的结果',
+                        body: '数据没变，稍后再下拉一次就行',
+                        actionLabel: '重试',
+                        onAction: () => {
+                          this.load(true);
+                        }
+                      })
+                    } else if (this.isStale()) {
+                      NoticeBar({
+                        tone: NoticeTone.WARN,
+                        title: this.staleTitle(),
+                        body: '班表可能变了，重新算一次再确认',
+                        actionLabel: '重新计算',
+                        onAction: () => {
+                          this.load(true);
+                        }
+                      })
                     }
-                  })
-                } else if (this.isStale()) {
-                  NoticeBar({
-                    tone: NoticeTone.WARN,
-                    title: this.staleTitle(),
-                    body: '班表可能变了，重新算一次再确认',
-                    actionLabel: '重新计算',
-                    onAction: () => {
-                      this.load(true);
-                    }
-                  })
-                } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
-                  // 三态里唯一会改变这一页读数的坏消息：TA 那一半是本机上的旧一份。
-                  NoticeBar({
-                    tone: NoticeTone.ERROR,
-                    title: syncStateTitleOf(this.syncState),
-                    body: syncStateNoteOf(this.syncState)
-                  })
-                } else if (this.cloudTrouble()) {
-                  NoticeBar({
-                    tone: NoticeTone.WARN,
-                    title: syncStateTitleOf(this.syncState),
-                    body: syncStateNoteOf(this.syncState)
-                  })
-                }
 
-                NextWindowHero({
-                  variant: this.heroVariant(),
-                  experience: this.home.mode,
-                  todayEpoch: todayEpochDay(),
-                  winStart: this.winStart(),
-                  winEnd: this.winEnd(),
-                  winDuration: this.winDuration(),
-                  winSubtitle: this.winSubtitle(),
-                  onTapHero: () => {
-                    this.openHero();
-                  }
-                })
-
-                if (this.conflictCount() > 0) {
-                  ConflictNotice({
-                    conflictCount: this.conflictCount(),
-                    reason: this.conflictReason(),
-                    onTap: () => {
-                      this.openConflicts();
-                    }
-                  })
-                }
-
-                EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-                  Column() {
-                    QuickAnswerRow({
-                      question: this.tonightQuestion(),
-                      answerState: this.home.tonight.state,
-                      headline: this.home.tonight.headline,
-                      supporting: this.home.tonight.supportingText,
-                      onTap: () => {
-                        this.openTonight();
+                    NextWindowHero({
+                      refreshCue: this.refreshCue,
+                      variant: this.heroVariant(),
+                      experience: this.home.mode,
+                      todayEpoch: todayEpochDay(),
+                      winStart: this.winStart(),
+                      winEnd: this.winEnd(),
+                      winDuration: this.winDuration(),
+                      winSubtitle: this.winSubtitle(),
+                      onTapHero: () => {
+                        this.openHero();
                       }
                     })
-                    QuickAnswerRow({
-                      question: this.fullDayQuestion(),
-                      showDivider: true,
-                      answerState: this.home.fullRestDay.state,
-                      headline: this.home.fullRestDay.headline,
-                      supporting: this.home.fullRestDay.supportingText,
-                      onTap: () => {
-                        this.openFullRestDay();
-                      }
-                    })
-                    QuickAnswerRow({
-                      question: '最近能出行吗',
-                      showDivider: true,
-                      answerState: this.home.trip.state,
-                      headline: this.home.trip.headline,
-                      supporting: this.home.trip.supportingText,
-                      onTap: () => {
-                        this.openTrip();
-                      }
-                    })
-                  }
-                  .width('100%')
-                  .alignItems(HorizontalAlign.Start)
-                }
 
-                TodayOverview({
-                  myText: this.todayMy(),
-                  partnerText: this.todayPartner(),
-                  commonText: this.todayCommon(),
-                  partnerVisible: !this.isSolo(),
-                  partnerName: this.partnerName(),
-                  weekdayText: DateLabel.mdw(todayEpochDay()),
-                  onEditSchedule: () => {
-                    this.onOpenRoute(NavRoutes.SCHEDULE_HUB);
-                  },
-                  onAddPlan: () => {
-                    this.openPlan();
+                    if (this.conflictCount() > 0) {
+                      ConflictNotice({
+                        conflictCount: this.conflictCount(),
+                        reason: this.conflictReason(),
+                        onTap: () => {
+                          this.openConflicts();
+                        }
+                      })
+                    }
+
+                    EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+                      Column() {
+                        QuickAnswerRow({
+                          revealDelay: 0,
+                          question: this.tonightQuestion(),
+                          answerState: this.home.tonight.state,
+                          headline: this.home.tonight.headline,
+                          supporting: this.home.tonight.supportingText,
+                          onTap: () => {
+                            this.openTonight();
+                          }
+                        })
+                        QuickAnswerRow({
+                          revealDelay: 45,
+                          question: this.fullDayQuestion(),
+                          showDivider: true,
+                          answerState: this.home.fullRestDay.state,
+                          headline: this.home.fullRestDay.headline,
+                          supporting: this.home.fullRestDay.supportingText,
+                          onTap: () => {
+                            this.openFullRestDay();
+                          }
+                        })
+                        QuickAnswerRow({
+                          question: '最近能出行吗',
+                          revealDelay: 90,
+                          showDivider: true,
+                          answerState: this.home.trip.state,
+                          headline: this.home.trip.headline,
+                          supporting: this.home.trip.supportingText,
+                          onTap: () => {
+                            this.openTrip();
+                          }
+                        })
+                      }
+                      .width('100%')
+                      .alignItems(HorizontalAlign.Start)
+                    }
+
+                    TodayOverview({
+                      myText: this.todayMy(),
+                      partnerText: this.todayPartner(),
+                      commonText: this.todayCommon(),
+                      partnerVisible: !this.isSolo(),
+                      partnerName: this.partnerName(),
+                      weekdayText: DateLabel.mdw(todayEpochDay()),
+                      agenda: this.agenda,
+                      agendaFailed: this.agendaFailed,
+                      onEditSchedule: () => {
+                        this.scheduleVisible = true;
+                      },
+                      onAddPlan: () => {
+                        this.openPlan();
+                      }
+                    })
+                    .bindSheet($$this.scheduleVisible, this.scheduleEntry(), {
+                      height: SheetSize.FIT_CONTENT, detents: [SheetSize.FIT_CONTENT], preferType: SheetType.BOTTOM,
+                      dragBar: false, showClose: false, backgroundColor: DesignTokens.card, maskColor: DesignTokens.scrim
+                    })
                   }
+                }
+                // 宽屏只收正文宽度和留白，答案层级不变：Scroll 的 align(Top) 会把这列居中
+                .width('100%')
+                .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
+                .padding({
+                  left: Breakpoints.hPadding(this.bp),
+                  right: Breakpoints.hPadding(this.bp),
+                  top: 8,
+                  bottom: DesignTokens.dockClearance
                 })
               }
+              .width('100%')
+              .height('100%')
+              // 页面底画在最外层：渐变要像原型的 #screen 那样定住，滚动容器自己不能再铺底
+              .backgroundColor(Color.Transparent)
+              .align(Alignment.Top)
+              .scrollBar(BarState.Off)
+              .onAppear(() => { this.headerVisual.update(this.pageScroller.currentOffset().yOffset); })
+              .onDidScroll(() => {
+                this.headerVisual.update(this.pageScroller.currentOffset().yOffset);
+              })
+              .bindSheet($$this.sheetVisible, this.detailSheet(), {
+                detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+                dragBar: false,
+                showClose: false,
+                // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
+                // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
+                backgroundColor: Color.Transparent,
+                blurStyle: BlurStyle.NONE,
+                maskColor: DesignTokens.scrim
+              })
             }
-            // 宽屏只收正文宽度和留白，答案层级不变：Scroll 的 align(Top) 会把这列居中
-            .width('100%')
-            .constraintSize({ maxWidth: Breakpoints.contentMaxWidth(this.bp) })
-            .padding({
-              left: Breakpoints.hPadding(this.bp),
-              right: Breakpoints.hPadding(this.bp),
-              bottom: DesignTokens.dockClearance
+            .onRefreshing(() => {
+              this.onRefresh();
             })
+            .width('100%')
+            .height('100%')
           }
-          .width('100%')
-          .height('100%')
-          // 页面底画在最外层：渐变要像原型的 #screen 那样定住，滚动容器自己不能再铺底
-          .backgroundColor(Color.Transparent)
-          .align(Alignment.Top)
-          .scrollBar(BarState.Off)
-          .bindSheet($$this.sheetVisible, this.detailSheet(), {
-            detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-            dragBar: false,
-            showClose: false,
-            // 表面（暖白渐变 + 顶角）由 WindowDetailSheet 自己画，
-            // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
-            backgroundColor: Color.Transparent,
-            blurStyle: BlurStyle.NONE,
-            maskColor: DesignTokens.scrim
-          })
         }
-        .onRefreshing(() => {
-          this.onRefresh();
-        })
-        .width('100%')
-        .height('100%')
+        .width('100%').layoutWeight(1)
       }
       .width('100%')
       .height('100%')
       .linearGradient(DesignTokens.pageGradient())
     }
   }
+  @Builder
+  scheduleEntry() { ScheduleEntrySheet({onClose:() => {this.scheduleVisible=false;}}) }
 }

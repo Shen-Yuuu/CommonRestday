@@ -1,10 +1,37 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "debug",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "E:/desktop/Code/harmony/key/ForTwo/ForTwo.p12",
+          "storePassword": "0000001948E48844EB9FA248ECAA10A8D77F636EF54C225CD8C3584EEA4D98E64A64BA5C1BFF026075",
+          "keyAlias": "fortwo",
+          "keyPassword": "0000001949E41B7D511CC0BA72D80A10ED17FD0D8FF1B97083B26DA49BF527DE74B1957D5D48E49F42",
+          "signAlg": "SHA256withECDSA",
+          "profile": "E:/desktop/Code/harmony/key/ForTwo/fortwoDebug.p7b",
+          "certpath": "E:/desktop/Code/harmony/key/ForTwo/fortwo.cer"
+        }
+      },
+      {
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "E:/desktop/Code/harmony/key/ForTwo/fortwo发布.cer",
+          "keyAlias": "fortwo",
+          "keyPassword": "00000019050F30D1F4397959E9FD5C3158ADCDE43DEBD43423E8934609D5B8DD5F13FBE7F24031D25C",
+          "profile": "E:/desktop/Code/harmony/key/ForTwo/fortwo发布Release.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "E:/desktop/Code/harmony/key/ForTwo/ForTwo.p12",
+          "storePassword": "0000001919991F9D9EA40D938FC5336495A1A86BCFB50D77AF39B1E0431B961A251753AA83EA5528B1"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
+        "signingConfig": "debug",
         "targetSdkVersion": "26.0.0",
         "compileSdkVersion": "26.0.0",
         "compatibleSdkVersion": "26.0.0",

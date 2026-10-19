@@ -1,21 +1,19 @@
 import { CapsuleSegmentButtonV2, ColorMetrics, LengthMetrics, SegmentButtonV2Items } from '@kit.ArkUI';
 import { DesignTokens } from '../theme/DesignTokens';
 
-/**
- * 胶囊滑动选项卡：共同页的「时间窗口 / 共同计划」与日程录入页的「周历 / 日程管理」共用一份外观。
- * 抽出来不是省事：两处各写一遍令牌，改一处就会让两个页面开始长得不一样；
- * 那四枚 ColorMetrics.resourceColor 告警也会跟着复制一份（告警基线按全仓总数计）。
- */
+/** 共用的胶囊选项卡。 */
 @Component
 export struct CapsuleSegment {
   items: SegmentButtonV2Items = new SegmentButtonV2Items([]);
   /** 当前选中项下标：由父页持有，本页只读它、不改它。 */
   @Prop selectedIndex: number = 0;
+  @Prop pendingBadge: boolean = false;
   /** 用户点了哪一项：父页拿到下标后自己换算成本页的状态口径。 */
   onPick: (idx: number) => void = () => {
   };
 
   build() {
+    Stack({ alignContent: Alignment.TopEnd }) {
     CapsuleSegmentButtonV2({
       items: this.items,
       selectedIndex: this.selectedIndex,
@@ -24,7 +22,6 @@ export struct CapsuleSegment {
       },
       itemFontSize: LengthMetrics.fp(14),
       itemFontColor: ColorMetrics.resourceColor(DesignTokens.textSecondary),
-      // 7 分甜把选中态从"粉底白字"翻成"白底粉字"：胶囊是浮在背板上的一颗糖，不再是一块色块。
       itemSelectedFontColor: ColorMetrics.resourceColor(DesignTokens.primary),
       itemSelectedBackgroundColor: ColorMetrics.resourceColor(DesignTokens.card),
       itemFontWeight: FontWeight.Bold,
@@ -35,5 +32,10 @@ export struct CapsuleSegment {
       buttonPadding: LengthMetrics.vp(4)
     })
       .width('100%')
+      if (this.pendingBadge) {
+        Circle().width(7).height(7).fill(DesignTokens.primary).margin({ top: 6, right: 12 })
+          .hitTestBehavior(HitTestMode.None).accessibilityText('有共同计划待确认')
+      }
+    }.width('100%')
   }
 }

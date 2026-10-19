@@ -10,6 +10,8 @@
 
 本文档会随后面的自主批次继续追加（§8 是追加区）。
 
+> **2026-10-04 最新决策：**用户已同意共同计划双向确认，并要求系统通知覆盖应用未打开与锁屏。此前 W1b／W2 暂缓属于历史决策；本轮重新开启设计与前置验证，不表示功能已经实现。后续依据 [新设计](../plans/2026-10-03-shared-plan-confirmation-design.md)、[实施清单](../superpowers/plans/2026-10-03-shared-plan-confirmation.md) 和 [用户操作步骤](../validation/2026-10-03-shared-plan-operator-actions.md)。真实身份、事务及推送门槛仍须取证，原有批次证据保留不改。
+
 ---
 
 ## 0. 一句话回答那个问题

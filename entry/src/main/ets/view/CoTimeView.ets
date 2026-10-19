@@ -1,16 +1,16 @@
 import { HORIZON_DEFAULT_DAYS, nowEpochMin, todayEpochDay } from 'domain';
 import { DateLabel, Logger } from 'commons';
-import { PAIRED } from 'data';
 import {
-  CommonTimePageData, CommonTimeQueryService, ExperienceMode, FeatureFlags, ProfileSettingsService,
-  ScheduleUseCase, SYNC_STATE_BLOCKED, SYNC_STATE_OK, SyncState, WindowFilter,
-  WindowFilterKey, WindowSummary, horizonLabel, syncStateNoteOf, syncStateTitleOf, syncTroubleOf
+  CommonTimePageData, CommonTimeQueryService, ExperienceMode,
+  ScheduleUseCase, WindowFilter, WindowFilterKey, WindowSummary, horizonLabel, SharedPlanViewService
 } from 'feature';
 import { ChipV2, ChipV2AccessibilitySelectedType, ChipV2Label, ChipV2Options, SegmentButtonV2Items } from '@kit.ArkUI';
+import { DirectionalContent } from '../component/DirectionalContent';
 import { NavRoutes } from '../navigation/NavRoutes';
 import { COTIME_SEG_PLANS, COTIME_SEG_WINDOW, takeCoTimeSegment } from '../util/NavUtil';
 import { syncOnPull } from '../util/PullRefresh';
 import { LatestLanding } from '../util/LatestLanding';
+import { LatestReadQueue } from '../util/LatestReadQueue';
 import { displayTagLine } from '../util/WindowTagUtil';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
@@ -20,12 +20,15 @@ import { NoticeBar, NoticeTone } from '../component/NoticeBar';
 import { SkeletonBar } from '../component/Skeleton';
 import { StatePanel, StatePanelKind } from '../component/StatePanel';
 import { WindowCard } from '../component/WindowCard';
-import { WEEK_MODE_COMMON, WeekScheduleView } from '../component/WeekScheduleView';
+import { currentWeekStart, WEEK_MODE_COMMON, WeekScheduleView } from '../component/WeekScheduleView';
 import { WindowDetailSheet } from '../component/WindowDetailSheet';
 import { DayDetailSheet } from '../component/DayDetailSheet';
 import { Breakpoint, Breakpoints } from '../responsive/Breakpoints';
 import { ResponsiveContainer } from '../responsive/ResponsiveContainer';
 import { PlansView } from './PlansView';
+import { FadingScrollViewport, ScrollHeaderState } from '../component/FadingHeader';
+import { readScrollY } from '../util/ScrollOffset';
+import { CompanionsDuo } from '../component/CompanionsDuo';
 
 const TAG = 'CoTimeView';
 /** 首次读取的重试次数与间隔：冷启动时 Db 可能还没 init 完（与首页同一口径）。 */
@@ -53,36 +56,27 @@ const FILTERS: FilterChip[] = [
   { key: WindowFilterKey.TRIP, label: '可出行' }
 ];
 
-/**
- * 共同时间页：一级分段只有「时间窗口 / 共同计划」，窗口分段下只有「列表 / 周历」两种视图。
- * - 列表：读模型给出的按日归并行（一天只留最长的一段），点卡片直接建计划；
- * - 周历：课程表式的当日空闲块（WeekScheduleView 共同模式），点色块建计划、点空白看当日明细；
- * - 本页只有「列表 / 周历」两种视图，不提供月历视图；
- * - 筛选与标签压缩口径都在 feature 读模型里，页面只渲染，不自行过滤或映射标签；
- * - 宽度档位：expanded（≥840vp）的列表视图改走「列表—详情」双栏，点卡片在右侧栏内
- *   直接开建计划表单；compact / medium 与改造前一致，仍用半模态。
- */
+/** 共同时间页：列表、周历、计划三个视图。 */
 @Component
 export struct CoTimeView {
+  @Prop @Watch('onActiveChanged') active: boolean = true;
   /** 打开栈内路由（班表 / 配对），由 AppNavigator 注入：页面不持有 NavPathStack。 */
   onOpenRoute: (name: string) => void = (name: string) => {
   };
   @State private page: CommonTimePageData | null = null;
   /** 读模型加载失败：无内容时给整页错误面板，有内容时只挂一条提示，不清空旧结果。 */
   @State private failed: boolean = false;
-  /** 配对状态 + 云同步三态：只为决定要不要挂那一条降级提示，页面不据此改算任何东西。 */
-  @State private pairState: string = '';
-  @State private syncState: SyncState = { outcome: SYNC_STATE_OK, day: 0, code: '' };
   @State private segment: string = COTIME_SEG_WINDOW;
-  /**
-   * 窗口段内的视图：默认列表。长辈模式要的低密度入口就是这个默认值——
-   * 周历网格要逐格摸，列表一行一段，读屏和手指都好落点（docs/06 §D）。
-   */
+  /** 时间视图默认列表，切换计划时保留之前的筛选。 */
   @State private viewMode: string = VIEW_LIST;
+  @State private targetView: number = 0;
   @State private filterKey: WindowFilterKey = WindowFilterKey.ALL;
   @State private refreshing: boolean = false;
+  @State private sharedPending: boolean = false;
+  private sharedRead: number = 0;
   /** 下拉刷新时递增，驱动周历重新装配（周历自己按周取数）。 */
   @State private weekTick: number = 0;
+  @State private visibleWeek: number = currentWeekStart();
   // 窗口详情半模态（点窗口 → 创建共同计划）
   @State private sheetVisible: boolean = false;
   @State private sheetStart: number = 0;
@@ -95,35 +89,83 @@ export struct CoTimeView {
   @State @Watch('onBreakpointChanged') private bp: Breakpoint = Breakpoint.COMPACT;
   /** 详情栏是否已选中一个窗口（离开 expanded 时清掉，回到窄屏不残留半开状态）。 */
   @State private detailOpen: boolean = false;
-  segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '时间窗口' }, { text: '共同计划' }]);
-  /**
-   * 筛选 Chip 的配置对象：ChipV2 是 @ComponentV2，选中态靠 @Trace activated 驱动，
-   * 所以这里刻意不进 @State —— 建一次，切档时在 selectFilter 里逐项写回。
-   */
+  segItems: SegmentButtonV2Items = new SegmentButtonV2Items([{ text: '列表' }, { text: '周历' }, { text: '计划' }]);
+  /** 筛选 Chip 的配置对象：ChipV2 是 @ComponentV2，选中态靠 @Trace activated 驱动， */
   private chips: ChipV2Options[] = [];
+  // 装饰器实参必须是字面量，取值与 ThemeModeSignal.COLOR_MODE_KEY 一致。
+  @StorageProp('crd_color_mode') @Watch('onColorModeChanged') private colorMode: number = -1;
   // 保存动作 / 伴侣档案变更 / 日切重算都会广播重算计数，这里只重读读模型
   @StorageProp('recomputeCount') @Watch('onRecomputeChanged') recomputeCount: number = 0;
-  /**
-   * 并发读数闸门（D-51）：筛选档是查询条件，点芯片时**同步**改掉 filterKey 再起一次读数；
-   * 连点两颗时先起的那读晚落地，列表就成了上一档的结果，而选中态已经翻到下一颗。
-   */
+  @StorageProp('crdSharedPlanTick') @Watch('loadSharedBadge') private sharedPlanTick: number = 0;
+  /** 只接受最后一次查询的结果。 */
   private landing: LatestLanding = new LatestLanding();
+  private reads: LatestReadQueue = new LatestReadQueue();
+  private badgeReads: LatestReadQueue = new LatestReadQueue();
+  private mounted: boolean = false;
+  private needsRecompute: boolean = false;
+  private windowScroller: Scroller = new Scroller();
+  private weekScroller: Scroller = new Scroller();
+  private listScrollY: number = 0;
+  private weekScrollY: number = 0;
+  private restoringView: boolean = false;
+  private handoffTimer: number = -1;
+  @State private listVisual: ScrollHeaderState = new ScrollHeaderState();
+  @State private weekVisual: ScrollHeaderState = new ScrollHeaderState();
+  @State private headerWidth: number = 0;
   // 跨 Tab 导航广播（首页冲突条、计划页空态引导）：切 Tab 由壳层做，分段由本页认领
   @StorageProp('navToCoTimeCount') @Watch('onNavRequest') navToCoTimeCount: number = 0;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
 
   aboutToAppear(): void {
+    this.mounted = true;
+    this.loadSharedBadge();
     this.buildChips();
     // Tab 内容可能在广播之后才创建，此时 @Watch 不会触发，进页面时补消费一次
     this.applySegmentRequest();
     this.load(true);
   }
 
-  /**
-   * 一次性建好筛选 Chip。ChipV2Options/ChipV2Label 都是 @ObservedV2，
-   * 之后只改 activated，不再换对象，避免整行重建。
-   */
+  aboutToDisappear(): void {
+    this.mounted = false;
+    this.sharedRead++;
+    this.landing.begin();
+    this.reads.cancel(); this.badgeReads.cancel();
+    if (this.handoffTimer >= 0) { clearTimeout(this.handoffTimer); this.handoffTimer = -1; }
+  }
+
+  private chooseView(idx: number): void {
+    this.loadSharedBadge();
+    if (idx === 2) {
+      this.segment = COTIME_SEG_PLANS;
+      return;
+    }
+    // 从计划返回时直接给正确初态，不播放一个不存在的旧视图。
+    if (this.segment === COTIME_SEG_PLANS) {
+      this.restoringView = true;
+      this.viewMode = idx === 1 ? VIEW_WEEK : VIEW_LIST;
+    }
+    this.targetView = idx;
+    this.segment = COTIME_SEG_WINDOW;
+  }
+
+  private commitView(idx: number): void {
+    const next = idx === 1 ? VIEW_WEEK : VIEW_LIST;
+    if (next === this.viewMode) { return; }
+    if (this.viewMode === VIEW_LIST) {
+      this.listScrollY = readScrollY(this.windowScroller, this.listScrollY);
+    } else {
+      this.weekScrollY = readScrollY(this.weekScroller, this.weekScrollY);
+    }
+    this.restoringView = true;
+    this.viewMode = next;
+  }
+
+  private selectedWindow(w: WindowSummary): boolean {
+    return (this.sheetVisible || this.paneShown()) && w.start === this.sheetStart && w.end === this.sheetEnd;
+  }
+
+  /** 一次性建好筛选 Chip。ChipV2Options/ChipV2Label 都是 @ObservedV2， */
   private buildChips(): void {
     const chips: ChipV2Options[] = [];
     for (let i = 0; i < FILTERS.length; i++) {
@@ -152,8 +194,36 @@ export struct CoTimeView {
     this.chips = chips;
   }
 
+  /** 只更新 @Trace 颜色字段；不重建 Chip、不断开筛选状态与横向 Scroll。 */
+  onColorModeChanged(): void {
+    for (let i = 0; i < this.chips.length; i++) {
+      const chip: ChipV2Options = this.chips[i];
+      chip.label.fontColor = DesignTokens.chipText();
+      chip.label.activatedFontColor = DesignTokens.chipTextOn();
+      chip.backgroundColor = DesignTokens.chipBg();
+      chip.activatedBackgroundColor = DesignTokens.chipBgOn();
+    }
+  }
+
   onRecomputeChanged(): void {
+    this.loadSharedBadge();
     this.load(false);
+  }
+  onActiveChanged(): void {
+    if (!this.active) {
+      this.sharedRead++; this.landing.invalidate(); this.reads.cancel(); this.badgeReads.cancel(); return;
+    }
+    if (this.mounted) { this.loadSharedBadge(); this.load(this.page === null); }
+  }
+  private loadSharedBadge(): void {
+    if (!this.mounted || !this.active) return;
+    const turn = ++this.sharedRead;
+    this.badgeReads.run(async (): Promise<void> => {
+      try {
+        const data = await SharedPlanViewService.read();
+        if (this.mounted && this.active && turn === this.sharedRead) this.sharedPending = data.pendingCount > 0;
+      } catch { /* Keep badge on storage failure. */ }
+    });
   }
 
   onNavRequest(): void {
@@ -164,18 +234,27 @@ export struct CoTimeView {
     const seg = takeCoTimeSegment();
     if (seg === COTIME_SEG_PLANS || seg === COTIME_SEG_WINDOW) {
       this.segment = seg;
+      if (seg === COTIME_SEG_WINDOW) {
+        this.viewMode = VIEW_LIST;
+      this.targetView = 0;
+      }
     }
   }
 
   // ---------- 数据 ----------
 
-  /**
-   * 读页面读模型。allowRecompute=true（首次进入 / 用户点重试或重新计算）时，
-   * 缓存为空或跨天过期才补一次本机重算；下拉刷新与切筛选传 false，只重读。
-   * 筛选档是查询条件：换档就是换一次查询，页面不再自己过滤一遍。
-   */
+  /** 读页面读模型。allowRecompute=true（首次进入 / 用户点重试或重新计算）时， */
   private async load(allowRecompute: boolean): Promise<void> {
+    if (!this.mounted || !this.active) return;
     const token = this.landing.begin();
+    this.needsRecompute = this.needsRecompute || allowRecompute;
+    await this.reads.run(async (): Promise<void> => {
+      if (!this.mounted || !this.active) return;
+      const recompute = this.needsRecompute; this.needsRecompute = false;
+      await this.readPage(recompute, token);
+    });
+  }
+  private async readPage(allowRecompute: boolean, token: number): Promise<void> {
     // 一次加载只读一次表：筛选下界与查询用的"现在"分两次读数时，跨午夜那瞬会劈成两天
     const now = nowEpochMin();
     const filter: WindowFilter = { key: this.filterKey, fromEpochMin: now };
@@ -184,7 +263,7 @@ export struct CoTimeView {
         let page = await CommonTimeQueryService.getCommonTimePage(filter, now);
         if (allowRecompute && (page.computedAt <= 0 || page.stale)) {
           await ScheduleUseCase.ensureSeeded();
-          await ScheduleUseCase.recompute(todayEpochDay());
+          await ScheduleUseCase.recompute(todayEpochDay(), true);
           page = await CommonTimeQueryService.getCommonTimePage(filter, now);
           if (page.computedAt <= 0) {
             // 自己刚写完就读到空表，只能是另一路重算正在 DELETE/INSERT：等它落盘再读一次
@@ -197,8 +276,6 @@ export struct CoTimeView {
         }
         this.page = page;
         this.failed = false;
-        this.pairState = ProfileSettingsService.getPairState();
-        this.syncState = ProfileSettingsService.getCloudSyncState();
         this.refreshing = false;
         return;
       } catch (e) {
@@ -226,7 +303,6 @@ export struct CoTimeView {
   }
 
   private async onRefresh(): Promise<void> {
-    this.weekTick++;
     await syncOnPull();
     this.refreshing = false;
   }
@@ -265,17 +341,6 @@ export struct CoTimeView {
     return p != null && p.stale;
   }
 
-  /**
-   * 云同步那两格坏结论（待重试 / 已降级）要不要挂在这一页（协议 §3.4 末行：UI 只消费这三态）。
-   * 判据、标题、正文都与「我的 · 配对卡」共用同一份函数，不为这一页另写一套说法。
-   * 三条不给出去的条件：未开闸（那一档没有同步通路）、未配对（残留结论讲的是上一段配对的事）、
-   * 以及压根还不知道 TA 的日程（下面那条「还不知道 TA」已经把这件事说完了，同一屏不重复挂）。
-   */
-  private cloudTrouble(): boolean {
-    return FeatureFlags.cloudPairing && this.pairState === PAIRED
-      && this.partnerKnown() && syncTroubleOf(this.syncState);
-  }
-
   private subtitle(): string {
     const p = this.page;
     let who = '单人模式';
@@ -290,7 +355,7 @@ export struct CoTimeView {
   private subtitleColor(): Resource {
     const p = this.page;
     return p != null && p.mode === ExperienceMode.SOLO
-      ? DesignTokens.textTertiary : DesignTokens.primary;
+      ? DesignTokens.textTertiary : DesignTokens.textAccent;
   }
 
   private staleTitle(): string {
@@ -339,10 +404,7 @@ export struct CoTimeView {
     return Breakpoints.isExpanded(this.bp) && this.viewMode === VIEW_LIST && this.detailOpen;
   }
 
-  /**
-   * 选中窗口的落地方式：宽屏留在列表右侧的详情栏（列表上下文不丢），
-   * 窄屏与周历走原来的半模态。
-   */
+  /** 选中窗口的落地方式：宽屏留在列表右侧的详情栏（列表上下文不丢）， */
   private presentWindow(): void {
     if (Breakpoints.isExpanded(this.bp) && this.viewMode === VIEW_LIST) {
       this.detailOpen = true;
@@ -365,12 +427,11 @@ export struct CoTimeView {
     this.presentWindow();
   }
 
-  /**
-   * 计划页头部行的出口：切回窗口分段，并把当前筛选下的第一段空闲直接开成建计划入口。
-   * 读模型按开始时间升序给行，所以第 0 行就是"下一个窗口"；一段都没有时只切分段，不假装有空档。
-   */
+  /** 计划页头部行的出口：切回窗口分段，并把当前筛选下的第一段空闲直接开成建计划入口。 */
   private gotoNextWindow(): void {
     this.segment = COTIME_SEG_WINDOW;
+    this.viewMode = VIEW_LIST;
+    this.targetView = 0;
     const rows = this.rows();
     if (rows.length > 0) {
       this.openSummary(rows[0]);
@@ -419,7 +480,9 @@ export struct CoTimeView {
     this.sheetStart = start;
     this.sheetEnd = end;
     this.sheetTags = displayTagLine(tags);
-    setTimeout(() => {
+    if (this.handoffTimer >= 0) { clearTimeout(this.handoffTimer); }
+    this.handoffTimer = setTimeout(() => {
+      this.handoffTimer = -1;
       this.presentWindow();
     }, SHEET_HANDOFF_MS);
   }
@@ -457,20 +520,6 @@ export struct CoTimeView {
                   this.load(true);
                 }
               })
-            } else if (this.cloudTrouble() && this.syncState.outcome === SYNC_STATE_BLOCKED) {
-              // 这一页的窗口是拿 TA 的那一份算出来的，同步停了就得说清用的是哪一份。
-              // 两格坏值各挂一颗节点，门槛与句子一一对得上（与「我的」配对卡同一口径）。
-              NoticeBar({
-                tone: NoticeTone.ERROR,
-                title: syncStateTitleOf(this.syncState),
-                body: syncStateNoteOf(this.syncState)
-              })
-            } else if (this.cloudTrouble()) {
-              NoticeBar({
-                tone: NoticeTone.WARN,
-                title: syncStateTitleOf(this.syncState),
-                body: syncStateNoteOf(this.syncState)
-              })
             }
             if (!this.partnerKnown() && this.segment === COTIME_SEG_WINDOW) {
               NoticeBar({
@@ -487,7 +536,11 @@ export struct CoTimeView {
           }
 
           if (this.segment === COTIME_SEG_WINDOW) {
-            this.windowBody()
+            Column() {
+              DirectionalContent({ target: this.targetView, onCommit: (idx: number) => {
+                this.commitView(idx);
+              } }) { this.windowBody() }
+            }.width('100%').layoutWeight(1)
           } else {
             this.plansBody()
           }
@@ -496,10 +549,11 @@ export struct CoTimeView {
         .layoutWeight(1)
         .padding({ left: Breakpoints.hPadding(this.bp), right: Breakpoints.hPadding(this.bp) })
         .bindSheet($$this.dayVisible, this.daySheet(), {
-          detents: [SheetSize.LARGE],
+          height: SheetSize.FIT_CONTENT,
+          detents: [SheetSize.FIT_CONTENT],
+          preferType: SheetType.BOTTOM,
           dragBar: false,
           showClose: false,
-          // 34vp 顶角：原型 .sheet 的圆角，比系统默认更贴糖果贴纸
           radius: { topLeft: DesignTokens.radiusSheet, topRight: DesignTokens.radiusSheet },
           blurStyle: BlurStyle.Thick,
           maskColor: DesignTokens.scrim
@@ -516,35 +570,51 @@ export struct CoTimeView {
         // 系统 sheet 再铺底色/模糊就是两层不透明背景叠实时模糊（规范 §5.5）
         backgroundColor: Color.Transparent,
         blurStyle: BlurStyle.NONE,
-        maskColor: DesignTokens.scrim
+        maskColor: DesignTokens.scrim,
+        onDisappear: () => { this.sheetVisible = false; }
       })
     }
   }
 
   @Builder
   header() {
-    Column({ space: 2 }) {
-      Text('共同时间')
-        .fontSize(DesignTokens.fontTitle)
-        .fontFamily(DesignTokens.fontRound)
-        .fontWeight(FontWeight.Bolder)
-        .fontColor(DesignTokens.textPrimary)
-      Text(this.subtitle())
-        .fontSize(DesignTokens.fontCaption)
-        .fontColor(this.subtitleColor())
+    Row({ space: 10 }) {
+      // Keep title and subtitle together; the subtitle, not the title, meets the duo's lower edge.
+      Column({ space: 2 }) {
+        Text('共同休时')
+          .fontSize(DesignTokens.fontTitle)
+          .fontFamily(DesignTokens.fontRound)
+          .fontWeight(FontWeight.Bolder)
+          .fontColor(DesignTokens.textPrimary)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(this.subtitle())
+          .fontSize(DesignTokens.fontCaption)
+          .fontColor(this.subtitleColor())
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start).offset({ y: 3 })
+      CompanionsDuo({
+        active: this.active && !this.sheetVisible && !this.dayVisible,
+        availableWidth: this.headerWidth
+      })
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(VerticalAlign.Bottom)
     .padding({ top: DesignTokens.space5 })
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      const width = Breakpoints.widthOf(newArea);
+      if (width > 0 && width !== this.headerWidth) { this.headerWidth = width; }
+    })
   }
 
   @Builder
   segmentControl() {
     CapsuleSegment({
+      pendingBadge: this.sharedPending,
       items: this.segItems,
-      selectedIndex: this.segment === COTIME_SEG_WINDOW ? 0 : 1,
+      selectedIndex: this.segment === COTIME_SEG_PLANS ? 2 : this.targetView,
       onPick: (idx: number) => {
-        this.segment = idx === 0 ? COTIME_SEG_WINDOW : COTIME_SEG_PLANS;
+        this.chooseView(idx);
       }
     })
   }
@@ -553,25 +623,7 @@ export struct CoTimeView {
   @Builder
   windowBody() {
     Column({ space: DesignTokens.space3 }) {
-      Row() {
-        Row({ space: DesignTokens.space2 }) {
-          this.viewPill('列表', VIEW_LIST)
-          this.viewPill('周历', VIEW_WEEK)
-        }
-
-        Blank()
-
-        if (this.viewMode === VIEW_LIST && this.page != null) {
-          Text('共 ' + this.rows().length + ' 段')
-            .fontSize(DesignTokens.fontCaption)
-            .fontColor(DesignTokens.textTertiary)
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-
       if (this.viewMode === VIEW_LIST) {
-        this.filterRow()
         if (this.paneShown()) {
           // 两列各自撑满行高：列表内的 Refresh 靠 layoutWeight 拿到确定高度，详情栏固定宽
           Row({ space: DesignTokens.space4 }) {
@@ -609,32 +661,11 @@ export struct CoTimeView {
       winStart: this.sheetStart,
       winEnd: this.sheetEnd,
       winTags: this.sheetTags,
+      onCreated: () => { this.segment = COTIME_SEG_PLANS; },
       onClose: () => {
         this.onDetailClose();
       }
     })
-  }
-
-  @Builder
-  viewPill(label: string, mode: string) {
-    Text(label)
-      .fontSize(DesignTokens.fontCaption)
-      // 与胶囊分段同一档糖：当前档白底粉字并浮起来，其余平贴在背板上
-      .fontWeight(FontWeight.Bold)
-      .fontColor(this.viewMode === mode ? DesignTokens.primary : DesignTokens.textSecondary)
-      .textAlign(TextAlign.Center)
-      .padding({ left: DesignTokens.space3, right: DesignTokens.space3 })
-      .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
-      .borderRadius(DesignTokens.radiusPill)
-      .backgroundColor(this.viewMode === mode ? DesignTokens.card : DesignTokens.fillWeak)
-      .shadow(this.viewMode === mode ? DesignTokens.floatShadow() : undefined)
-      // 纯文字当按钮：焦点、朗读名都得补上，选中档前缀给读屏，页面上仍只靠底色区分
-      .focusable(true)
-      .accessibilityText((this.viewMode === mode ? '当前为' : '切换到') + label + '视图')
-      .clickEffect(DesignTokens.tapChip())
-      .onClick(() => {
-        this.viewMode = mode;
-      })
   }
 
   /** 精简筛选档：全部 / ≥2小时 / 完整同休 / 周末 / 可出行（只在列表视图出现）。 */
@@ -655,110 +686,161 @@ export struct CoTimeView {
     .align(Alignment.Start)
   }
 
-  /**
-   * 列表分段：Refresh 始终包在最外层，四种状态（读取中 / 读取失败 / 没有窗口 / 有窗口）
-   * 都能下拉。空态尤其要能下拉——已配对却还没拉到对方数据时，这一屏就是空白的，
-   * 用户看到的只有一句"还没有共同时间"，没有下拉就等于只能退回后台再切回来。
-   */
+  @Builder
+  listFilters() {
+    Column({ space: DesignTokens.space3 }) {
+      if (this.page != null) {
+        Text('共 ' + this.rows().length + ' 段')
+          .fontSize(12)
+          .fontColor(DesignTokens.textTertiary)
+          .width('100%')
+          .textAlign(TextAlign.End)
+      }
+      this.filterRow()
+    }
+    .width('100%')
+  }
+
   @Builder
   listContent() {
-    Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-      if (this.rows().length > 0) {
-        // List.space 只收 number/string，收不了 Resource 令牌：值与 space_3(12vp) 对齐
-        List({ space: 12 }) {
-          ForEach(this.rows(), (w: WindowSummary, idx: number) => {
+    Column() {
+      FadingScrollViewport({ fadeHeight: 24, visual: this.listVisual }) {
+        Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+          // List.space 只收 number/string，收不了 Resource 令牌：值与 space_3(12vp) 对齐
+          List({ space: 12, scroller: this.windowScroller }) {
+            // 普通列表项，不吸顶：统计和筛选与窗口卡片一起滚动。
             ListItem() {
-              WindowCard({
-                winStart: w.start,
-                winEnd: w.end,
-                winDuration: w.durationMin,
-                displayTags: w.displayTags.join('|'),
-                todayEpoch: todayEpochDay(),
-                cutTopLeft: idx % 2 === 0,
-                onTapCard: () => {
-                  this.openSummary(w);
-                }
-              })
+              this.listFilters()
             }
-          }, (w: WindowSummary, idx: number) => w.start + '-' + w.end + '-' + w.channel + '-'
-            // 上屏的字段全进键（D-40 同一族）：标签行吃 displayTags，镜像切角吃 idx，
-            // 「今天／明天／N 天后」吃 todayEpoch——少一个，复用下来的那张就念旧的那一份。
-            + w.displayTags.join('|') + '-' + todayEpochDay() + '-' + idx)
-        }
-        .width('100%')
-        .height('100%')
-        .scrollBar(BarState.Off)
-        // alwaysEnabled：只有一两张卡时列表不满一屏，默认不响应下拉手势，Refresh 就永远接不到这一次。
-        // Scroll 分支不用加——Scroll 的 alwaysEnabled 本来就是 true。
-        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-        .padding({ bottom: DesignTokens.dockClearance })
-      } else {
-        Scroll() {
-          if (this.page == null) {
-            if (this.failed) {
-              StatePanel({
-                kind: StatePanelKind.ERROR,
-                title: '共同时间读取失败',
-                description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
-                actionLabel: '重试',
-                onAction: () => {
-                  this.load(true);
+            if (this.rows().length > 0) {
+              ForEach(this.rows(), (w: WindowSummary, idx: number) => {
+                ListItem() {
+                  WindowCard({
+                    winStart: w.start,
+                    winEnd: w.end,
+                    winDuration: w.durationMin,
+                    displayTags: w.displayTags.join('|'),
+                    todayEpoch: todayEpochDay(),
+                    cutTopLeft: idx % 2 === 0,
+                    selected: this.selectedWindow(w),
+                    onTapCard: () => {
+                      this.openSummary(w);
+                    }
+                  })
                 }
-              })
+              }, (w: WindowSummary, idx: number) => w.start + '-' + w.end + '-' + w.channel + '-'
+                + w.displayTags.join('|') + '-' + todayEpochDay() + '-' + idx)
             } else {
-              this.skeleton()
-            }
-          } else {
-            StatePanel({
-              kind: StatePanelKind.EMPTY,
-              title: this.emptyTitle(),
-              description: this.emptyDesc(),
-              actionLabel: this.emptyAction(),
-              onAction: () => {
-                this.onEmptyAction();
+              ListItem() {
+                this.listEmptyContent()
               }
-            })
+            }
           }
+          .width('100%')
+          .height('100%')
+          .scrollBar(BarState.Off)
+          .onAppear(() => {
+            this.windowScroller.scrollTo({ xOffset: 0, yOffset: this.listScrollY, animation: false });
+            this.restoringView = false;
+            this.listVisual.update(readScrollY(this.windowScroller, this.listScrollY));
+          })
+          .onDidScroll(() => {
+            if (!this.restoringView && this.viewMode === VIEW_LIST) {
+              this.listScrollY = readScrollY(this.windowScroller, this.listScrollY);
+            }
+            this.listVisual.update(readScrollY(this.windowScroller, this.listScrollY));
+          })
+          // alwaysEnabled：只有一两张卡时列表不满一屏，默认不响应下拉手势，Refresh 就永远接不到这一次。
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+          .padding({ bottom: DesignTokens.dockClearance })
         }
+        .onRefreshing(() => {
+          this.onRefresh();
+        })
         .width('100%')
         .height('100%')
-        .align(Alignment.Top)
-        .scrollBar(BarState.Off)
-        .padding({ bottom: DesignTokens.dockClearance })
       }
     }
-    .onRefreshing(() => {
-      this.onRefresh();
-    })
     .width('100%')
     .layoutWeight(1)
   }
 
   @Builder
+  listEmptyContent() {
+    if (this.page == null) {
+      if (this.failed) {
+        StatePanel({
+          kind: StatePanelKind.ERROR,
+          title: '共同时间读取失败',
+          description: '手机里的数据没有变化，再下拉一次或点重试通常就好。',
+          actionLabel: '重试',
+          onAction: () => { this.load(true); }
+        })
+      } else {
+        this.skeleton()
+      }
+    } else {
+      StatePanel({
+        kind: StatePanelKind.EMPTY,
+        title: this.emptyTitle(),
+        description: this.emptyDesc(),
+        actionLabel: this.emptyAction(),
+        onAction: () => { this.onEmptyAction(); }
+      })
+    }
+  }
+
+  @Builder
   weekContent() {
-    Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
-      Scroll() {
-        EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
-          WeekScheduleView({
-            mode: WEEK_MODE_COMMON,
-            refreshTick: this.weekTick,
-            onPickDay: (epochDay: number) => {
-              this.openDay(epochDay);
-            },
-            onPickWindow: (start: number, end: number) => {
-              this.openWindow(start, end);
+    Column() {
+      FadingScrollViewport({ fadeHeight: 12, visual: this.weekVisual }) {
+        Refresh({ refreshing: $$this.refreshing, offset: 64, friction: 10 }) {
+          Scroll(this.weekScroller) {
+            Column() {
+              EditorialCard({ hero: false, cutTopLeft: true, tappable: false }) {
+                WeekScheduleView({
+                  active: this.active,
+                  mode: WEEK_MODE_COMMON,
+                  initialWeekStart: this.visibleWeek,
+                  onWeekChange: (day: number) => { this.visibleWeek = day; },
+                  refreshTick: this.weekTick,
+                  onPickDay: (epochDay: number) => {
+                    this.openDay(epochDay);
+                  },
+                  onPickWindow: (start: number, end: number) => {
+                    this.openWindow(start, end);
+                  }
+                })
+              }
             }
+            .width('100%')
+            .padding({ bottom: DesignTokens.dockClearance })
+          }
+          .width('100%')
+          .height('100%')
+          .scrollable(ScrollDirection.Vertical)
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+          .scrollBar(BarState.Off)
+          .align(Alignment.Top)
+          .onAppear(() => {
+            this.weekScroller.scrollTo({ xOffset: 0, yOffset: this.weekScrollY, animation: false });
+            this.restoringView = false;
+            this.weekVisual.update(readScrollY(this.weekScroller, this.weekScrollY));
+          })
+          .onDidScroll(() => {
+            if (!this.restoringView && this.viewMode === VIEW_WEEK) {
+              this.weekScrollY = readScrollY(this.weekScroller, this.weekScrollY);
+            }
+            this.weekVisual.update(readScrollY(this.weekScroller, this.weekScrollY));
           })
         }
+        .onRefreshing(() => {
+          this.onRefresh();
+        })
+        .width('100%')
+        .height('100%')
       }
-      .width('100%')
-      .scrollBar(BarState.Off)
-      .padding({ bottom: DesignTokens.dockClearance })
-      .align(Alignment.Top)
     }
-    .onRefreshing(() => {
-      this.onRefresh();
-    })
     .width('100%')
     .layoutWeight(1)
   }
@@ -767,11 +849,18 @@ export struct CoTimeView {
   plansBody() {
     Column() {
       PlansView({
+        active: this.active,
         onGoWindow: () => {
           this.segment = COTIME_SEG_WINDOW;
+          this.viewMode = VIEW_LIST;
+          this.targetView = 0;
         },
         onNextWindow: () => {
           this.gotoNextWindow();
+        },
+        onVisiblePendingChange: (pending: boolean) => {
+          this.sharedRead++;
+          this.sharedPending = pending;
         }
       })
     }
@@ -814,6 +903,7 @@ export struct CoTimeView {
       winStart: this.sheetStart,
       winEnd: this.sheetEnd,
       winTags: this.sheetTags,
+      onCreated: () => { this.segment = COTIME_SEG_PLANS; },
       onClose: () => {
         this.onSheetClose();
       }

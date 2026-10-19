@@ -134,8 +134,7 @@ function inviteCode(): string {
 }
 
 /**
- * 一次性确认凭据：必须是 base64url 且**不带 `=` 填充**。
- * 端侧 PairLink.tokenValid 只接受 A–Za–z0–9-_，长度 22–128，多一个字符整条链接就判 MALFORMED。
+ * 一次性确认凭据：base64url 且不带填充。只向邀请方返回，本机以 HUKS 密封。
  */
 export function confirmToken(): string {
   return crypto.randomBytes(TOKEN_BYTES).toString('base64url');
@@ -152,7 +151,8 @@ export function newSessionRow(uid: string, publicKey: string): Record<string, Ob
     'creatorPublicKey': publicKey,
     'joinerUid': '',
     'joinerPublicKey': '',
-    'confirmToken': '',
+    // 只在 create 回给邀请方；join/status 不返回。邀请码本身不具备确认权。
+    'confirmToken': confirmToken(),
     'schemaVersion': SCHEMA_VERSION,
     'createdAt': at,
     'updatedAt': at,

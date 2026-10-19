@@ -1,10 +1,10 @@
 {
   "app": {
-    "bundleName": "com.rest.common",
-    "vendor": "example",
-    "versionCode": 1000000,
-    "versionName": "1.0.0",
-    "icon": "$media:layered_image",
+    "bundleName": "com.common.fortwo",
+    "vendor": "ShenYuuu",
+    "versionCode": 1000011,
+    "versionName": "1.1.1",
+    "icon": "$media:jim1_resized",
     "label": "$string:app_name"
   }
 }

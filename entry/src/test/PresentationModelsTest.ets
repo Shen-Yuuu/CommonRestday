@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
+import { ScrollHeaderMotion } from 'commons';
 import {
   AnswerAction, AnswerKind, AnswerState, CalendarState, CommonTimePageData, ExperienceMode,
   FeatureFlags, HomeSummary, PlanConflictView, PlanSummary, QuickAnswer, TodaySummary,
@@ -47,6 +48,66 @@ function mkHome(mode: ExperienceMode): HomeSummary {
 
 export default function presentationModelsTest() {
   describe('presentationModels', () => {
+    it('scroll_visual_state_uses_bounded_absolute_offset', 0, () => {
+      expect(ScrollHeaderMotion.visualOffset(-20)).assertEqual(0);
+      expect(ScrollHeaderMotion.visualOffset(0)).assertEqual(0);
+      expect(ScrollHeaderMotion.visualOffset(12)).assertEqual(12);
+      expect(ScrollHeaderMotion.visualOffset(48)).assertEqual(48);
+      expect(ScrollHeaderMotion.visualOffset(96)).assertEqual(96);
+      expect(ScrollHeaderMotion.visualOffset(400)).assertEqual(96);
+      expect(ScrollHeaderMotion.visualOffset(Number.NaN)).assertEqual(0);
+      expect(ScrollHeaderMotion.visualOffset(Number.POSITIVE_INFINITY)).assertEqual(0);
+    });
+    it('scroll_visual_progress_moves_one_way_and_resets_at_top', 0, () => {
+      const offsets: number[] = [0, 1, 12, 24, 48, 96, 120, 400];
+      let previous: number = 0;
+      for (const offset of offsets) {
+        const visual = ScrollHeaderMotion.visualOffset(offset);
+        const progress = ScrollHeaderMotion.progress(visual, false);
+        expect(progress >= previous).assertTrue();
+        expect(ScrollHeaderMotion.subtitleOpacity(visual, false)).assertEqual(1 - progress);
+        expect(ScrollHeaderMotion.edgeOpacity(visual)).assertEqual(ScrollHeaderMotion.edgeOpacity(offset));
+        previous = progress;
+      }
+      expect(ScrollHeaderMotion.progress(ScrollHeaderMotion.visualOffset(0), false)).assertEqual(0);
+      expect(ScrollHeaderMotion.subtitleOpacity(ScrollHeaderMotion.visualOffset(-12), false)).assertEqual(1);
+    });
+    it('subtitle_fades_without_collapsing_and_respects_reduced_motion', 0, () => {
+      expect(ScrollHeaderMotion.subtitleOpacity(-20, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.subtitleOpacity(0, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.subtitleOpacity(48, false)).assertEqual(0.5);
+      expect(ScrollHeaderMotion.subtitleOpacity(96, false)).assertEqual(0);
+      expect(ScrollHeaderMotion.subtitleOpacity(200, false)).assertEqual(0);
+      expect(ScrollHeaderMotion.subtitleOpacity(200, true)).assertEqual(1);
+      expect(ScrollHeaderMotion.subtitleOpacity(Number.NaN, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.subtitleOpacity(Number.POSITIVE_INFINITY, false)).assertEqual(1);
+    });
+    it('scroll_edge_is_hidden_at_rest_and_clamps_overscroll', 0, () => {
+      expect(ScrollHeaderMotion.edgeOpacity(-12)).assertEqual(0);
+      expect(ScrollHeaderMotion.edgeOpacity(0)).assertEqual(0);
+      expect(ScrollHeaderMotion.edgeOpacity(12)).assertEqual(0.5);
+      expect(ScrollHeaderMotion.edgeOpacity(24)).assertEqual(1);
+      expect(ScrollHeaderMotion.edgeOpacity(200)).assertEqual(1);
+      expect(ScrollHeaderMotion.edgeOpacity(Number.NaN)).assertEqual(0);
+    });
+    it('sticky_header_progress_clamps_scroll_and_respects_reduced_motion', 0, () => {
+      expect(ScrollHeaderMotion.progress(-20, false)).assertEqual(0);
+      expect(ScrollHeaderMotion.progress(0, false)).assertEqual(0);
+      expect(ScrollHeaderMotion.progress(48, false)).assertEqual(0.5);
+      expect(ScrollHeaderMotion.progress(96, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.progress(200, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.progress(200, true)).assertEqual(0);
+      expect(ScrollHeaderMotion.progress(Number.NaN, false)).assertEqual(0);
+      expect(ScrollHeaderMotion.progress(Number.POSITIVE_INFINITY, false)).assertEqual(0);
+    });
+    it('date_badge_and_title_share_bounded_visual_scale', 0, () => {
+      expect(ScrollHeaderMotion.titleScale(0, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.titleScale(48, false)).assertEqual(0.91);
+      expect(ScrollHeaderMotion.titleScale(96, false)).assertEqual(1 - 0.18);
+      expect(ScrollHeaderMotion.titleScale(200, false)).assertEqual(1 - 0.18);
+      expect(ScrollHeaderMotion.titleScale(-20, false)).assertEqual(1);
+      expect(ScrollHeaderMotion.titleScale(Number.NaN, false)).assertEqual(1);
+    });
     it('enum_values_are_stable_wire_strings', 0, () => {
       // 这些取值会写进路由参数与卡片数据，改名即破坏兼容（toString 后比较，避免枚举与字符串混比）
       expect(WindowChannel.REGULAR.toString()).assertEqual('REGULAR');
@@ -165,24 +226,22 @@ export default function presentationModelsTest() {
 
     it('feature_flags_gate_unreleased_capabilities', 0, () => {
       // 开闸批（批次 U·U3b）之后云端档位是源码常量 true，所以这里断言的是**跨档位不变量**：
-      // 扫码以云配对为前提，前提关着结论不许开着（反之不成立——扫码仍未做设备验证）。
+      // 云配对是独立开关，关闭态的调用边界由 ProfileSettingsGuardTest 守住。
       // 两个档位的包各跑一遍由 tools/verify.mjs 的 CRD_TIER 保证，档位含义见 rollout §2。
       const cloudOn: boolean = FeatureFlags.cloudPairing;
       expect(FeatureFlags.calendarFlow).assertTrue();
-      expect(cloudOn || !FeatureFlags.scanPairing).assertTrue();
       expect(FeatureFlags.newCard).assertTrue();
       expect(FeatureFlags.responsiveV2).assertTrue();
 
-      // 启动日志摘要：五档一个都不能漏，缺档 = 这个包的现场状态无法从日志复原
+      // 启动日志摘要：四档一个都不能漏，缺档 = 这个包的现场状态无法从日志复原
       const line: string = FeatureFlags.summary();
       const cloudToken: string = 'cloudPairing=' + (cloudOn ? 'on' : 'off');
       expect(line.indexOf('calendarFlow=on') >= 0).assertTrue();
       expect(line.indexOf(cloudToken) >= 0).assertTrue();
-      expect(line.indexOf('scanPairing=off') >= 0).assertTrue();
       expect(line.indexOf('newCard=on') >= 0).assertTrue();
       expect(line.indexOf('responsiveV2=on') >= 0).assertTrue();
       // 摘要按 rollout 顺序排列：日志读法与文档一致，不靠人记
-      expect(line.indexOf(cloudToken) < line.indexOf('scanPairing=off')).assertTrue();
+      expect(line.indexOf(cloudToken) < line.indexOf('newCard=on')).assertTrue();
       // 关档时日历不给补写入口：入口和链路一起退场，不留点了没反应的按钮
       expect(canRetryCalendarSync(CalendarState.LOCAL_ONLY)).assertTrue();
       expect(canRetryCalendarSync(CalendarState.UNSUPPORTED)).assertFalse();

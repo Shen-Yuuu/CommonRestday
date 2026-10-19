@@ -18,7 +18,7 @@
 import {
   BAD_REQUEST, CODE_EXPIRED, CODE_TAKEN, FORBIDDEN, INTERNAL, NOT_FOUND, SCHEMA_UNSUPPORTED,
   SCHEMA_VERSION, SESSION_TTL_MS, ST_ACTIVE, ST_EXPIRED, ST_PENDING, ST_REVOKED, ST_WAITING,
-  confirmToken, deleteSessionRow, deleteSnapshots, expired, fail, findOpenByCreator,
+  deleteSessionRow, deleteSnapshots, expired, fail, findOpenByCreator,
   findSessionByCode, guarded, isCode, isPublicKey, isUid, listSnapshotRows, loadSession, newSessionRow,
   nowMs, ok, patchSession, roleOf, saveSession, sessionBody, str, tokenEquals
 } from './contract';
@@ -49,7 +49,7 @@ export class Pairing {
     return guarded(() => doCreate(uid, publicKey, schemaVersion));
   }
 
-  /** §4.2 加入方输码：写上 joiner 与一次性确认凭据，状态停在 PENDING_CONFIRM。 */
+  /** §4.2 加入方输码：只写 joiner，确认凭据仍由邀请方持有，状态停在 PENDING_CONFIRM。 */
   async join(code: string, uid: string, publicKey: string,
     schemaVersion: number): Promise<Record<string, Object>> {
     return guarded(() => doJoin(code, uid, publicKey, schemaVersion));
@@ -106,10 +106,10 @@ async function doCreate(uid: string, publicKey: string,
     return fail(INTERNAL, 'invite code space busy');
   }
   await saveSession(row);
-  return ok(sessionBody(row, uid, true, false));
+  return ok(sessionBody(row, uid, true, true));
 }
 
-/** §4.2 加入方输码：写上 joiner 与一次性确认凭据，状态停在 PENDING_CONFIRM。 */
+/** §4.2 加入方输码：只写 joiner，确认凭据仍由邀请方持有，状态停在 PENDING_CONFIRM。 */
 async function doJoin(code: string, uid: string, publicKey: string,
   schemaVersion: number): Promise<Record<string, Object>> {
   if (!isCode(code)) {
@@ -136,8 +136,8 @@ async function doJoin(code: string, uid: string, publicKey: string,
   }
   if (str(session, 'status') !== ST_WAITING) {
     if (str(session, 'joinerUid') === uid) {
-      // 同一位加入方重进（换了手机、清过界面）：把凭据再给一次，否则它手里没有可分享的东西
-      return ok(sessionBody(session, uid, false, true));
+      // 重试仍只回会话状态；确认凭据从创建时起只属于邀请方。
+      return ok(sessionBody(session, uid, false, false));
     }
     return fail(CODE_TAKEN, 'code already used');
   }
@@ -145,12 +145,11 @@ async function doJoin(code: string, uid: string, publicKey: string,
     'status': ST_PENDING,
     'joinerUid': uid,
     'joinerPublicKey': publicKey,
-    'confirmToken': confirmToken(),
     // 确认这一步也要时间窗：从加入方输码起再给一个 TTL，而不是沿用到期日的半截窗口
     'expiresAt': at + SESSION_TTL_MS
   });
   await saveSession(next);
-  return ok(sessionBody(next, uid, false, true));
+  return ok(sessionBody(next, uid, false, false));
 }
 
 /** §4.3 发起方交回凭据后确认：只有这里能把会话推到 ACTIVE。 */

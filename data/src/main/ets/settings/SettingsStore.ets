@@ -22,12 +22,19 @@ const KEY_PRIVACY_ACCEPTED = 'privacy_accepted';
 const KEY_DEVICE_UID = 'device_uid';
 const KEY_PAIR_KEY = 'pair_key';
 const KEY_PAIR_ID = 'pair_id';
+const KEY_CLOUD_PARTNER_NAME = 'cloud_partner_name';
+const KEY_CLOUD_PARTNER_NAME_PAIR = 'cloud_partner_name_pair';
+/** 仅存 HUKS 加密后的邀请确认凭据信封，不存确认凭据明文。 */
+const KEY_INVITE_PROOF = 'invite_proof';
 const KEY_PARTNER_SNAP_VER = 'partner_snap_ver';
 const KEY_PARTNER_SNAP_CACHE = 'partner_snap_cache';
 const KEY_CLOUD_SYNC_STATE = 'cloud_sync_state';
 const KEY_LAST_RECOMPUTE_DAY = 'last_recompute_day';
 const KEY_LAST_HEARTBEAT_AT = 'last_heartbeat_at';
 const KEY_PENDING_CLOUD_UNPAIR = 'pending_cloud_unpair';
+const KEY_PLAN_NOTIFICATION_PAIR = 'plan_notification_pair';
+const KEY_UNIFIED_PAIR_CONSENT = 'unified_pair_consent';
+const KEY_UNIFIED_PAIR_PAUSED = 'unified_pair_paused';
 
 export const PAIR_NONE = 'NONE';
 export const PAIR_WAITING = 'WAITING';
@@ -64,6 +71,33 @@ export class SettingsStore {
       throw new Error('SettingsStore not initialized');
     }
     return SettingsStore.prefs;
+  }
+
+  /** 密文信封与对方快照缓存共用同一组字符串读写口，避免出现第二套偏好调用语义。 */
+  private static readText(key: string): string {
+    return SettingsStore.p().getSync(key, '') as string;
+  }
+
+  private static async writeText(key: string, value: string): Promise<void> {
+    await SettingsStore.p().put(key, value);
+    await SettingsStore.p().flush();
+  }
+
+  private static async deleteText(key: string): Promise<void> {
+    await SettingsStore.p().delete(key);
+    await SettingsStore.p().flush();
+  }
+
+  /** Consent is scoped to one secure connection, not carried into a new pair after restore. */
+  static getPlanNotificationPair(): string { return SettingsStore.readText(KEY_PLAN_NOTIFICATION_PAIR); }
+  static getUnifiedPairConsent(): string { return SettingsStore.readText(KEY_UNIFIED_PAIR_CONSENT); }
+  static setUnifiedPairConsent(pairId: string): Promise<void> {
+    return SettingsStore.writeText(KEY_UNIFIED_PAIR_CONSENT, pairId);
+  }
+  static getUnifiedPairPaused(): string { return SettingsStore.readText(KEY_UNIFIED_PAIR_PAUSED); }
+  static setUnifiedPairPaused(pairId: string): Promise<void> { return SettingsStore.writeText(KEY_UNIFIED_PAIR_PAUSED, pairId); }
+  static setPlanNotificationPair(pairId: string): Promise<void> {
+    return SettingsStore.writeText(KEY_PLAN_NOTIFICATION_PAIR, pairId);
   }
 
   // ---------- 引擎参数 ----------
@@ -222,8 +256,96 @@ export class SettingsStore {
   }
 
   static async savePairId(pairId: string): Promise<void> {
-    await SettingsStore.p().put(KEY_PAIR_ID, pairId);
-    await SettingsStore.p().flush();
+    try {
+      if (pairId !== SettingsStore.getPairId()) {
+        await SettingsStore.p().delete(KEY_UNIFIED_PAIR_CONSENT);
+        await SettingsStore.p().delete(KEY_UNIFIED_PAIR_PAUSED);
+        await SettingsStore.p().delete(KEY_CLOUD_PARTNER_NAME);
+        await SettingsStore.p().delete(KEY_CLOUD_PARTNER_NAME_PAIR);
+      }
+      await SettingsStore.p().put(KEY_PAIR_ID, pairId);
+      await SettingsStore.p().flush();
+    } catch (e) {
+      throw new Error('配对设置保存失败：' + (e as Error).message);
+    }
+  }
+
+  /** 称呼只在本机使用，并绑定当前配对；空称呼表示用户选择继续叫 TA。 */
+  static getCloudPartnerName(): string {
+    if (!SettingsStore.isCloudPartnerNamePrompted()) {
+      return '';
+    }
+    try {
+      return String(SettingsStore.p().getSync(KEY_CLOUD_PARTNER_NAME, '')).trim();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  static isCloudPartnerNamePrompted(): boolean {
+    try {
+      const pairId = SettingsStore.getPairId();
+      return pairId !== '' && SettingsStore.p().getSync(KEY_CLOUD_PARTNER_NAME_PAIR, '') === pairId;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static async saveCloudPartnerName(pairId: string, name: string): Promise<void> {
+    if (pairId === '' || pairId !== SettingsStore.getPairId() || SettingsStore.getPairState() !== PAIRED) {
+      throw new Error('配对已变化，请重新打开称呼设置');
+    }
+    const value = name.trim();
+    if (value.length > 20) {
+      throw new Error('称呼最多 20 个字符');
+    }
+    try {
+      await SettingsStore.p().put(KEY_CLOUD_PARTNER_NAME, value);
+      await SettingsStore.p().put(KEY_CLOUD_PARTNER_NAME_PAIR, pairId);
+      await SettingsStore.p().flush();
+    } catch (e) {
+      throw new Error('称呼保存失败，请重试');
+    }
+  }
+
+  static getPartnerDisplayName(): string {
+    try {
+      if (SettingsStore.getPairState() === PAIRED) {
+        return SettingsStore.getCloudPartnerName() || 'TA';
+      }
+      const profile = SettingsStore.getPartnerProfile();
+      return profile == null ? '' : profile.nick;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** 信封绑定 pairId；跨配对读取必须返回空，不能拿上一轮凭据确认下一轮。 */
+  static getInviteProof(pairId: string): string {
+    if (pairId === '') {
+      return '';
+    }
+    const raw = SettingsStore.readText(KEY_INVITE_PROOF);
+    if (raw === '') {
+      return '';
+    }
+    try {
+      const record = JSON.parse(raw) as Record<string, string>;
+      return record['pairId'] === pairId ? (record['envelope'] || '') : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  static async saveInviteProof(pairId: string, envelope: string): Promise<void> {
+    if (pairId === '' || envelope === '') {
+      throw new Error('invite proof envelope missing');
+    }
+    await SettingsStore.writeText(KEY_INVITE_PROOF, JSON.stringify({ pairId: pairId, envelope: envelope }));
+  }
+
+  static async clearInviteProof(): Promise<void> {
+    await SettingsStore.deleteText(KEY_INVITE_PROOF);
   }
 
   /** 已接收的对方快照版本（pull 的 sinceVersion 游标）。 */
@@ -244,17 +366,15 @@ export class SettingsStore {
    * 密钥材料一格都不写（长期密钥只活在 HUKS 别名里，见 `clearPairKey` 的注释）。
    */
   static getPartnerSnapCache(): string {
-    return SettingsStore.p().getSync(KEY_PARTNER_SNAP_CACHE, '') as string;
+    return SettingsStore.readText(KEY_PARTNER_SNAP_CACHE);
   }
 
   static async setPartnerSnapCache(envelope: string): Promise<void> {
-    await SettingsStore.p().put(KEY_PARTNER_SNAP_CACHE, envelope);
-    await SettingsStore.p().flush();
+    await SettingsStore.writeText(KEY_PARTNER_SNAP_CACHE, envelope);
   }
 
   static async clearPartnerSnapCache(): Promise<void> {
-    await SettingsStore.p().delete(KEY_PARTNER_SNAP_CACHE);
-    await SettingsStore.p().flush();
+    await SettingsStore.deleteText(KEY_PARTNER_SNAP_CACHE);
   }
 
   /**

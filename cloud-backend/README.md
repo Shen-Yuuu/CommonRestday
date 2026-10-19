@@ -1,5 +1,7 @@
 # 两人份 · 云侧工程（pairing / snapshot 云对象）
 
+> **2026-10-04 共同计划本机收尾**：`cloudfunctions/dateplan`、五个新模型、正式计划页面、可信伴侣对应和通知代码已完成本机门禁，部署源码已同步到 CloudDevSpikeOfficial 与 FortwoCloud，独立通知 worker ZIP 已构建。**本次未部署、未做正式双端或锁屏验收，新客户端开关仍关闭。** 主 App 应在正式 FortwoCloud 所属项目联调，不混用隔离项目身份与 Push 配置。见 [新云对象边界](./cloudfunctions/dateplan/README.md)、[本机交接记录](../docs/validation/2026-10-04-shared-plan-final-handoff.md) 与 [最新用户操作步骤](../docs/validation/2026-10-04-shared-plan-operator-actions.md)。下文是原 pairing/snapshot 部署说明，不套用于本次新增通道；原班表协议保持原样。
+
 > 本目录是**云侧源码与部署说明的落档处**，不是可构建工程：这里没有 `CloudProgram/`、没有
 > `cloud-config.json`、没有 `node_modules`。原因见改造文档 §0.3 与实验 #3 的结论
 > （`SEPARATE_CLOUD_REPO`：多 HAR 扁平根目录不能直接挂向导产物，硬塞会污染 App 侧构建）。
@@ -49,6 +51,14 @@ cloud-backend/
 （`AGC_CONFIG`）使用，**不放进展品目录、不入库、不回显**。
 
 ## 3. 部署顺序
+
+**2026-09-29 短码确认增量部署**：数据库对象类型与 `snapshot` 均未改；只把本仓库
+`cloudfunctions/pairing/contract.ts`、`pairing.ts` 更新到正式 `CloudProgram/cloudfunctions/pairing/`
+并重新部署 `pairing`。部署后在 AGC 控制台复核该云对象运行时和 **20 秒**超时——重新部署会把手工设置
+推回模板默认值。客户端与云对象须配套更新：新客户端遇到旧对象、旧客户端遇到新对象都可能无法完成
+**新配对**；已激活的配对与快照对象不受本次报文调整影响。旧的待确认会话请取消并重新生成。
+免设备契约回归可先跑 `node cloud-backend/test/pairing-contract.mjs`（复用同级 CloudDevSpikeOfficial 的
+TypeScript 安装），应输出 `pairing contract: PASS`。
 
 0. **先删向导自带的样本，再部署**：`clouddb/objecttype/Post.json`、`clouddb/dataentry/d_Post.json`、
    `cloudfunctions/id-generator/`。`[实测 2026-09-27]` `Deploy Cloud DB` 是把 `objecttype/` **整个目录**推上去的，
@@ -177,8 +187,9 @@ await fn.call({ name: 'pairing', version: '$latest', timeout: 30000,
 `build/cache/CloudObjectInterface.js` 里 ImportObject 模板发的 `data: {method: prop, params: args}` 一致），
 所以形态对不上时**不要**改端侧 `CloudApi.ets` 去迁就，先核对云端。
 
-**第 1 步 · 分派形态（要读库）**：`call({name:'pairing', data:{method:'create', params:['<uid>','<pubkey>',1]}})`
-→ 期望 `code:"OK"` 且回包里带 6 位 `code`。`INTERNAL`/空包按上表分流。
+**第 1 步 · 分派形态（要读库）**：`call({name:'pairing', data:{method:'create', params:['<uid>','<pubkey>',2]}})`
+→ 期望 `code:"OK"`、6 位 `inviteCode`，以及仅创建方本次响应持有的 `confirmToken`。
+请只检查凭据是否存在，**不要把完整值写入日志或聊天记录**。`INTERNAL`/空包按上表分流。
 
 **第 2 步 · getter 读回**：紧接着用回包的 `pairId` 调 `status` → 期望 `status:"WAITING"`、
 `peerUid` 为空串。这一步证明 `contract.ts` 的 `toSession()` 用 getter 取值这条路是对的

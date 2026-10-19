@@ -76,7 +76,7 @@ export struct NoticeBar {
       if (this.actionLabel !== '') {
         Text(this.actionLabel)
           .fontSize(DesignTokens.fontCaption)
-          .fontColor(DesignTokens.primary)
+          .fontColor(DesignTokens.textAccent)
           .fontWeight(600)
           .textAlign(TextAlign.Center)
           .constraintSize({

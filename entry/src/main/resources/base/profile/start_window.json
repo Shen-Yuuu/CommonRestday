@@ -1,0 +1,7 @@
+{
+  "startWindowType": "REQUIRED_SHOW",
+  "startWindowColorModeType": "FOLLOW_SYSTEM",
+  "startWindowAppIcon": "$media:start_icon_rounded",
+  "startWindowBrandingImage": "$media:start_brand",
+  "startWindowBackgroundColor": "$color:start_window_background"
+}

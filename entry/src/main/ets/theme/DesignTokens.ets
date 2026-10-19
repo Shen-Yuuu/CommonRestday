@@ -16,6 +16,8 @@ export class DesignTokens {
   static readonly pageGlow: Resource = $r('app.color.page_glow');
   /** 页面竖向渐变的三档（原型 #screen）：浅色是暖白的一口回甘，深色是顶部亮紫、底部沉黑。 */
   static readonly pageGradTop: Resource = $r('app.color.page_grad_top');
+  /** 保留页头底色的 RGB，只把 alpha 归零，避免透明黑参与渐变插值。 */
+  static readonly pageGradClear: Resource = $r('app.color.page_grad_clear');
   static readonly pageGradMid: Resource = $r('app.color.page_grad_mid');
   static readonly pageGradBottom: Resource = $r('app.color.page_grad_bottom');
   static readonly card: Resource = $r('app.color.card_bg');
@@ -25,6 +27,7 @@ export class DesignTokens {
   /** 进度条填充的浅端：从这档走到 primary，条子才有"糖砂"的渐变。 */
   static readonly primaryLight: Resource = $r('app.color.brand_pink_light');
   static readonly primaryBg: Resource = $r('app.color.brand_pink_bg');
+  static readonly shareSelectedBg: Resource = $r('app.color.share_selected_bg');
   static readonly primaryBorder: Resource = $r('app.color.brand_pink_border');
   static readonly hero: Resource = $r('app.color.hero_bg');
   static readonly heroText: Resource = $r('app.color.hero_fg');
@@ -82,6 +85,8 @@ export class DesignTokens {
   static readonly textSecondary: Resource = $r('app.color.text_secondary');
   static readonly textTertiary: Resource = $r('app.color.text_tertiary');
   static readonly textHint: Resource = $r('app.color.text_hint');
+  /** 浅色卡片上的强调小字改用深墨；深色底保留品牌粉。不要改变背景/装饰用的 primary。 */
+  static readonly textAccent: Resource = $r('app.color.text_accent');
   static readonly textDisabled: Resource = $r('app.color.text_disabled');
 
   // ---- 分隔与填充 ----
@@ -98,6 +103,16 @@ export class DesignTokens {
   static readonly success: Resource = $r('app.color.success_green');
   static readonly successDeep: Resource = $r('app.color.success_deep');
   static readonly successBg: Resource = $r('app.color.success_bg');
+  /** 仅用于创建成功按钮，保持绿色确认且让暖白小字达到 4.5:1。 */
+  static readonly successAction: Resource = $r('app.color.plan_success_action');
+  static readonly planSurface: Resource = $r('app.color.plan_surface');
+  static readonly planAccent: Resource = $r('app.color.plan_accent');
+  static readonly planInk: Resource = $r('app.color.plan_ink');
+  static readonly planMuted: Resource = $r('app.color.plan_muted');
+  static readonly drawerCalendarBg: Resource = $r('app.color.drawer_calendar_bg');
+  static readonly drawerCalendarInk: Resource = $r('app.color.drawer_calendar_ink');
+  static readonly drawerCancelBg: Resource = $r('app.color.drawer_cancel_bg');
+  static readonly drawerCancelInk: Resource = $r('app.color.drawer_cancel_ink');
   /** 双方忙碌标识色：我=淡蓝 #A9C4F5，TA=琥珀 #FFC970（今日概览的圆点，与周视图同一套色）。
    *  深色档故意不另写值：02 的深色块没有覆盖这两个，原型里它们是从 01 深色块漏下来的
    *  #91A7A8/#C7A777（getComputedStyle 实测），跟 02 的紫调深色不是一套语言。 */

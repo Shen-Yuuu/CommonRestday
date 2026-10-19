@@ -18,15 +18,15 @@ import { DesignTokens } from '../theme/DesignTokens';
 const PAD_X: number = 20;
 const PAD_Y: number = 24;
 /**
- * 探头布布：CSS `.dlg-peek{width:86px}` 配 viewBox 0 0 120 78 算出 86×56，
- * `position:absolute;top:-50px` 是相对**卡面上沿**外溢 50vp，所以只有下沿 6vp（两只前爪）压在卡面上。
+ * 探头布布：原造型新素材为约 1.29:1 的熊头与前爪，86×68 等比容纳。
+ * 相对卡面上沿外溢 62vp，保留 6vp 的前爪搭边空间。
  * ArkUI 没有 absolute，负 margin 从 padding 内沿（PAD_Y）起算，外溢量要再加一档 PAD_Y；
  * 图占的排版高度因此变成 6−24=−18vp，首行文字的顶距要补回 PAD_Y−6=18vp 才落回 CSS 的 24vp。
  */
 const PEEK_W: number = 86;
-const PEEK_H: number = 56;
-/** 露在卡面上沿之外的量：CSS `top:-50px`。 */
-const PEEK_OUT: number = 50;
+const PEEK_H: number = 68;
+/** 露在卡面上沿之外的量。 */
+const PEEK_OUT: number = 62;
 const PEEK_MARGIN: number = -(PEEK_OUT + PAD_Y);
 /** 布布下沿压进卡面的那 6vp 要从首行顶距里扣掉。 */
 const FIRST_TEXT_TOP: number = PAD_Y - (PEEK_H - PEEK_OUT);
@@ -97,10 +97,13 @@ struct ConfirmDialogFace {
 
   build() {
     Column() {
-      // 负 margin 把整张图抬起 74vp：卡片不 clip，所以耳朵和半张脸在卡面上沿之外，两只前爪搭在沿上。
-      Image($r('app.media.mascot_peek'))
+      // 图以原比例显示，耳朵与头探出卡面，前爪搭在沿上；不添加矩形图片阴影。
+      Image($r('app.media.bubu_peek'))
         .width(PEEK_W)
         .height(PEEK_H)
+        .objectFit(ImageFit.Contain)
+        .sourceSize({ width: 344, height: 264 })
+        .draggable(false)
         .margin({ top: PEEK_MARGIN })
         .accessibilityLevel('no')
 
@@ -126,7 +129,7 @@ struct ConfirmDialogFace {
           .layoutWeight(1)
           .constraintSize({ minHeight: AccessibilityPolicy.minHit(this.senior) })
           .backgroundColor(DesignTokens.card)
-          .fontColor(DesignTokens.primary)
+          .fontColor(DesignTokens.textAccent)
           .fontSize(DesignTokens.fontCaption)
           .fontWeight(700)
           .borderWidth(GHOST_BORDER)

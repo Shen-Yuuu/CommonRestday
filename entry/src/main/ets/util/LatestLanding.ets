@@ -23,4 +23,6 @@ export class LatestLanding {
   isCurrent(token: number): boolean {
     return token === this.seq;
   }
+  /** Visibility/session changes invalidate landings without scheduling another read. */
+  invalidate(): void { this.seq++; }
 }

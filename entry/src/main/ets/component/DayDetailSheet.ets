@@ -1,6 +1,7 @@
 import { Interval, MIN_PER_DAY, OWNER_ME, Window, WindowChannel, clipInto, dayOfStart,
   totalOverlap } from 'domain';
 import { DateLabel } from 'commons';
+import { SettingsStore } from 'data';
 import { CommonTimeQueryService, DayViewData, ScheduleUseCase, WindowSummary } from 'feature';
 import { SubHeaderV2, SubHeaderV2Title } from '@kit.ArkUI';
 import { busyTagLabel, displayTagLabel, tagColor } from '../util/WindowTagUtil';
@@ -53,6 +54,7 @@ export struct DayDetailSheet {
   };
   @State data: DayViewData | null = null;
   @State loading: boolean = true;
+  @State private partnerName: string = 'TA';
   /** 二级态：true 时整页换成 DayShiftSheet，本组件的取数逻辑不动。 */
   @State editing: boolean = false;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
@@ -73,6 +75,7 @@ export struct DayDetailSheet {
   }
 
   async load(): Promise<void> {
+    this.partnerName = SettingsStore.getPartnerDisplayName() || 'TA';
     this.loading = true;
     try {
       this.data = await ScheduleUseCase.getDayView(this.day);
@@ -165,12 +168,12 @@ export struct DayDetailSheet {
       return '来源：本机代录（完整时段）';
     }
     if (this.data.partnerShareLevel === 1) {
-      return '来源：加密快照 · TA 只共享忙闲状态';
+      return this.partnerName + '只分享了忙闲状态';
     }
     if (this.data.partnerShareLevel === 2) {
-      return '来源：加密快照 · TA 共享忙碌类型（30 分钟精度）';
+      return this.partnerName + '分享了忙碌类型（30 分钟精度）';
     }
-    return '来源：加密快照 · TA 共享完整时段';
+    return this.partnerName + '分享了完整时段';
   }
 
   /** 单人态下这些窗口就是"我的空闲"，不该谎称共同（与页头口径一致，D-23 顺手收敛）。 */
@@ -193,6 +196,9 @@ export struct DayDetailSheet {
 
   /** 忙碌区标题的括号部分：给出总时长，读的人不用自己加明细行。 */
   private busyTitle(label: string, ivs: Interval[] | null): string {
+    if(this.clipped(ivs).some((iv: Interval): boolean => iv.tag==='UNKNOWN')) {
+      return label.replace('忙碌','工作安排')+'未填写';
+    }
     const mins = this.clippedTotal(ivs);
     return mins > 0 ? label + '（共 ' + DateLabel.duration(mins) + '）' : label;
   }
@@ -227,7 +233,7 @@ export struct DayDetailSheet {
             .clickEffect(DesignTokens.tapChip())
             .onClick(() => this.backToOverview())
         } else {
-          Text('改这天').fontSize(14).fontColor($r('app.color.brand_pink'))
+          Text('改这天').fontSize(14).fontColor($r('app.color.text_accent'))
             .fontWeight(FontWeight.Bold)
             .padding({ left: 12, right: 12, top: 6, bottom: 6 })
             .borderRadius(DesignTokens.radiusPill).backgroundColor($r('app.color.fill_weakest'))
@@ -245,19 +251,20 @@ export struct DayDetailSheet {
           .focusable(true)
           .accessibilityText('关闭当日明细')
           .onClick(() => this.onClose())
-      }.width('100%')
+      }.width('100%').flexShrink(0)
 
       if (this.editing) {
         Column() {
           DayShiftSheet({
             owner: this.owner,
             epochDay: this.day,
+            enclosingHeader: 100,
             onClose: () => {
               this.backToOverview();
             }
           })
         }
-        .width('100%').layoutWeight(1)
+        .width('100%').height(LayoutPolicy.wrapContent).flexShrink(1)
       } else if (this.loading) {
         Column({ space: 8 }) {
           LoadingProgress().width(32).height(32).color($r('app.color.brand_pink'))
@@ -309,11 +316,11 @@ export struct DayDetailSheet {
             Column({ space: 8 }) {
               SubHeaderV2({
                 title: new SubHeaderV2Title({
-                  primaryTitle: this.busyTitle('TA 的忙碌', this.data.partnerTrueBusy)
+                  primaryTitle: this.busyTitle(this.partnerName + '的忙碌', this.data.partnerTrueBusy)
                 })
               })
               if (this.data.partnerBusy == null) {
-                Text('还没有 TA 的数据，现在是单人模式')
+                Text('暂无' + this.partnerName + '的日程数据')
                   .fontSize(12).fontColor($r('app.color.text_tertiary'))
               } else {
                 Text(this.partnerNote()).fontSize(11).fontColor($r('app.color.text_hint'))
@@ -327,13 +334,14 @@ export struct DayDetailSheet {
           }
           .width('100%')
         }
-        .layoutWeight(1)
+        .height(LayoutPolicy.wrapContent)
+        .flexShrink(1)
         .align(Alignment.Top)
         .scrollBar(BarState.Off)
       }
     }
     .width('100%')
-    .height('100%')
+    .height(LayoutPolicy.wrapContent)
     .padding({ left: 20, right: 20, top: 16, bottom: 24 })
     .backgroundColor(DesignTokens.page)
     // 02 的 .sheet 面是顶亮下页色的竖向渐变，不是一块平色（与另两张自绘 sheet 同一份配方）
@@ -360,7 +368,7 @@ export struct DayDetailSheet {
           }
         }
       }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+      Text('去计划 ›').fontSize(12).fontColor($r('app.color.text_accent'))
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))
@@ -383,7 +391,7 @@ export struct DayDetailSheet {
         Text('连续 ' + DateLabel.duration(w.durationMin) + '，夜间睡眠不计入忙碌')
           .fontSize(10).fontColor($r('app.color.text_hint'))
       }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      Text('去计划 ›').fontSize(12).fontColor($r('app.color.brand_pink'))
+      Text('去计划 ›').fontSize(12).fontColor($r('app.color.text_accent'))
     }
     .width('100%').padding(10).borderRadius(10)
     .backgroundColor($r('app.color.fill_weakest'))

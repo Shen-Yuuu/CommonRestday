@@ -2,12 +2,12 @@
  * 唯一数据库版本迁移入口（改造阶段 0）。
  *
  * 规则：
- * - schema_version 记在 sync_meta，是"是否已迁移"的唯一事实；
+ * - schema_version 记在 sync_meta；早期错误标为 v4 的缺列库按实际结构修复；
  * - 新装库由 Db 的建表 DDL 直接产出目标结构，迁移只负责补齐存量库缺失的列；
  * - 缺失列用一次只读探测判定（探测语句失败=列不存在），不写"ALTER 报错就忽略"的兜底；
  * - 主键换形（v3：班表三表由全局 id 改成 (owner, id)）用 sqlite_master 里的建表原话判定，
  *   重建走"临时表 + 搬数据 + 删旧表 + 换名"，与补列同在一个事务里，不留半迁移结构；
- * - 全部补齐语句在单一事务内执行，任一失败整体回滚并抛出，绝不留半迁移状态；
+ * - 补齐语句与版本写入在单一事务内执行，写入失败整体回滚；读连接在提交后才校验新结构；
  * - 结构版本比本包高（从更新的装机恢复回来）时整段跳过：既不缺列可补，也绝不把别人的
  *   高版本 stamp 改写成本包版本——改了以后真到升级那一步就不会再跑。
  *
@@ -21,7 +21,9 @@
  */
 
 /** 目标结构版本。 */
-export const SCHEMA_VERSION = 3;
+import { SHARED_PLAN_DDL, SHARED_RESTORE_SQL } from './SharedPlanSchema';
+
+export const SCHEMA_VERSION = 9;
 
 /** sync_meta 中的版本键。 */
 export const SCHEMA_VERSION_KEY = 'schema_version';
@@ -49,6 +51,9 @@ export interface ColumnAddition {
   column: string;
   ddl: string;
 }
+
+const CYCLE_WEEKDAYS_COLUMN: string = 'weekdays_mask INTEGER NOT NULL DEFAULT 127';
+const CYCLE_WEEKDAYS_ALTER: string = 'ALTER TABLE cycle_template ADD COLUMN ' + CYCLE_WEEKDAYS_COLUMN;
 
 /** v1 → v2 需要补齐的列（新装 DDL 已含同名列，两处必须同步）。 */
 export const V2_ADDITIONS: ColumnAddition[] = [
@@ -117,12 +122,13 @@ export function ownerKeyRebuild(t: OwnerScopedTable): string[] {
   ];
 }
 
-/** 新装库这三张表的建表语句：和上面的重建目标同出一处，Db 只负责按序执行。 */
+/** 新装到 v4；历史主键重建仍用 v3 的列清单，完成后再补星期列。 */
 export function ownerScopedDdlList(): string[] {
   const out: string[] = [];
   for (let i = 0; i < OWNER_SCOPED_TABLES.length; i++) {
     const t = OWNER_SCOPED_TABLES[i];
-    out.push('CREATE TABLE IF NOT EXISTS ' + t.table + ' (' + t.columns + ', ' + OWNER_KEY_CLAUSE + ')');
+    const columns = t.columns + (t.table === 'cycle_template' ? ', ' + CYCLE_WEEKDAYS_COLUMN : '');
+    out.push('CREATE TABLE IF NOT EXISTS ' + t.table + ' (' + columns + ', ' + OWNER_KEY_CLAUSE + ')');
   }
   return out;
 }
@@ -154,7 +160,7 @@ export class MigrationRunner {
      WHERE calendar_state IN ('WRITTEN', 'PENDING', 'MANAGED_WRITTEN', 'EXTERNAL_UNMANAGED', 'CLEANUP_PENDING')`,
     `UPDATE plan SET reminder_id = -1 WHERE reminder_id >= 0`,
     `UPDATE plan SET sync_state = 'LOCAL_ONLY' WHERE sync_state <> 'LOCAL_ONLY'`
-  ];
+  ].concat(SHARED_RESTORE_SQL);
 
   /**
    * 升级到 SCHEMA_VERSION，返回迁移后的版本（结构已比本包新时返回那个更高的版本）。
@@ -165,9 +171,23 @@ export class MigrationRunner {
     if (recorded > SCHEMA_VERSION) {
       return recorded;
     }
-    if (recorded !== SCHEMA_VERSION) {
+    // 早期 v4 可能因结果集探测误判而只写了版本、未补星期列；按实际结构原地修复。
+    const cycleExists = await db.canSelect('SELECT id FROM cycle_template LIMIT 0');
+    const cycleHasDays = await db.canSelect('SELECT weekdays_mask FROM cycle_template LIMIT 0');
+    if (recorded !== SCHEMA_VERSION || (cycleExists && !cycleHasDays)) {
       const missing = await MigrationRunner.missingAdditions(db);
+      const newTables: string[] = [];
+      for (const ddl of SHARED_PLAN_DDL) {
+        const name = ddl.slice('CREATE TABLE IF NOT EXISTS '.length, ddl.indexOf(' ('));
+        if (await db.tableDDL(name) === '') newTables.push(ddl);
+      }
       const rebuilds = await MigrationRunner.pendingKeyRebuilds(db);
+      let cycleRebuilt = false;
+      for (let i = 0; i < rebuilds.length; i++) {
+        if (rebuilds[i][0].indexOf('CREATE TABLE cycle_template_v3 ') === 0) {
+          cycleRebuilt = true;
+        }
+      }
       db.begin();
       try {
         for (let i = 0; i < missing.length; i++) {
@@ -179,11 +199,20 @@ export class MigrationRunner {
             await db.execute(stmts[j]);
           }
         }
+        if (cycleExists && (!cycleHasDays || cycleRebuilt)) {
+          await db.execute(CYCLE_WEEKDAYS_ALTER);
+        }
+        for (const ddl of newTables) await db.execute(ddl);
         await db.setMeta(SCHEMA_VERSION_KEY, String(SCHEMA_VERSION));
         db.commit();
       } catch (e) {
         db.rollback();
         throw e as Error;
+      }
+      // RdbStore.querySql 可走独立读连接：提交前看不到写事务中的 ALTER。
+      // 提交后校验失败仍阻止 Db.init 发布 store，但不能回滚已经提交的事务。
+      if (cycleExists && !(await db.canSelect('SELECT weekdays_mask FROM cycle_template LIMIT 0'))) {
+        throw new Error('cycle_template weekdays_mask is not readable after committed migration');
       }
     }
     await MigrationRunner.finishRestore(db);

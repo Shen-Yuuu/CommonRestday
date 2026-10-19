@@ -5,7 +5,7 @@ import { AgcPairingClient, CloudApiError, CLOUD_NETWORK, PairKeyStore } from 'cl
 import {
   CalendarCapability, CalendarOutcome, CalendarWriteResult, encodeSyncState, FeatureFlags,
   PlanCapabilities, ProfileSettingsService, ReminderCapability, RemoveOutcome,
-  SHARE_LEVEL_UNKNOWN, SYNC_STATE_BLOCKED
+  SHARE_LEVEL_UNKNOWN, SYNC_STATE_BLOCKED, SecureLifecycle
 } from 'feature';
 
 /**
@@ -172,6 +172,22 @@ class OkReminder implements ReminderCapability {
 
 export default function profileSettingsGuardTest() {
   describe('profileSettingsGuardTest', () => {
+    it('shared_connection_refusal_keeps_the_legacy_pair_and_sends_no_legacy_delete', 0, async () => {
+      await SettingsStore.savePairId('legacy-retained');
+      await SettingsStore.setPairState(PAIRED, 'partner-retained');
+      const calls = AgcPairingClient.calls;
+      SecureLifecycle.installDisconnect(() => Promise.resolve('RESULT_UNKNOWN'));
+      try {
+        const result = await ProfileSettingsService.unpair();
+        expect(result.ok).assertFalse();
+        expect(SettingsStore.getPairId()).assertEqual('legacy-retained');
+        expect(SettingsStore.getPairState()).assertEqual(PAIRED);
+        expect(AgcPairingClient.calls).assertEqual(calls);
+      } finally {
+        SecureLifecycle.installDisconnect(() => Promise.resolve('OK'));
+        await SettingsStore.savePairId(''); await SettingsStore.setPairState(PAIR_NONE, '');
+      }
+    });
 
     it('create_invite_reaches_the_cloud_only_when_open', 0, async () => {
       await SettingsStore.savePairId('stale-session');
@@ -187,10 +203,13 @@ export default function profileSettingsGuardTest() {
         expect(res.ok).assertTrue();
         expect(res.code).assertEqual('246810');
         expect(AgcPairingClient.calls).assertEqual(1);
-        expect(PairKeyStore.calls).assertEqual(1);
+        // 身份别名 + 本机密封确认凭据；旧会话证明别名也要清理。
+        expect(PairKeyStore.calls).assertEqual(3);
         expect(SettingsStore.getPairId()).assertEqual('session-from-the-cloud');
         expect(SettingsStore.getPairState()).assertEqual(PAIR_WAITING);
         expect(SettingsStore.getPartnerUid()).assertEqual('');
+        expect(SettingsStore.getInviteProof('session-from-the-cloud') !== '').assertTrue();
+        expect(SettingsStore.getInviteProof('session-from-the-cloud').indexOf('token-from-the-cloud')).assertEqual(-1);
         return;
       }
       expect(res.ok).assertFalse();
@@ -207,6 +226,7 @@ export default function profileSettingsGuardTest() {
     it('join_by_code_never_reaches_paired_when_cloud_is_closed', 0, async () => {
       await SettingsStore.savePairId('');
       await SettingsStore.setPairState(PAIR_NONE, '');
+      await SettingsStore.clearInviteProof();
       AgcPairingClient.calls = 0;
       PairKeyStore.calls = 0;
 
@@ -223,7 +243,8 @@ export default function profileSettingsGuardTest() {
         expect(PairKeyStore.calls).assertEqual(2);
         expect(SettingsStore.getPairState()).assertEqual(PAIR_PENDING);
         expect(SettingsStore.getPairId()).assertEqual('session-from-the-cloud');
-        expect(ProfileSettingsService.getOutboundToken()).assertEqual('token-from-the-cloud');
+        // 加入方不持有邀请方的确认凭据。
+        expect(SettingsStore.getInviteProof('session-from-the-cloud')).assertEqual('');
         return;
       }
       expect(res.ok).assertFalse();
@@ -261,46 +282,59 @@ export default function profileSettingsGuardTest() {
       expect(PairKeyStore.calls).assertEqual(0);
     });
 
-    /**
-     * 确认链接这条入口最坏的一格：本机什么都没做过，只凭别人发来的一串凭据就能转 PAIRED。
-     * 关闭态一句拒绝、不留 pairId、不建别名、不发云对象；开档则是"云端没说 ACTIVE 就不许写"
-     * ——协议 §4.3 的这条前置在两个档位都得成立，写 PAIRED 的唯一凭据是云端的回答。
-     */
-    it('confirm_with_token_needs_the_cloud_to_say_active', 0, async () => {
-      // 上一条用例留下了 pairId 与 WAITING，这里自己摆回"本机从没配过对"的形状
+    /** 外部字符串不再是确认入口；只有本机密封过邀请证明才允许发云端 confirm。 */
+    it('confirm_pending_join_requires_local_sealed_proof', 0, async () => {
       await SettingsStore.savePairId('');
       await SettingsStore.setPairState(PAIR_NONE, '');
+      await SettingsStore.clearInviteProof();
       AgcPairingClient.calls = 0;
       PairKeyStore.calls = 0;
-      // 上一条 join 留下的确认凭据（关闭态它本该是空串）：这条用例要证的是"拒绝不许改动它"
-      const tokenBefore = ProfileSettingsService.getOutboundToken();
 
-      const res = await ProfileSettingsService.confirmWithToken('token-from-a-shared-link');
+      const res = await ProfileSettingsService.confirmPendingJoin();
 
       expect(res.ok).assertFalse();
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(PairKeyStore.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
-      expect(ProfileSettingsService.getOutboundToken()).assertEqual(tokenBefore);
       if (CLOUD_ON) {
-        // 开档：手里没有会话时，别人发来的凭据本身不算数（拒绝话术是"现在没有要确认的配对"）
         expect(res.message !== CLOSED).assertTrue();
-        // 有会话、且云端回的正是 ACTIVE，才轮到写 PAIRED
-        await SettingsStore.savePairId('session-from-the-cloud');
+        const created = await ProfileSettingsService.createInvite();
+        expect(created.ok).assertTrue();
         AgcPairingClient.calls = 0;
         PairKeyStore.calls = 0;
-        const done = await ProfileSettingsService.confirmWithToken('token-from-the-cloud');
+        const done = await ProfileSettingsService.confirmPendingJoin();
         await letItSettle();
         expect(done.ok).assertTrue();
-        expect(AgcPairingClient.calls >= 1).assertTrue();
-        expect(PairKeyStore.calls >= 1).assertTrue();
+        expect(AgcPairingClient.calls).assertEqual(1);
+        expect(PairKeyStore.calls >= 2).assertTrue();
         expect(SettingsStore.getPairState()).assertEqual(PAIRED);
-        // 确认完成，本机手里这份一次性凭据就地作废（协议 §4.3：它换过一次 ACTIVE 就没用了）
-        expect(ProfileSettingsService.getOutboundToken()).assertEqual('');
+        expect(SettingsStore.getInviteProof('session-from-the-cloud')).assertEqual('');
         return;
       }
       expect(res.message).assertEqual(CLOSED);
+    });
+
+    it('pending_join_is_only_a_request_until_inviter_confirms', 0, async () => {
+      await SettingsStore.savePairId('');
+      await SettingsStore.setPairState(PAIR_NONE, '');
+      await SettingsStore.clearInviteProof();
+      AgcPairingClient.statusResult = 'WAITING';
+      if (!CLOUD_ON) {
+        const closed = await ProfileSettingsService.reconcilePair();
+        expect(closed.message).assertEqual(CLOSED);
+        return;
+      }
+      const created = await ProfileSettingsService.createInvite();
+      expect(created.ok).assertTrue();
+      AgcPairingClient.statusResult = 'PENDING_CONFIRM';
+      const pending = await ProfileSettingsService.reconcilePair();
+      expect(pending.approvalRequired).assertTrue();
+      expect(SettingsStore.getPairState()).assertEqual(PAIR_PENDING);
+      const confirmed = await ProfileSettingsService.confirmPendingJoin();
+      expect(confirmed.ok).assertTrue();
+      expect(SettingsStore.getPairState()).assertEqual(PAIRED);
+      AgcPairingClient.statusResult = 'WAITING';
     });
 
     /**
@@ -422,7 +456,8 @@ export default function profileSettingsGuardTest() {
       expect(second.ok).assertTrue();
       expect(second.message).assertEqual('已解除配对');
       expect(AgcPairingClient.calls).assertEqual(2);
-      expect(PairKeyStore.calls).assertEqual(1);
+      // 解除后同时清配对密钥与待确认邀请的 HUKS 别名。
+      expect(PairKeyStore.calls).assertEqual(2);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
       expect(SettingsStore.getPartnerSnapVer()).assertEqual(0);
@@ -533,6 +568,7 @@ export default function profileSettingsGuardTest() {
     it('cancel_waiting_needs_no_cloud', 0, async () => {
       await SettingsStore.savePairId('stale-session');
       await SettingsStore.setPairState(PAIR_WAITING, 'stale-partner');
+      await SettingsStore.saveInviteProof('stale-session', 'sealed-envelope');
       AgcPairingClient.calls = 0;
 
       await ProfileSettingsService.cancelWaiting();
@@ -540,6 +576,7 @@ export default function profileSettingsGuardTest() {
       expect(AgcPairingClient.calls).assertEqual(0);
       expect(SettingsStore.getPairState()).assertEqual(PAIR_NONE);
       expect(SettingsStore.getPairId()).assertEqual('');
+      expect(SettingsStore.getInviteProof('stale-session')).assertEqual('');
     });
 
     /**
@@ -674,6 +711,7 @@ export default function profileSettingsGuardTest() {
       PlanCapabilities.bind(new CleanCalendar(), new OkReminder());
       await SettingsStore.savePairId('session-to-wipe');
       await SettingsStore.setPairState(PAIRED, 'peer-uid');
+      await SettingsStore.saveInviteProof('session-to-wipe', 'sealed-envelope');
       await SettingsStore.setPartnerSnapVer(9);
       await SettingsStore.clearPendingCloudUnpair();
       const uidBefore = await SettingsStore.getOrCreateUid();
@@ -682,6 +720,7 @@ export default function profileSettingsGuardTest() {
 
       const wiped = await ProfileSettingsService.clearAllData();
       AgcPairingClient.unpairFailure = null;
+      expect(SettingsStore.getInviteProof('session-to-wipe')).assertEqual('');
 
       if (!CLOUD_ON) {
         // 关闭态（批次 AO·AO1，也就是"回退版本测试"那一格）：没有云请求可发，但欠账照记、

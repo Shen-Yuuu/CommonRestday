@@ -6,7 +6,7 @@ import {
 } from 'domain';
 import { ScheduleRepo } from 'data';
 import { DateLabel } from 'commons';
-import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase, TermConfig } from 'feature';
+import { ScheduleCommandResult, ScheduleCommandService, ScheduleUseCase } from 'feature';
 import { ownerFromParams } from '../model/RouteParams';
 import { DesignTokens } from '../theme/DesignTokens';
 import { toastCommand } from '../util/CommandToast';
@@ -242,7 +242,7 @@ struct CourseImport {
       Row() {
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.brand_pink')])
-          Text('返回').fontSize(15).fontColor($r('app.color.brand_pink'))
+          Text('返回').fontSize(15).fontColor($r('app.color.text_accent'))
         }.onClick(() => router.back())
         Blank()
         Text(this.owner === OWNER_ME ? '课程表导入' : 'TA 的课程表导入').fontSize(17).fontWeight(FontWeight.Bold)
@@ -257,7 +257,7 @@ struct CourseImport {
             Row() {
               Text(this.termStart > 0 ? DateLabel.mdw(this.termStart) : '未设置').fontSize(15)
               Blank()
-              Text('选择 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
+              Text('选择 ›').fontSize(13).fontColor($r('app.color.text_accent'))
             }
             .width('100%').padding(10).borderRadius(10).backgroundColor($r('app.color.fill_weakest'))
             .clickEffect(DesignTokens.tapButton())
@@ -267,7 +267,7 @@ struct CourseImport {
             Row() {
               Text('节次时间模板').fontSize(13).fontColor($r('app.color.text_secondary'))
               Blank()
-              Text(this.showSections ? '收起 ›' : '编辑 ›').fontSize(13).fontColor($r('app.color.brand_pink'))
+              Text(this.showSections ? '收起 ›' : '编辑 ›').fontSize(13).fontColor($r('app.color.text_accent'))
             }
             .width('100%')
             .onClick(() => this.showSections = !this.showSections)
@@ -285,10 +285,7 @@ struct CourseImport {
                   .shadow(DesignTokens.jelly(DesignTokens.borderWeak, DesignTokens.jellyDepth))
                   .onClick(() => this.resetSections())
               }
-              Text('第几行就是第几节，课表里的「第 1-2 节」按这里的时间算。')
-                .fontSize(11).fontColor($r('app.color.text_hint'))
-            } else {
-              Text('默认 45 分钟一节、课间 10 分钟，从 08:00 / 14:00 / 19:00 起，点「编辑」可改')
+              Text('每行对应一节课。')
                 .fontSize(11).fontColor($r('app.color.text_hint'))
             }
           }
@@ -300,7 +297,7 @@ struct CourseImport {
         // 粘贴导入
         ListItem() {
           Column({ space: 8 }) {
-            Text('粘贴课表：一行一门，写课程名、周几、第几节、周次')
+            Text('粘贴课表（每行一门）')
               .fontSize(13).fontColor($r('app.color.text_tertiary')).width('100%')
             TextArea({ text: this.pasteText, placeholder: '高等数学 周一 第1-2节 1-16周 单周\n大学英语 周三 3,4节' })
               .height(88).fontSize(13).width('100%')

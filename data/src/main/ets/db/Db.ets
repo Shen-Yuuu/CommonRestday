@@ -7,7 +7,7 @@ const TAG = 'CrdDb';
 const DB_NAME = 'commonrestday.db';
 
 /**
- * 建表语句：始终描述"当前目标结构"（= MigrationRunner.SCHEMA_VERSION），新装库一次建到位；
+ * 既有业务表建表入口；v5 的独立共同计划表由 MigrationRunner 在版本事务里统一创建。
  * 存量库的差距由 MigrationRunner 补齐，禁止在此处再写"ALTER 失败就忽略"的兜底。
  * - 日期一律存 epochDay 整数（本地纪元日），避免字符串/时区往返错误；
  * - 班表四表含 owner 列（'ME' | 'PARTNER'，默认 'ME'），主键一律带 owner：
@@ -66,12 +66,12 @@ class RdbMigration implements MigrationDb {
     return out;
   }
 
-  /** 只读探测：SQLite 对不存在的表/列直接报错，此处仅把"读不了"折算成 false。 */
+  /** 只读探测：必须读取元数据；拿到 ResultSet 对象不代表 SQL 有效。 */
   async canSelect(sql: string): Promise<boolean> {
     let rs: relationalStore.ResultSet | null = null;
     try {
       rs = await this.store.querySql(sql);
-      return true;
+      return rs.columnCount > 0;
     } catch (e) {
       return false;
     } finally {

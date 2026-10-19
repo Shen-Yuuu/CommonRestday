@@ -120,7 +120,7 @@ export class PlanUseCase {
         await ScheduleRepo.updatePlanCalendar(planId, CalendarState.NOT_REQUESTED, '');
       }
       await PlanUseCase.publishReminder(planId, row.title, startMin);
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
       Logger.info(TAG, 'plan created id=' + planId + ' calendar=' + state);
       return { ok: true, planId: planId, calendarState: state, error: '' };
     } catch (e) {
@@ -140,6 +140,8 @@ export class PlanUseCase {
    * 本机事实一定改成（清理失败不回滚取消），残留部分如实写进 cleanupNote 交给 UI 播报。
    */
   static async cancelPlan(id: string): Promise<PlanOpResult> {
+    if (id.startsWith('shared:')) return { ok: false, calendarState: CalendarState.NOT_REQUESTED,
+      error: '请到「共同 · 计划」同步取消这条共同计划', cleanupNote: '' };
     const row = await PlanUseCase.findPlan(id);
     if (row == null) {
       return { ok: false, calendarState: CalendarState.NOT_REQUESTED, error: '这条计划已经不在了', cleanupNote: '' };
@@ -173,6 +175,8 @@ export class PlanUseCase {
    * 替代窗口信息缺失/非法（已被新一次重算覆盖）时 ok=false，UI 提示重选窗口。
    */
   static async acceptAlternative(id: string): Promise<PlanOpResult> {
+    if (id.startsWith('shared:')) return { ok: false, calendarState: CalendarState.NOT_REQUESTED,
+      error: '请到「共同 · 计划」向对方申请改期', cleanupNote: '' };
     const row = await PlanUseCase.findPlan(id);
     const hint = row != null ? decodeConflictHint(row.conflictHint) : null;
     if (row == null || row.status !== STATUS_CONFLICT || hint == null
@@ -422,7 +426,7 @@ export class PlanUseCase {
    */
   private static async recomputeQuietly(): Promise<void> {
     try {
-      await ScheduleUseCase.onScheduleChanged();
+      await ScheduleUseCase.onScheduleChanged(true);
     } catch (e) {
       Logger.warn(TAG, 'recompute after plan change failed: ' + (e as Error).message);
     }

@@ -1,4 +1,4 @@
-import { Course, CycleTemplate, ScheduleOverride, SectionTime, ShiftType } from 'domain';
+import { Course, CycleTemplate, ScheduleOverride, SectionTime, ShiftType, cycleWeekdaysMask } from 'domain';
 import { PAIRED, ScheduleRepo, SettingsStore } from 'data';
 import { Logger } from 'commons';
 import { LABEL_SAVE_FLOW, RecomputeExecutor } from '../performance/RecomputeExecutor';
@@ -82,7 +82,9 @@ export class ScheduleCommandService {
 
   static async saveShiftType(st: ShiftType, owner: string): Promise<ScheduleCommandResult> {
     return await ScheduleCommandService.run(async (): Promise<void> => {
-      await ScheduleRepo.upsertShiftType(st, owner);
+      await ScheduleRepo.runInTransaction(async (): Promise<void> => {
+        await ScheduleRepo.upsertShiftType(st, owner);
+      });
     });
   }
 
@@ -95,6 +97,9 @@ export class ScheduleCommandService {
   // ---------- 循环模板 ----------
 
   static async saveTemplate(tpl: CycleTemplate, owner: string): Promise<ScheduleCommandResult> {
+    if (cycleWeekdaysMask(tpl.weekdaysMask) === 0) {
+      return result(false, false, false, false, 'INVALID_WEEKDAYS');
+    }
     return await ScheduleCommandService.run(async (): Promise<void> => {
       await ScheduleRepo.saveTemplate(tpl, owner);
     });
@@ -160,7 +165,7 @@ export class ScheduleCommandService {
     }
     try {
       await RecomputeExecutor.measure(LABEL_SAVE_FLOW, async (): Promise<void> => {
-        await ScheduleUseCase.onScheduleChanged();
+        await ScheduleUseCase.onScheduleChanged(true);
       });
     } catch (e) {
       Logger.warn(TAG, 'recompute after write failed: ' + (e as Error).message);

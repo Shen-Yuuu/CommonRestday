@@ -4,7 +4,7 @@ import {
   CONFLICT_SOURCE_BOTH, CONFLICT_SOURCE_MINE, CONFLICT_SOURCE_PARTNER, ConflictHint, Interval,
   encodeConflictHint, MIN_PER_DAY, Window, WindowChannel, WindowTag
 } from 'domain';
-import { PlanRow } from 'data';
+import { PAIRED, PAIR_NONE, PlanRow, SettingsStore } from 'data';
 import {
   AnswerAction, AnswerKind, AnswerState, CommonTimePageData, DayBusy, DetailInput, ExperienceMode,
   HomeInput, HomeSummary, PageInput, PlanConflictView, WindowDetailData, WindowFilter,
@@ -147,6 +147,50 @@ const TRIP_W = win(DAY + 10, 480, DAY + 12, 1080, WindowChannel.REGULAR,
 
 export default function commonTimeQueryServiceTest() {
   describe('commonTimeQueryService', () => {
+    it('cloud_alias_reaches_both_page_read_models', 0, async () => {
+      await SettingsStore.savePairId('alias-read-model-test');
+      await SettingsStore.setPairState(PAIRED, 'peer');
+      await SettingsStore.saveCloudPartnerName('alias-read-model-test', '  小鹿  ');
+      try {
+        const home = await CommonTimeQueryService.getHomeSummary(NOW);
+        const page = await CommonTimeQueryService.getCommonTimePage({ key: WindowFilterKey.ALL,
+          fromEpochMin: NOW }, NOW);
+        expect(home.partnerName).assertEqual('小鹿');
+        expect(page.partnerName).assertEqual('小鹿');
+        expect(SettingsStore.getPartnerProfile()).assertNull();
+      } finally {
+        await SettingsStore.savePairId('');
+        await SettingsStore.setPairState(PAIR_NONE, '');
+      }
+    });
+
+    it('cloud_alias_cancel_defaults_to_ta_and_new_pair_does_not_inherit', 0, async () => {
+      await SettingsStore.savePairId('alias-cancel-test');
+      await SettingsStore.setPairState(PAIRED, 'peer');
+      try {
+        expect(SettingsStore.isCloudPartnerNamePrompted()).assertFalse();
+        await SettingsStore.saveCloudPartnerName('alias-cancel-test', '');
+        expect(SettingsStore.isCloudPartnerNamePrompted()).assertTrue();
+        expect(SettingsStore.getPartnerDisplayName()).assertEqual('TA');
+        await SettingsStore.saveCloudPartnerName('alias-cancel-test', '小鹿');
+        await SettingsStore.savePairId('alias-next-pair');
+        expect(SettingsStore.getPartnerDisplayName()).assertEqual('TA');
+        expect(SettingsStore.isCloudPartnerNamePrompted()).assertFalse();
+      } finally {
+        await SettingsStore.savePairId('');
+        await SettingsStore.setPairState(PAIR_NONE, '');
+      }
+    });
+
+    it('cloud_alias_does_not_replace_local_recording_name', 0, async () => {
+      await SettingsStore.savePartnerProfile({ nick: '小雨', wakeMin: 420, bedMin: 1350, windDownMin: 20 });
+      await SettingsStore.setPairState(PAIR_NONE, '');
+      try {
+        expect(SettingsStore.getPartnerDisplayName()).assertEqual('小雨');
+      } finally {
+        await SettingsStore.clearPartnerProfile();
+      }
+    });
 
     it('three_answers_use_their_own_rule', 0, () => {
       const h = home(ExperienceMode.PAIRED, [TONIGHT_W, FULL_W, OVERNIGHT_W, TRIP_W], [],

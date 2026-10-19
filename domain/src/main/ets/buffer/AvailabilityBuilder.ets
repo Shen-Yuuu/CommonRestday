@@ -1,6 +1,7 @@
 import { BlockTag, EngineParams, Interval, MIN_PER_DAY, ShiftInstance, ShiftType } from '../model/Types';
 import { bedEndMin, dayOfEnd, dayOfStart } from '../utils/TimeUtil';
 import { intersects, mkIv, mergeIntervals } from '../merge/IntervalOps';
+import { shiftSegments, shiftSnapshot } from '../expand/WeeklyRoster';
 
 /**
  * 缓冲层：把班次实例转换为忙碌块（含通勤），生成个人"不可用"区间。
@@ -14,6 +15,15 @@ import { intersects, mkIv, mergeIntervals } from '../merge/IntervalOps';
 
 /** 单个班次实例 → 忙碌块（WORK + 可能的 RECOVERY），不合并。 */
 export function shiftToBlocks(inst: ShiftInstance, cfg: ShiftType, params: EngineParams): Interval[] {
+  if (cfg.segments != null && cfg.segments.length > 0) {
+    const parts: Interval[] = [];
+    for (const segment of shiftSegments(cfg)) {
+      const single = shiftSnapshot(cfg); single.segments=[];
+      single.startMin=segment.startMin;single.endMin=segment.endMin;single.crossDay=segment.crossDay;
+      parts.push(...shiftToBlocks(inst,single,params));
+    }
+    return parts;
+  }
   const base = inst.epochDay * MIN_PER_DAY;
   let endMin = cfg.endMin;
   if (cfg.crossDay || cfg.endMin <= cfg.startMin) {
@@ -74,7 +84,7 @@ export function buildNotAvailable(busyTrue: Interval[], wakeMin: number, bedMin:
   // 忙碌块尾部加收整缓冲
   for (let i = 0; i < busyTrue.length; i++) {
     const iv = busyTrue[i];
-    notAvail.push(mkIv(iv.start, iv.end + windDownMin, iv.tag));
+    notAvail.push(mkIv(iv.start, iv.end + (iv.tag === 'UNKNOWN' ? 0 : windDownMin), iv.tag));
   }
   // 每日作息窗口外（跨零点的就寝由 bedEndMin 一处解释，与 WindowClassifier 同一份判定）
   const b = bedEndMin(wakeMin, bedMin);

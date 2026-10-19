@@ -1,0 +1,16 @@
+{
+  "objectTypeName": "PlanCasProbe",
+  "fields": [
+    { "fieldName": "id", "fieldType": "String", "isNeedEncrypt": false, "notNull": true, "isSensitive": false, "belongPrimaryKey": true },
+    { "fieldName": "version", "fieldType": "Integer", "isNeedEncrypt": false, "notNull": true, "isSensitive": false, "defaultValue": "0", "belongPrimaryKey": false },
+    { "fieldName": "state", "fieldType": "String", "isNeedEncrypt": false, "notNull": true, "isSensitive": false, "defaultValue": "", "belongPrimaryKey": false },
+    { "fieldName": "createdAt", "fieldType": "Long", "isNeedEncrypt": false, "notNull": true, "isSensitive": false, "defaultValue": "0", "belongPrimaryKey": false }
+  ],
+  "indexes": [],
+  "permissions": [
+    { "role": "World", "rights": [] },
+    { "role": "Authenticated", "rights": [] },
+    { "role": "Creator", "rights": [] },
+    { "role": "Administrator", "rights": ["Read", "Upsert", "Delete"] }
+  ]
+}

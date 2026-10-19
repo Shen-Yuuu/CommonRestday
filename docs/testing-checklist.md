@@ -1,8 +1,8 @@
-# 同休日 真机验收清单
+# 两人份（For Two）真机验收清单
 
 > 适用：HarmonyOS NEXT（API 26）**手机**（`deviceTypes` 只声明 phone，其余设备形态不在验收范围）。
-> 口径日期：2026-09-24，对应阶段 6 Task 6.4 完成、并按 `docs/design/ui-parity-2026-09-23.md` 批次 A–E 整改后的形态：三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 扫码分享入口 + 桌面卡片 + 首发零通知（D-20：通知与提醒链路整体删除） + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义与按设备能力的 Senior Mode 低密度（D-21：应用内开关已删） + 重算的 16ms 预算门槛 + 升级迁移与恢复收口 + 五档灰度开关全部有读取方 + release 出包可复现。
-> 云端配对继续关闭：Task 0.4 的门禁结论是 `CLOUD_BLOCKED`，见 `docs/validation/clouddev-api26-spike.md`。功能开关档位与回退口径见 `docs/release/rollout-and-rollback.md`；**发布门禁五条的逐条判定与提审前必办清单在 [发布验收清单](./release/2026-api26-release-checklist.md)**（§20 只放"这件事必须在设备上做一次"的条目）。
+> 口径日期：2026-09-29；现行配对入口是六位短码 + 邀请方本机确认，扫码/链接已退役（新版判据见 §10 首段）。其余页面按三 Tab 壳层 + 答案优先首页 + 窗口/计划/冲突闭环 + 桌面卡片 + 首发零通知 + 容器级响应式断点 + ChipV2 筛选与稳定日期滚轮 + 无障碍语义 + 重算预算门槛验收。
+> **当前发布档（2026-09-29）**：`cloudPairing=true` 且已声明 `ohos.permission.INTERNET`；旧 Task 0.4 的 `CLOUD_BLOCKED` 是开闸前历史结论。§9 的关闭态条目只验回退包，开档云链路看 `docs/cloud/pairing-protocol-v1.md` §11。功能档位与回退口径见 `docs/release/rollout-and-rollback.md`；**提审前必办清单在 [发布验收清单](./release/2026-api26-release-checklist.md)**。现有 5555 有珍贵配对，不运行全量 ohosTest、不清数据；测试副作用与可丢弃实例要求见 `docs/validation/2026-09-29-ohostest-side-effects.md`。
 > 本清单里的界面文字全部取自当前代码，勾之前请确认屏幕上确实写着这几个字；对不上就是实现偏离，不要脑补通过。
 
 ## 0. 五种证据口径
@@ -44,8 +44,8 @@
 ```bash
 HDC="/d/local/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe"
 "$HDC" list targets                                                  # 确认设备/模拟器在线
-"$HDC" shell aa start -a EntryAbility -b com.rest.common              # 启动 App
-"$HDC" shell bm clean -n com.rest.common -d                           # 清应用数据（重置首启状态）
+"$HDC" shell aa start -a EntryAbility -b com.common.fortwo              # 启动 App
+"$HDC" shell bm clean -n com.common.fortwo -d                           # 清应用数据（重置首启状态；不可逆，先确认测试实例）
 "$HDC" shell hilog | grep -E "ScheduleUseCase|ScheduleRepo|EntryAbility"   # 看链路日志（TAG 取自 Logger 首参）
 ```
 
@@ -143,7 +143,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
   - 双方都变（我的 + 对方同时压住） → `与你的安排冲突，对方时间也发生了变化`；受影响时段给交叠更大的那一侧
   - 老数据（无归因）→ `与日程冲突`（这是兼容兜底，新建计划不该走到这里）
 - [ ] 7.3 冲突详情把**受影响时段**与**替代时段**分开说，不把两段混成一个时间范围
-- [ ] 7.4 `对方时间发生变化` 与首页红点 `对方时间发生变化` 在单人/本机代录下**不该出现**：这条归因只在对方数据来自云端位图快照（标签恒为 `BUSY`）时才成立，而快照链路受 `CLOUD_BLOCKED` 门禁关闭。若真机看到它，说明有人在无快照的情况下编造了对方语义 → 判失败
+- [ ] 7.4 `对方时间发生变化` 与首页红点 `对方时间发生变化` 在单人/本机代录下**不该出现**：这条归因只在对方数据来自云端位图快照（标签恒为 `BUSY`）时才成立；当前开档包可以真的走到云快照，但仍须按协议 §11 取得设备证据。若单人或本机代录屏上出现它，说明有人在无快照的情况下编造了对方语义 → 判失败
 - [ ] 7.5 **隐私负例**：任何归因文案都不得替对方说出具体课程名/班次名（本机代录能给原因码，也只说"TA 的这段时间已有安排"）；L1/L2 粗粒度快照下只能得到 `对方时间发生变化`——那半边等阶段 3 门禁解除后再验
 - [ ] 7.6 `改到替代时间` → 确认页显示 `新时间：…` 与 `系统日历日程会一并更新` → 确认 → `已改期，日历已同步`（日历没跟上时是 `已改期（…）`）：计划落到替代窗口，系统日历里旧事件消失、新事件存在（真机确认）
 - [ ] 7.7 替代窗口在点击前已失效（先改班表让它没了）→ 提示 `替代窗口已失效，请重新选择时间` 或 `替代窗口太短，请重新选择时间`，**计划仍在原时间**，不出现半改状态
@@ -166,16 +166,26 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 > **§8 的写入方现状（Task 5.3 之后更新，D-21 删卡后再修正）**：`crd_reduce_motion` / `crd_senior_mode` / `crd_screen_reader` 由 `accessibility/AccessibilityPolicy.ets` 在壳层挂载时从系统读一次（减少动效是 `isAnimationReduceEnabledSync`，API 23）并注册变更监听，所以"没有写入方"的判定已不成立。**App 内不再有任何无障碍开关**：D-21 删掉了「我的 · 无障碍」卡，切档只在系统设置里做。降低透明度既没有系统可读开关、也没有应用侧开关——玻璃表面走材质还是近实色，只由设备能力决定。逐条验收口径与实测限制见 §15。
 
-## 9. 云端入口降级（保持关闭，不是待办）
+## 9. 云端入口降级（2026-09-27 起改为**回退档验收**）
 
-- [ ] 9.1 **「我的 · 伴侣与同步」在关闭态一格云入口都不摆**（阶段 6R.2 改了判据：不再有"点了之后 toast 降级"这回事）：逐项目视确认**没有**「生成邀请码」、「输入配对码」输入框、「扫码配对」、二维码、「分享配对链接」、共享等级（L1/L2/L3）；**有**的是本机代录分区、说明文字 `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`、以及一句「现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。」；上方"本机代录"链路照常可用（FR-015）
-- [ ] 9.2 **本机代录不受关闭态影响**：代录建档/编辑/清空、共同时间、计划、冲突四条都正常；`FeatureFlags.cloudPairing=false` 时共同页的来源标注恒为「本机代录」，不出现「云端快照」
-- [ ] 9.3 云端不可用时，共同时间、计划、冲突、录入全程无阻断（`FeatureFlags.cloudPairing = false`。档位是 `feature/src/main/ets/config/FeatureFlags.ets` 里的**源码常量**，不是 BuildProfile 映射；无远端下发通道。**更正（阶段 6R.2）**：旧的"两个入口没读这个开关，见 §20.5"已经不成立——`createInvite/joinByCode/markPaired` 现在第一句就看档位，扫码/分享/外来深链在网关层各自先拒，本包连 `ohos.permission.INTERNET` 都没有。这一条现在验的是"关掉之后本机链路确实一点差异没有"，尤其飞行模式下（→ §20.5 改成飞行模式回归）
-- [ ] 9.4 **停止条件（不是通过项）**：任何时候真机上都不应出现"已配对 + 加密同步"的成功态。**阶段 6R.2 起这是双重不可能**：①档位关闭且入口不渲染；②短码派生密钥的实现（`SnapshotCrypto.deriveKeyHex` + `SettingsStore.savePairKey`）已从源码删除，本机没有任何写密钥的路径。若仍然出现等待态/短码/已配对，说明有人同时改了 `FeatureFlags` 和 `CloudApi` → 判**验收失败**并回退，不得顺手打开同步
-- [ ] 9.5 **「本机标记已配对」这屏当前不可达**（阶段 6R.2）：该按钮与它的三句"尚未同步"口径文案都挂在 `cloudPairing=true` 的分支里，关闭态既不渲染也点不到；关闭态只有退出通道——残留 `PAIRED` → 「解除配对」按钮，残留 `WAITING` → 「取消配对」按钮。真机判据改为：**若沙箱里确实有旧原型留下的 `pair_state=PAIRED`**，进这一页应看到「已标记配对」的本机读法 + 一个能按的「解除配对」，按下后四项标记（key/pairId/状态/快照游标）清空且**没有**任何云请求（`hilog` 过滤 `AgcPairingClient`/`cloudFunction` 应为空）。三句旧文案的逐字核对属**门禁解除后复验**，本轮不因没看到而勾掉
+> **本节口径已翻转**：批次 U·U3b 开闸后，发布档位是 `cloudPairing=true` 且包内带 `ohos.permission.INTERNET`，
+> 所以下面这些"关闭态该看到什么"从"当前包的判据"变成了**回退包的判据**（怎么退、退哪三处见
+> `docs/release/rollout-and-rollback.md` §5）。当前包的配对真机取证在 `docs/cloud/pairing-protocol-v1.md` §11
+> （十条，两台设备），**不在本节**——不要因为本节没勾就以为云链路已验。
+> 仍然对所有档位生效的只有 9.2：本机代录链路在开闸包里也必须一模一样地能用。
+
+- [ ] 9.1 **（回退档）「我的 · 伴侣与同步」在关闭态一格云入口都不摆**（阶段 6R.2 改了判据：不再有"点了之后 toast 降级"这回事）：逐项目视确认**没有**「生成邀请码」、「输入配对码」输入框、「扫码配对」、二维码、「分享配对链接」、共享等级（L1/L2/L3）；**有**的是本机代录分区、说明文字 `云端配对暂未开放（需开通 AGC 云服务），可先用本机代录`、以及一句「现在可以在上面的「伴侣（本机代录）」里替 TA 记录班表。」；上方"本机代录"链路照常可用（FR-015）
+- [ ] 9.2 **本机代录不受档位影响**：代录建档/编辑/清空、共同时间、计划、冲突四条都正常；`FeatureFlags.cloudPairing=false` 时共同页的来源标注恒为「本机代录」，不出现「云端快照」。**开闸包里这一条同样要过**——云链路是叠加项，代录不是它的替代品
+- [ ] 9.3 云端不可用时，共同时间、计划、冲突、录入全程无阻断（**这条在开闸包里才是真正的回归**：以前"云不可用"是档位保证的，现在只能靠链路失败来构造）。档位是 `feature/src/main/ets/config/FeatureFlags.ets` 里的**源码常量**，不是 BuildProfile 映射；无远端下发通道。**更正（阶段 6R.2）**：旧的"两个入口没读这个开关，见 §20.5"已经不成立——`createInvite/joinByCode/confirmWithToken/reconcilePair` 第一句就看档位，扫码/分享/外来深链在网关层各自先拒。**更正（批次 U·U3b）**：那句"本包连 `ohos.permission.INTERNET` 都没有"随之失效——现在包里有该权限，所以"关掉之后本机链路确实一点差异没有"只能在**回退包**上验，或在开闸包里用飞行模式/停服构造（→ §20.5）
+- [ ] 9.4 **停止条件（口径已随开闸翻转）**：阶段 6R.2 那句"任何时候真机上都不应出现已配对 + 加密同步的成功态"**在开闸包里不再成立**——那正是 §11 要拍下来的东西。它今天的有效形式是：**回退包**（`cloudPairing=false`）里若出现等待态/短码/已配对，说明有人只改了 `module.json5` 或只改了档位而没整批改（rollout §5 的三条），判**验收失败**并整批回退。另一半仍然算数：短码派生密钥的实现（`SnapshotCrypto.deriveKeyHex` + `SettingsStore.savePairKey`）已从源码删除，本机没有任何"用邀请码直接当密钥"的写入口，长期密钥只能来自 HUKS 别名
+- [ ] 9.5 **「本机标记已配对」这屏**（阶段 6R.2 写的是"当前不可达"，开闸后**可达**，判据回到它原本的样子）：该按钮与它的三句"尚未同步"口径文案都挂在 `cloudPairing=true` 的分支里，所以关档包里既不渲染也点不到——那时关闭态只有退出通道：残留 `PAIRED` → 「解除配对」按钮，残留 `WAITING` → 「取消配对」按钮。开档判据：① 沙箱里有旧原型留下的 `pair_state=PAIRED` 时，进这一页应看到「已标记配对」的本机读法 + 一个能按的「解除配对」，按下后四项标记（key/pairId/状态/快照游标）清空；② 关档包里 `hilog` 过滤 `AgcPairingClient`/`cloudFunction` 应为空，开档包里则**应当**看到一条 `pairing.unpair`（→ 协议 §11 第 9 条）。三句"尚未同步"文案的逐字核对跟着配对成功态一起做（→ 协议 §11 第 1/2 条）
 - [ ] 9.6 配对页与隐私设置页仍是占位路由（`NOT_READY` → 落到「我的」Tab），不出现空白页
 
-## 10. 扫码、二维码与系统分享（阶段 4 Task 4.1 出口）
+## 10. 历史扫码、二维码与系统分享清单（已退役，不再作为当前验收项）
+
+> 2026-09-29 起本节原 10.1–10.13 只留作历史决策记录，**不得再逐格打勾或作为当前包的验收标准**。
+> 当前只走六位短码 + 邀请方本机确认；二维码、链接、扫码、`crdpair` scheme 均已从实现中删除。
+> 新版双模拟器实测步骤与失败判据见 [短码配对验收单](./validation/2026-09-29-short-code-pairing-acceptance.md)。
 
 **先划清"当前根本没有这条路径"和"路径没验"**，否则会把未实现当成通过：
 
@@ -438,9 +448,9 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 
 ### 18.1 已测（不需要设备）
 
-- [x] 18.1.1 五个开关的口径都落在**少数几个判据函数**里，页面只消费判据、不各自发明关闭态（2026-09-23 `grep -rn "FeatureFlags\."` 全仓复验，逐处点数）：`calendarFlow`→`PlanUseCase`（写日历编排，关掉一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`/`canExportToCalendar` 两个入口判据；`cloudPairing`→**四侧**：`ProfileSettingsService.cloudBlocked()`（三个写动作共用的第一句）与 `unpair` 的云侧分支、`PairingShareGateway` 五处（`channels`/`offerFromScan`/`shareLink`/`offerIncoming`/`acceptOffer`）、`ScheduleUseCase` 快照推拉两处、`MeView` 五处 + `ScheduleHub` 一处（入口与文案）；`scanPairing`→`PairingShareGateway.channels` 一处（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth` 一处。除 `cloud` 模块内部之外没有其它读取方
+- [x] 18.1.1 五个开关的口径都落在**少数几个判据函数**里，页面只消费判据、不各自发明关闭态（2026-09-23 `grep -rn "FeatureFlags\."` 全仓复验，逐处点数）：`calendarFlow`→`PlanUseCase`（写日历编排，关掉一条日历调用都不发）+ `PlanFlow.canRetryCalendarSync`/`canExportToCalendar` 两个入口判据；`cloudPairing`→**四侧**：`ProfileSettingsService.cloudBlocked()`（四个写动作共用的第一句：`createInvite`/`joinByCode`/`confirmWithToken`/`reconcilePair`）与 `unpair` 的云侧分支、`PairingShareGateway` 五处（`channels`/`offerFromScan`/`shareLink`/`offerIncoming`/`acceptOffer`）、`ScheduleUseCase` 快照推拉两处、`MeView` 五处 + `ScheduleHub` 一处（入口与文案）；`scanPairing`→`PairingShareGateway.channels` 一处（且以 `cloudPairing` 为前置）；`newCard`→`FormAbility` 两个入口；`responsiveV2`→`Breakpoints.ofWidth` 一处。除 `cloud` 模块内部之外没有其它读取方
 - [x] 18.1.2 `newShell` 已删除：旧四 Tab 壳层在阶段 1 就被换掉、从来没有可切换分支，release 包里它是 `false` 而无人读，属于谎报型开关（rollout 文档 §3.1）。壳层回退方式＝整包回退
-- [x] 18.1.3 当前档位离线全绿：0 类型错误 / **195 passed** / 0 failed；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` **349**（debug/release 同值）、ohosTest **260**。基线沿革 361/361/266 → 357/357/262（6R.1 把重复写库收进 `ScheduleRepo.setPlanColumns`）→ 352/352/260（6R.2 删掉 `deriveKeyHex`+`savePairKey` 两个方法体与三处调用点）→ **349/349/260**（6R.4；−3 的逐位归因未核对——上一档日志已被复跑覆盖，只知道本轮删了 `PrivacyUtil`/`PlanKindUtil` 两个文件并把计划类型词表上移进 `feature`），一律按"只降不升"改在 `tools/verify-baseline.json`
+- [x] 18.1.3 当前档位离线全绿：**批次 U·U3b 起离线步是两桶**，`CRD_TIER=closed` 与 `open` 各 0 类型错误 / **220 passed** / 0 failed（旧的"195 passed"属单桶时代，见下）；`entry@default` debug 与 release、`entry@ohosTest` 均 BUILD SUCCESSFUL、0 ERROR，`ArkTS:WARN` **281**（debug/release 同值）、ohosTest **261**。基线沿革 361/361/266 → 357/357/262（6R.1 把重复写库收进 `ScheduleRepo.setPlanColumns`）→ 352/352/260（6R.2 删掉 `deriveKeyHex`+`savePairKey` 两个方法体与三处调用点）→ 349/349/260（6R.4）→ 282/282/262（U3b-3）→ **281/281/261**（U3b 开闸：加回 INTERNET 后 `CloudApi.ets` 那条权限告警自己消失，三档各 −1，逐条归因写在 `tools/verify-baseline.json`）
 - [x] 18.1.4 `calendarFlow = false` 的关闭分支真的在链路上：单独翻档后离线套件 **169 passed / 13 failed**，失败项全部是日历口径（写成的状态不是 `MANAGED_WRITTEN`、一次日历调用都没发、取消/改期后残留句柄没被清）与那条档位断言。这就是"关掉一个没人读的常量"和"关掉一条链路"的区别；日志 `../.crdtest/6r1-off-calendarflow.log`（13 条 FAIL 里 12 条是 `expected MANAGED_WRITTEN/LOCAL_ONLY/FAILED/PENDING but got …` 与 `double_submit… expected 1 but got 0`，第 13 条正是那条档位断言本身）
 - [x] 18.1.5 `newCard = false`、`responsiveV2 = false` 各自单独编译通过（日志 `../.crdtest/build-6-2-off-newCard.log`、`build-6-2-off-responsiveV2.log`），三档恢复后 `build-6-2-final.log` 再绿一次
 - [x] 18.1.6 档位摘要一行齐全：`FeatureFlags.summary()` 由 `PresentationModelsTest` 断言五档都在、且按 rollout 顺序排列（漏一档 = 日志证明不了这个包的现场状态）
@@ -455,11 +465,14 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
 - [ ] 18.2.5 `responsiveV2` 关档包：折叠屏展开/平板宽度下回到单列，共同时间详情改为半模态，无"外壳两栏、内容窄屏排版"的半开状态
 - [ ] 18.2.6 关档包的数据完整性：班表、课程、计划、冲突、TA 档案一条不少（规则 3：只关能力不关数据）
 - [ ] 18.2.7 扫码入口的前置关系：只开 `scanPairing`（`cloudPairing` 仍 false）时「我的」页不出现扫码按钮
-- [ ] 18.2.8 `cloudPairing` 关档包（**这就是首发包**，不用另出）：①「我的 · 伴侣与同步」按 §9.1 逐项目视，云入口为零；②系统设置里该应用的权限页**没有**"网络"相关项，`bm dump -n <bundleName>` 的权限清单只有 3 条；③若沙箱里有旧原型残留的 `pair_state=PAIRED`，按 §9.5 确认「解除配对」按得动且 `hilog` 里没有 `cloudFunction` 记录；④飞行模式下把 P0 主链（录班表→三答案→窗口→计划→日历→取消）跑一遍，与 Wi-Fi 下无差异
+- [ ] 18.2.8 **两种档位包各验一次**（批次 U·U3b 之后"首发包"就是开档包，关档包只在真要回退时才出）：
+  - **开档包（提审的那一份）**：①「我的 · 伴侣与同步」按协议 §11 第 1/2 条走完 `create → join → confirm` 与一次快照往返；②`bm dump -n <bundleName>` 的权限清单**恰好 3 条**（`READ_CALENDAR`/`WRITE_CALENDAR`/`INTERNET`），系统设置里该应用能看到"网络"项，且**没有**通知/提醒相关条目（D-20）；③没点任何云入口时冷启动飞一圈页面，`hilog` 里 `AgcPairingClient`/`cloudFunction` **零条**——这是《隐私政策》「云端配对」那句"不配对就一条请求都不发"的现场证据（→ §20.5 ②）；④飞行模式跑 P0 主链（录班表→三答案→窗口→计划→日历→取消），与 Wi-Fi 下逐屏一致
+  - **关档包（回退档）**：①「我的 · 伴侣与同步」按 §9.1 逐项目视，云入口为零；②`bm dump` 的权限清单里**没有** `INTERNET`——这一条是 rollout §5"整批回退有没有做干净"最快的指纹，只改常量忘了删权限会在这里露出来；③若沙箱里有旧原型残留的 `pair_state=PAIRED`，按 §9.5 确认「解除配对」按得动且 `hilog` 里没有 `cloudFunction` 记录
 
 ### 18.3 本轮明确没做（不勾通过，也不判失败）
 
-- **`cloudPairing = true` / `scanPairing = true` 分支完全不验证**：Task 0.4 门禁没改，验证它等于给"顺手开一下"开门。要开先改 `docs/validation/clouddev-api26-spike.md` 的结论。
+- **`scanPairing = true` 分支不验证**：它的前置是扫码通道自己的设备证据（§10.2），与档位无关；开闸批刻意没动它。
+- ~~`cloudPairing = true` 分支完全不验证~~ **该条已于 2026-09-27 作废**：开闸批把门禁结论改成了"三条同批条件已对上"（rollout §3.3），于是这一档成了发布档位，"不验证"不再是可接受的口径。它的验证方式＝协议 §11 十条 + 本页 §9/§18.2.8 的开档分支；**一条没勾就不提审**，这条纪律从"开闸前"平移到了"提审前"。
 - **没有按用户分流的灰度**：开关是编译期常量，一档一包。应用市场侧的分阶段放量未核对官方控制台，属缺证据。
 - **没有远端遥测**：所谓"监控指标"只有 hilog 与用户回传的截图，不能聚合、不能告警。放量判断只能建立在"关闭影响是否可逆 + 数据是否兼容"上。
 - **适老化不受 `responsiveV2` 控制**：Senior Mode、2.0× 字号、减少动效、读屏语义是用户设置与系统状态（`AccessibilityPolicy`），别把"关掉响应式"当成"回到适老化之前"。
@@ -482,7 +495,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
   - [ ] 20.1.5 **系统"定时提醒"里没有本应用那一条**：本版本不注册任何提醒（D-20），清空前后都该是空的；原先这条写的是"关掉周摘要开关后句柄没残留"，那个开关已经不存在
 - [ ] 20.2 **删除伴侣档案后共同计划仍在**：按 §3.5 删伴侣，再看共同计划分段——`plan` 表按实现是不动的（弹窗也只承诺清除"TA 的全部班表/课表数据"）。确认这是产品要的口径；若要求一起删，需要新增级联并补离线断言
 - [ ] 20.3 **隐私文案与实际行为逐字对照**（G4 的判定依据，缺一处就是文案落后于实现）。阶段 6R.4 已按实现重写首启摘要与全文，所以本条现在验的是"重写后的话当场是否成立"：
-  - 首启摘要**五条**（`privacy_point_*`，最终验收 R1 加了第二条）逐条对上：`班表/课表只写进这台手机上的应用沙箱数据库，本应用不联网、不上传任何服务器` → §20.5 的三条硬证据；`系统备份、应用克隆或换机迁移会把这份数据带到你的其他设备——那条通道由系统管理，本应用不参与` → §17.3 的备份恢复往返 + §20.5 ①（本机没有联网权限，出去的那条路只有系统流程）；`共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理` → §6.3（受管写入，不弹系统确认页）+ §6.6（导出那条永不试删）；`照片仅用于本地识别课表…` → §5 的 OCR 链路；`云端配对当前未开放，这个安装包也没有联网权限…` → §9.1 + §20.5 ①
+  - 首启摘要**五条**（`privacy_point_*`，最终验收 R1 加了第二条；**批次 U·U3b 改了其中两条**）逐条对上：`班表、课表与计划的文字内容只写在本机的应用沙箱数据库里，不会原样上传` → §20.5 的三条硬证据（v1.1 把"不联网"改成了"不会原样上传"，所以判据也跟着换：不再是"没有网络权限"，而是"上传的那一份里没有文字"，见协议 §11 第 2 条）；`系统备份、应用克隆或换机迁移会把这份数据带到你的其他设备——那条通道由系统管理，本应用不参与` → §17.3 的备份恢复往返 + §17.4（恢复后配对被抹成未配对，因为长期密钥不进备份）；`共同计划默认写进本应用专属的「同休日」日历，改期与取消会自动跟着同步；导出到系统日历的那一条要你自己管理` → §6.3（受管写入，不弹系统确认页）+ §6.6（导出那条永不试删）；`照片仅用于本地识别课表…` → §5 的 OCR 链路；`云端配对是可选功能：只上传按你选的等级降维并加密后的忙闲快照，日程与课程的文字不出本机` → **这一条现在是有网络权限、也真的会发请求的版本**，所以它由 §20.5 ②（不配对就一条都不发）+ 协议 §11 第 2 条（L1 看不到标签、L2 看不到分钟）共同证实，不再由 §9.1 的空入口状态证实
   - 摘要末尾「上面几条是《隐私政策》全文的摘要，措辞不一致时以全文为准」：这句替掉了旧稿承诺的"你可以随时在「我的」页调整隐私共享等级"——**旧那句在当前档位是空头支票**（等级控件在 `cloudPairing=false` 时不渲染，阶段 6R.2 已收走），设备侧确认新那句对应的全文真的能打开
   - 《隐私政策》全文入口（首启弹窗 + 「我的 · 数据与隐私」两处）：点下去**直接落到全文半模态**，能滚到最后一节「版本与联系」、能按「关闭」回来；不再出现「隐私政策全文即将上线」的 toast（该文案与 `PrivacyUtil` 已一并删除，`grep privacy_fulltext_soon` 只应命中历史文档）
   - 全文**十一节**与 `docs/legal/privacy-policy.md`、`docs/legal/privacy-policy.html` 是同一份文字——**这一半已不需要人来核对**：`node tools/test/run.mjs` 的文案口径审计（`tools/test/copy-audit.mjs`）逐字比对三处全文与五条摘要，并禁止"只存在这台手机上/不会离开这台手机"类绝对化表述，违反即退出码 1。设备侧要验的是**当场是否成立**：抽查「系统日历的边界」（导出的那条不归本应用管、清库后不再承诺重试）与「系统备份与换机迁移」（§17.3.6）两节；`AppConst.PRIVACY_POLICY_URL` 仍为空时，页内最后一行应显示"在线版地址尚未填写；本页面即当前版本的全文"
@@ -490,7 +503,7 @@ DEVECO_SDK_HOME="D:/local/DevEcoStudio/sdk" node "D:/local/DevEcoStudio/tools/hv
   - 首启弹窗现在是**五条**要点（R1 新增"系统备份、应用克隆或换机迁移…"一条）：列表在 `Scroll` 里、按钮固定在底部，所以 360vp + 2.0× 字体下第五句不会把「同意并继续」顶出屏幕，最多是需要下滑——下滑能读全即通过（TC §20.3b 同一判据）
 - [ ] 20.3b **全文页的可读性**：全文在 360vp、2.0× 系统字体、深色、读屏下都要能完整读到（半模态 LARGE 档、内部 Scroll 不截断最后一节）；读屏能按节标题逐节念出，「关闭」按钮有可朗读名
 - [ ] 20.4 **release 档出包**（debug 绿不代表 release 绿）：`hvigorw clean` 后跑 `-p buildMode=release`。2026-09-23 首次运行在 5 个 HAR 上报 `00304036` 缺 `obfuscation-rules.txt`（模块的 `build-profile.json5` 引了不存在的文件，即使 `enable:false` 也会校验），补齐模板文件后成功。下次新增 HAR 时同样要带这个文件
-- [ ] 20.5 **关闭态"零网络"的设备侧证实**（G2 的收尾，阶段 6R.2 之后判据已换）：不再要求"点生成邀请码看它 toast"——那个按钮在当前档位根本不渲染（§9.1）。改为三条硬证据：① `bm dump -n <bundleName>` 的权限清单里没有 `ohos.permission.INTERNET`；② 冷启动后飞一圈全部页面（含深链 `aa start -U crdpair://…` 与系统分享面板），`hilog` 里 `cloudFunction`/`AgcPairingClient` **零条**记录；③ **飞行模式**下把 P0 主链（录班表→三答案→窗口→计划→日历→取消→卡片）完整跑一遍，现象与联网时逐屏一致。旧稿那句"能过只因为 AGC 没配置"已作废：现在守卫在 service 第一句，且短码派生密钥的写入口已从源码删除（发布清单 §2 G2、验收报告 §9.4）
+- [ ] 20.5 **"零越界网络"的设备侧证实**（G2 的收尾；**批次 U·U3b 之后判据第二次改口**）：旧稿的"点生成邀请码看它 toast"、以及阶段 6R.2 的"包里根本没有 `INTERNET` 所以发不出去"都已失效——现在包里有该权限，"不发请求"不再是权限保证的，只能由代码与现场证明。三条硬证据：① `bm dump -n <bundleName>` 的权限清单**恰好** `READ_CALENDAR`/`WRITE_CALENDAR`/`INTERNET` 三条，多一条就是回退/加档没做干净（回退档则应**少** `INTERNET`，见 §18.2.8）；② **未配对状态**下冷启动后飞一圈全部页面（含深链 `aa start -U crdpair://…` 与系统分享面板），`hilog` 里 `cloudFunction`/`AgcPairingClient` **零条**记录——这正是《隐私政策》「云端配对」一节"不配对就一条请求都不发"的现场判据，也是"档位开着 ≠ 到处发请求"的判据；③ **飞行模式**下把 P0 主链（录班表→三答案→窗口→计划→日历→取消→卡片）完整跑一遍，现象与联网时逐屏一致，且配对卡只回一句「云同步待重试」（协议 §11 第 3 条的三态实测）。旧稿那句"能过只因为 AGC 没配置"仍然作废：守卫在 service 第一句，短码派生密钥的写入口已从源码删除（发布清单 §2 G2、验收报告 §9.4）
 - [ ] 20.6 **首发竖屏锁生效**（阶段 6R.4 落地，D2 定稿：锁竖屏，横屏真机矩阵通过后再解除）：`module.json5` 的 EntryAbility 现在写死 `"orientation": "portrait"`。手机上从任一页面横握 → **画面不旋转**，首页/共同时间/我的三档都不会落进 medium/expanded 端出为平板设计的留白与双栏（§13.2/§13.4）。系统「自动旋转」开着也应当不转，转了就是锁没生效
   - [ ] 20.6b **解除条件**：本条通过**不等于**横屏已适配。横屏矩阵（平板/折叠屏展开态 + 手机横握逐屏可读）仍要在真机上单独跑通，才允许删掉那行 `orientation`；在此之前平板上也保持竖屏，属已知取舍而不是缺陷
 

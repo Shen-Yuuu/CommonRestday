@@ -1,6 +1,7 @@
 import { AnswerState } from 'feature';
 import { DesignTokens } from '../theme/DesignTokens';
 import { AccessibilityPolicy } from '../accessibility/AccessibilityPolicy';
+import { LocalTween } from '../util/LocalTween';
 
 /**
  * 首页一条答案：问题小字 + 圆体粗字结论 + 依据摘要，行首一颗粉点表示整行可点。
@@ -16,11 +17,43 @@ export struct QuickAnswerRow {
   @Prop headline: string = '';
   @Prop supporting: string = '';
   onTap: () => void = () => {};
-  @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
+  revealDelay: number = 0;
+  @StorageProp('crd_reduce_motion') @Watch('settleReveal') reduceMotion: boolean = false;
+  @StorageProp('crd_app_foreground') @Watch('onForegroundChanged') foreground: boolean = true;
   // 装饰器实参必须是字面量，取值与 SENIOR_MODE_KEY 保持一致。
   @StorageProp('crd_senior_mode') senior: boolean = false;
   @State private isPressed: boolean = false;
   @State private hasFocus: boolean = false;
+  @State private reveal: number = 0;
+  private revealTimer: number = -1;
+  private tween: LocalTween = new LocalTween();
+  private mounted: boolean = false;
+
+  aboutToAppear(): void {
+    this.mounted = true;
+    if (this.reduceMotion || !this.foreground) {
+      this.settleReveal();
+      return;
+    }
+    this.revealTimer = setTimeout(() => {
+      this.revealTimer = -1;
+      if (!this.mounted) { return; }
+      this.tween.play(this.getUIContext(), 0, 1, 180, (value: number) => { this.reveal = value; });
+    }, this.revealDelay);
+  }
+
+  aboutToDisappear(): void {
+    this.mounted = false;
+    if (this.revealTimer >= 0) { clearTimeout(this.revealTimer); this.revealTimer = -1; }
+    this.tween.cancel();
+  }
+
+  onForegroundChanged(): void { if (!this.foreground) { this.settleReveal(); } }
+  settleReveal(): void {
+    if (this.revealTimer >= 0) { clearTimeout(this.revealTimer); this.revealTimer = -1; }
+    this.tween.cancel();
+    this.reveal = 1;
+  }
 
   /** 四种答案状态用不同字色：可用=主文本，暂无=次文本，缺对方数据=弱文本，过期=提示色。 */
   private headlineColor(): Resource {
@@ -36,30 +69,8 @@ export struct QuickAnswerRow {
     return DesignTokens.textSecondary;
   }
 
-  /**
-   * 状态用字色区分，读屏里颜色不存在，所以非"可用"三态各补一句可朗读的话。
-   * AVAILABLE 不补：结论本身已经是答案，再念一遍是噪音。
-   */
-  private stateWord(): string {
-    if (this.answerState === AnswerState.STALE) {
-      return '数据可能过期';
-    }
-    if (this.answerState === AnswerState.UNKNOWN) {
-      return '缺少 TA 的数据';
-    }
-    if (this.answerState === AnswerState.UNAVAILABLE) {
-      return '暂时算不出结果';
-    }
-    return '';
-  }
-
   private press(down: boolean): void {
-    this.getUIContext().animateTo({
-      duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionPress),
-      curve: DesignTokens.curve
-    }, () => {
-      this.isPressed = down;
-    });
+    this.isPressed = down;
   }
 
   build() {
@@ -123,6 +134,7 @@ export struct QuickAnswerRow {
       // 按压底色按原型的行卡（.li）收 18vp，比正文卡小一档。
       .borderRadius(18)
       .backgroundColor(this.isPressed ? DesignTokens.fillWeakest : Color.Transparent)
+      .animation({ duration: this.isPressed ? 0 : DesignTokens.motion(this.reduceMotion, 100), curve: Curve.EaseOut })
       // 焦点环常驻 2vp 透明边，聚焦时不跳动。
       .border({
         width: 2,
@@ -137,6 +149,7 @@ export struct QuickAnswerRow {
         this.hasFocus = false;
       })
       .onTouch((e: TouchEvent) => {
+        e.stopPropagation();
         if (e.type === TouchType.Down) {
           this.press(true);
         } else if (e.type === TouchType.Up || e.type === TouchType.Cancel) {
@@ -149,5 +162,7 @@ export struct QuickAnswerRow {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+    .opacity(this.reveal)
+    .translate({ y: (1 - this.reveal) * 6 })
   }
 }

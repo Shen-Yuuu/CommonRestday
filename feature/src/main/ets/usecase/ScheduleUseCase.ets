@@ -4,7 +4,7 @@ import {
   PlanBlock, PlanLite, ScheduleOverride, SectionTime, ShiftType, SnapshotBuilder, SnapshotCodec,
   Window, buildAvailability, clampHorizonDays, decodeConflictHint, defaultParams, detectConflicts,
   encodeConflictHint, hintFromOutcome, HORIZON_MAX_DAYS, mergeIntervals, mkIv, todayEpochDay,
-  unionIntervals, withKeepCarried, dayOfStart, daySpan, intersects
+  unionIntervals, withKeepCarried, dayOfStart, daySpan, intersects, ROSTER_LOOKBACK_DAYS, ROSTER_LOOKAHEAD_DAYS
 } from 'domain';
 import { PAIRED, PartnerProfile, ScheduleRepo, SettingsStore } from 'data';
 import {
@@ -14,13 +14,15 @@ import {
 import { FeatureFlags } from '../config/FeatureFlags';
 import {
   decodeSyncState, encodeSyncState, outcomeOfFailure, pushBlockedToday,
-  SYNC_CODE_LOCAL, SYNC_STATE_OK, SHARE_LEVEL_UNKNOWN
+  SYNC_CODE_LOCAL, SYNC_STATE_OK, SYNC_STATE_RETRY, SHARE_LEVEL_UNKNOWN
 } from '../model/CloudSyncRules';
 import { RecomputeExecutor } from '../performance/RecomputeExecutor';
 import { SerialQueue } from '../model/SerialQueue';
+import { SingleFlight } from '../model/SingleFlight';
 import { ShareLevelReader } from './ShareLevelReader';
 import { horizonFromStore } from '../model/RhythmRules';
 import { Logger } from 'commons';
+import { WeeklyRosterService } from './WeeklyRosterService';
 
 /** 学期配置。 */
 export interface TermConfig {
@@ -37,6 +39,12 @@ export interface PartnerBusyResult {
   source: string;
   /** 对方数据隐私等级（1/2/3）；本机代录恒为 3。 */
   shareLevel: number;
+}
+
+/** 一次拉取是否真的走通云端；缓存兜底不能冒充成功。 */
+interface CloudPullAttempt {
+  partner: PartnerBusyResult | null;
+  cloudOk: boolean;
 }
 
 /** 日视图数据（DayDetailSheet）：当日窗口 + 双方忙碌时间轴。 */
@@ -77,11 +85,16 @@ const SYNC_MERGE_WINDOW_MS = 5000;
 
 /** 重算独占队列（D-52）：八处入口共用一条 FIFO，一次只让一段重算读写缓存表。 */
 const RECOMPUTE_QUEUE = new SerialQueue();
+/** Network/cursor writes remain ordered, without blocking local calculation and page reads. */
+const SNAPSHOT_PULL_QUEUE = new SerialQueue();
 
 /** 班表用例层：仓库 → 领域引擎 的装配与编排。 */
 export class ScheduleUseCase {
   /** 挂起中的合并同步定时器 id；-1 = 没有排在路上的推送。 */
   private static syncTimer: number = -1;
+  /** 手动按钮的单次飞行闩：重入共享同一结果，不重复花云端请求。 */
+  private static manualRetry: Promise<boolean> | null = null;
+  private static pullFlight: SingleFlight<void> = new SingleFlight<void>();
 
   /** 首次使用时写入内置班次类型（按 owner 维度各自种子一份，双侧体验一致）。 */
   static async ensureSeeded(owner: string = OWNER_ME): Promise<void> {
@@ -121,18 +134,20 @@ export class ScheduleUseCase {
    * 共同计划为双方共享，仅在 ME 侧计入占用（并集语义不变）；伴侣侧 plans 恒为空。
    */
   static async loadMySchedule(startEpochDay: number, params: EngineParams,
-    owner: string = OWNER_ME): Promise<MySchedule> {
+    owner: string = OWNER_ME, forSnapshot: boolean = false): Promise<MySchedule> {
     const shiftTypes = await ScheduleRepo.listShiftTypes(owner);
+    const weekly = await WeeklyRosterService.read(owner);
     const template = await ScheduleRepo.getTemplate(owner);
     const overrides: ScheduleOverride[] =
-      await ScheduleRepo.listOverrides(startEpochDay, startEpochDay + params.horizonDays - 1, owner);
+      await ScheduleRepo.listOverrides(startEpochDay - ROSTER_LOOKBACK_DAYS,
+        startEpochDay + params.horizonDays - 1 + ROSTER_LOOKAHEAD_DAYS, owner);
     const courses = await ScheduleRepo.listCourses(owner);
     const termStart = await ScheduleRepo.getTermStart();
     // term_config.section_times 读取接线：有保存值则用保存值，否则回退默认节次模板
     const sectionTimes = ScheduleUseCase.sectionTimesFromJson(await ScheduleRepo.getSectionTimes());
     const plans: PlanBlock[] = [];
     if (owner === OWNER_ME) {
-      const planRows = await ScheduleRepo.listActivePlans();
+      const planRows = forSnapshot ? await ScheduleRepo.listSnapshotPlans() : await ScheduleRepo.listActivePlans();
       for (let i = 0; i < planRows.length; i++) {
         plans.push({ start: planRows[i].start, end: planRows[i].end });
       }
@@ -147,7 +162,8 @@ export class ScheduleUseCase {
       plans: plans,
       wakeMin: params.wakeMin,
       bedMin: params.bedMin,
-      windDownMin: params.windDownMin
+      windDownMin: params.windDownMin,
+      datedDays: weekly.days, personalEntries: weekly.personal, weeklyMode: weekly.enabled
     };
     return my;
   }
@@ -161,7 +177,13 @@ export class ScheduleUseCase {
    * 症状是"已经改掉的班还在"，而且脏在库里，页面再读也读不回来，只能等下一次重算自愈。
    * 队列只排顺序不排并发数：一次只让一段在跑，新一代的时间戳更新，它的 delete 自然扫掉所有旧行。
    */
-  static recompute(startEpochDay: number): Promise<CommonFreeResult> {
+  static async recompute(startEpochDay: number, cachedPartnerOnly: boolean = false): Promise<CommonFreeResult> {
+    // Local writes must not let a subsequent pull reuse the pre-write refresh.
+    if (cachedPartnerOnly) ScheduleUseCase.pullFlight.invalidate();
+    if (!cachedPartnerOnly && FeatureFlags.cloudPairing && SettingsStore.getPairState() === PAIRED) {
+      await ScheduleUseCase.pullPartnerSnapshot();
+    }
+    // Only now read the latest schedule/cache. Never capture old inputs before the network wait.
     return RECOMPUTE_QUEUE.run((): Promise<CommonFreeResult> => {
       return ScheduleUseCase.recomputeLocked(startEpochDay);
     });
@@ -171,7 +193,7 @@ export class ScheduleUseCase {
   private static async recomputeLocked(startEpochDay: number): Promise<CommonFreeResult> {
     const params = SettingsStoreParams();
     const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
-    const partnerBusy = await ScheduleUseCase.buildPartnerBusy(startEpochDay, params);
+    const partnerBusy = await ScheduleUseCase.partnerBusyWithoutNetwork(startEpochDay, params);
     const partner: PartnerSchedule | null = partnerBusy != null
       ? {
         shareLevel: partnerBusy.shareLevel,
@@ -234,7 +256,7 @@ export class ScheduleUseCase {
    * 给"点开就要有答案"的界面用（起草器默认起点）：那条路等不起一次可能被云函数超时
    * 拖到 20 秒的往返，而它要的 TA 作息在缓存里本来就有——上一次重算刚刚写过。
    */
-  private static async partnerBusyWithoutNetwork(startEpochDay: number,
+  static async partnerBusyWithoutNetwork(startEpochDay: number,
     myParams: EngineParams): Promise<PartnerBusyResult | null> {
     // 与 pullPartnerSnapshot 同一道闸：关闭态连本机缓存的快照都不碰，只剩代录那一条。
     if (FeatureFlags.cloudPairing && SettingsStore.getPairState() === PAIRED) {
@@ -260,7 +282,7 @@ export class ScheduleUseCase {
     const avail = buildAvailability(partnerSched, partnerParams, startEpochDay, days);
     // 本机代录可拿到全量细节：从真忙+收整重建"不含睡眠"不可用（避免合并吞标签的边缘情形）
     const tripBusy = mergeIntervals(avail.trueBusy.map((iv: Interval): Interval => {
-      return mkIv(iv.start, iv.end + partnerParams.windDownMin, iv.tag);
+      return mkIv(iv.start, iv.end + (iv.tag === 'UNKNOWN' ? 0 : partnerParams.windDownMin), iv.tag);
     }));
     const r: PartnerBusyResult = {
       busy: avail.notAvailable,
@@ -279,40 +301,67 @@ export class ScheduleUseCase {
    * "没有协商密钥"是换机与卸载后的常态，不是错误：它意味着必须重新配对，重试没有意义。
    */
   static async pullPartnerSnapshot(): Promise<PartnerBusyResult | null> {
+    const attempt = await ScheduleUseCase.fetchPartnerSnapshot(false, true);
+    return attempt.partner;
+  }
+
+  private static fetchPartnerSnapshot(force: boolean, clearOnSuccess: boolean): Promise<CloudPullAttempt> {
+    return SNAPSHOT_PULL_QUEUE.run(() => ScheduleUseCase.fetchPartnerSnapshotLocked(force, clearOnSuccess));
+  }
+
+  private static snapshotPairCurrent(pairId: string): boolean {
+    return FeatureFlags.cloudPairing && pairId !== '' && SettingsStore.getPairId() === pairId
+      && SettingsStore.getPairState() === PAIRED;
+  }
+
+  private static async fetchPartnerSnapshotLocked(force: boolean, clearOnSuccess: boolean): Promise<CloudPullAttempt> {
     // 关闭态第一道：一条云请求都不发（阶段 6R.2）。档位在 source 里，编译期就翻不出来。
     if (!FeatureFlags.cloudPairing) {
-      return null;
+      return { partner: null, cloudOk: false };
     }
     const pairId = SettingsStore.getPairId();
+    const stateAtStart = SettingsStore.getCloudSyncState();
+    if (!force && pushBlockedToday(stateAtStart, todayEpochDay())) {
+      return { partner: await ScheduleUseCase.cachedPartnerBusy(pairId), cloudOk: false };
+    }
     try {
       if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
-        return null;
+        return { partner: null, cloudOk: false };
       }
       const sync = new AgcSnapshotSync();
       const snap = await sync.getSnapshot(pairId, await SettingsStore.getOrCreateUid(),
         SettingsStore.getPartnerSnapVer());
-      // 走到这里这次云往返是通的：把可能挂着的降级结论清回「已同步」。
-      // "没有更新"（snap 缺席）也算通——协议 §4.8 明说那是常态，不是失败。
-      ScheduleUseCase.noteSyncOk();
+      if (!ScheduleUseCase.snapshotPairCurrent(pairId)) return { partner: null, cloudOk: false };
       if (snap != null) {
         const ivs = await partnerIntervalsFromSnapshot(snap, pairId);
+        if (!ScheduleUseCase.snapshotPairCurrent(pairId)) return { partner: null, cloudOk: false };
         if (ivs == null) {
           Logger.warn('ScheduleUseCase', 'snapshot decrypt/decode failed');
           // 解密/解码炸了不是网络问题，重试同一份只会再炸一次：按不可重试落「已降级」（协议 §7 的解密失败行）
-          ScheduleUseCase.noteSyncFailure(new Error('SNAPSHOT_UNDECODEABLE'));
-          return await ScheduleUseCase.cachedPartnerBusy(pairId);
+          await ScheduleUseCase.noteSyncFailure(new Error('SNAPSHOT_UNDECODEABLE'));
+          return { partner: await ScheduleUseCase.cachedPartnerBusy(pairId), cloudOk: false };
         }
         // 先落信封再进游标：反过来的话一次崩溃就是"游标前进了、这一版却再也拉不回来"（服务端按版本过滤，不重发）
         await SettingsStore.setPartnerSnapCache(JSON.stringify(snap));
+        if (!ScheduleUseCase.snapshotPairCurrent(pairId)) return { partner: null, cloudOk: false };
         await SettingsStore.setPartnerSnapVer(snap.version);
-        return ScheduleUseCase.snapshotResult(ivs, snap.shareLevel);
+        if (clearOnSuccess) {
+          await ScheduleUseCase.noteSyncOk(stateAtStart);
+        }
+        return { partner: ScheduleUseCase.snapshotResult(ivs, snap.shareLevel), cloudOk: true };
       }
+      // 没有新版本也是通的；已有有效快照仍从缓存参与计算。
+      if (clearOnSuccess) {
+        await ScheduleUseCase.noteSyncOk(stateAtStart);
+      }
+      return { partner: await ScheduleUseCase.cachedPartnerBusy(pairId), cloudOk: true };
     } catch (e) {
+      if (!ScheduleUseCase.snapshotPairCurrent(pairId)) return { partner: null, cloudOk: false };
       // CloudApiError（网络/配额/服务端语义码）等：云端路径不可用，静默沿用最后一次有效快照
       Logger.warn('ScheduleUseCase', 'pull snapshot degraded: ' + (e as Error).message);
-      ScheduleUseCase.noteSyncFailure(e);
+      await ScheduleUseCase.noteSyncFailure(e);
     }
-    return await ScheduleUseCase.cachedPartnerBusy(pairId);
+    return { partner: await ScheduleUseCase.cachedPartnerBusy(pairId), cloudOk: false };
   }
 
   /**
@@ -366,7 +415,7 @@ export class ScheduleUseCase {
    * 构建并加密推送我的快照（我的 shareLevel + 单调递增版本）。
    * 全链路 try-catch：开关关闭/未配对/HUKS 无密钥/AGC 未就绪/加密失败均静默返回 false，绝不影响本机主流程。
    */
-  static async pushMySnapshot(startEpochDay: number): Promise<boolean> {
+  static async pushMySnapshot(startEpochDay: number, clearOnSuccess: boolean = true): Promise<boolean> {
     if (!FeatureFlags.cloudPairing) {
       return false;
     }
@@ -375,9 +424,10 @@ export class ScheduleUseCase {
       if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
         return false;
       }
+      const stateAtStart = SettingsStore.getCloudSyncState();
       const uid = await SettingsStore.getOrCreateUid();
       const params = SettingsStoreParams();
-      const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME);
+      const my = await ScheduleUseCase.loadMySchedule(startEpochDay, params, OWNER_ME, true);
       // 档位是「未知」时**一次都不推**：快照是全量重写，拿一个猜出来的档位覆盖过去，
       // 对方看到的那一份就被一次"本机其实没确认过"的降维顶掉了，而这正是 L1/L2 档位承诺的反面。
       // 这一趟静默放弃，等用户下次保存或在「我的」里重新选档；界面上那一行会念「暂不可确认」。
@@ -394,13 +444,62 @@ export class ScheduleUseCase {
       const stored = await new AgcSnapshotSync().putSnapshot(pairId, uid, version, shareLevel, payload, newRequestId());
       Logger.info('ScheduleUseCase', 'snapshot pushed v' + version + ' level=' + shareLevel
         + ' stored=' + stored);
-      ScheduleUseCase.noteSyncOk();
+      if (clearOnSuccess) {
+        await ScheduleUseCase.noteSyncOk(stateAtStart);
+      }
       return true;
     } catch (e) {
       Logger.warn('ScheduleUseCase', 'push snapshot degraded: ' + (e as Error).message);
-      ScheduleUseCase.noteSyncFailure(e);
+      await ScheduleUseCase.noteSyncFailure(e);
       return false;
     }
+  }
+
+  /** 用户明确点的一次重试；普通重算和保存仍尊重失败暂停态。 */
+  static retryCloudSync(): Promise<boolean> {
+    if (ScheduleUseCase.manualRetry != null) {
+      return ScheduleUseCase.manualRetry;
+    }
+    const task = ScheduleUseCase.retryCloudSyncOnce();
+    ScheduleUseCase.manualRetry = task;
+    task.then(() => {
+      ScheduleUseCase.manualRetry = null;
+    }, () => {
+      ScheduleUseCase.manualRetry = null;
+    });
+    return task;
+  }
+
+  private static async retryCloudSyncOnce(): Promise<boolean> {
+    if (!FeatureFlags.cloudPairing || SettingsStore.getPairState() !== PAIRED
+      || decodeSyncState(SettingsStore.getCloudSyncState()).outcome !== SYNC_STATE_RETRY) {
+      return false;
+    }
+    ScheduleUseCase.cancelMergedSync();
+    // 旧失败是网络类，但期间若密钥已丢失，继续给「手动重试」会把用户困在一颗永远无效的按钮上。
+    const pairId = SettingsStore.getPairId();
+    try {
+      if (pairId === '' || !await PairKeyStore.hasPairKey(pairId)) {
+        await ScheduleUseCase.noteSyncFailure(new Error('KEY_UNAVAILABLE'));
+        return false;
+      }
+    } catch (e) {
+      await ScheduleUseCase.noteSyncFailure(e);
+      return false;
+    }
+    const day = todayEpochDay();
+    if (!await ScheduleUseCase.pushMySnapshot(day, false)) {
+      return false;
+    }
+    const pulled = await ScheduleUseCase.fetchPartnerSnapshot(true, false);
+    if (!pulled.cloudOk) {
+      return false;
+    }
+    await ScheduleUseCase.noteSyncOk();
+    await ScheduleUseCase.recompute(day, true);
+    const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
+    AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
+    return true;
   }
 
   /**
@@ -409,21 +508,21 @@ export class ScheduleUseCase {
    * 按不可重试处理，并记成 `LOCAL` 那一格——§7 给那三行开的处置是"提示重新配对"，
    * 兜底那句（"不是网络问题"）说不到点上。
    */
-  private static noteSyncFailure(e: Object): void {
+  private static async noteSyncFailure(e: Object): Promise<void> {
     const err = e as CloudApiError;
     const isCloud = err.name === 'CloudApiError';
-    ScheduleUseCase.writeSyncState(outcomeOfFailure(isCloud && err.retryable),
+    await ScheduleUseCase.writeSyncState(outcomeOfFailure(isCloud && err.retryable),
       isCloud ? err.semantic : SYNC_CODE_LOCAL);
   }
 
   /**
-   * 一次**通了**的云往返把结论清回「已同步」——这是「已降级」唯一的自愈出口：
-   * 不可重试的失败不排任何重试，只有下一次按需拉成功才说明云端真的活了。
+   * 健康态的成功往返或显式手动重试的完整成功把结论清回「已同步」。
+   * 失败暂停态的普通推拉都被拦住，不再靠下一次按需拉取隐式自愈。
    *
    * 已经在「已同步」时一个字节都不写。拉是高频路径（首页、共同时间、冲突解释都走它），
    * 每次成功都 flush 一遍偏好，等于把只读的计算路径接到磁盘上。
    */
-  private static noteSyncOk(): void {
+  private static async noteSyncOk(stateAtStart?: string): Promise<void> {
     let raw = '';
     try {
       raw = SettingsStore.getCloudSyncState();
@@ -431,24 +530,30 @@ export class ScheduleUseCase {
       // 偏好没就绪：这一次没什么可清的，写入也一样会失败
       return;
     }
+    // 另一趟云调用在本次飞行期间写下失败，不能被较早发出的成功回包抹掉。
+    if (stateAtStart !== undefined && raw !== stateAtStart) {
+      return;
+    }
     if (decodeSyncState(raw).outcome === SYNC_STATE_OK) {
       return;
     }
-    ScheduleUseCase.writeSyncState(SYNC_STATE_OK, '');
+    await ScheduleUseCase.writeSyncState(SYNC_STATE_OK, '');
   }
 
   /**
    * 三态落偏好：写失败只留一行 warn——它只是界面的一条提示条与当天的排程依据，
    * 绝不允许因为它把本机主流程带崩（门禁 §4 第 4 条：云端任何失败都不得阻断本机）。
    */
-  private static writeSyncState(outcome: string, code: string): void {
-    SettingsStore.setCloudSyncState(encodeSyncState(outcome, todayEpochDay(), code)).catch((e: Error) => {
+  private static async writeSyncState(outcome: string, code: string): Promise<void> {
+    await SettingsStore.setCloudSyncState(encodeSyncState(outcome, todayEpochDay(), code)).catch((e: Error) => {
       Logger.warn('ScheduleUseCase', 'sync state write failed: ' + e.message);
     });
   }
 
   /** owner='PARTNER' 是否存在任何班表数据（单日覆盖按"引擎最多能算到的那段"扫）。 */
   static async hasPartnerScheduleData(startEpochDay: number): Promise<boolean> {
+    const weekly=await WeeklyRosterService.read(OWNER_PARTNER);
+    if(weekly.enabled || weekly.days.length>0 || weekly.personal.length>0) return true;
     const types = await ScheduleRepo.listShiftTypes(OWNER_PARTNER);
     if (types.length > 0) {
       return true;
@@ -516,7 +621,8 @@ export class ScheduleUseCase {
       plans: plans,
       wakeMin: s.wakeMin,
       bedMin: s.bedMin,
-      windDownMin: s.windDownMin
+      windDownMin: s.windDownMin,
+      datedDays: s.datedDays, personalEntries: s.personalEntries, weeklyMode: s.weeklyMode
     };
     return copy;
   }
@@ -573,8 +679,8 @@ export class ScheduleUseCase {
    * UI 保存动作后的统一事件入口：重算 + AppStorage 重算计数广播 + 排一次合并同步。
    * 页面通过 AppStorage 监听 recomputeCount 变化刷新（毫秒级同步计算，无需发布订阅）。
    */
-  static async onScheduleChanged(): Promise<void> {
-    await ScheduleUseCase.recompute(todayEpochDay());
+  static async onScheduleChanged(cachedPartnerOnly: boolean = false): Promise<void> {
+    await ScheduleUseCase.recompute(todayEpochDay(), cachedPartnerOnly);
     const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
     AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
     ScheduleUseCase.scheduleMergedSync();
@@ -590,7 +696,11 @@ export class ScheduleUseCase {
    * 与 onScheduleChanged 只差一步：这里不排推送。下拉时本机数据没有变化，而快照版本是本机单调游标、
    * 云函数按天计费——每拉一次就推一版，烧的是配额，换不来任何新数据。
    */
-  static async pullToRefresh(): Promise<void> {
+  static pullToRefresh(): Promise<void> {
+    return ScheduleUseCase.pullFlight.run(() => ScheduleUseCase.pullToRefreshLocked());
+  }
+
+  private static async pullToRefreshLocked(): Promise<void> {
     await ScheduleUseCase.recompute(todayEpochDay());
     const cur: number = AppStorage.get<number>(RECOMPUTE_COUNT_KEY) ?? 0;
     AppStorage.setOrCreate<number>(RECOMPUTE_COUNT_KEY, cur + 1);
@@ -612,15 +722,20 @@ export class ScheduleUseCase {
     if (ScheduleUseCase.syncTimer >= 0) {
       return;
     }
-    // 协议 §7 末行：可重试的失败**当天不再重排**，不可重试的一直排不动，直到某次拉成功清回「已同步」。
+    // 失败后一直暂停自动推送，跨日也不解除；只由「我的」手动重试成功清回健康态。
     // 拦在这里而不是 `pushMySnapshot` 里面，是为了让 `nextSnapshotVersion()` 一次都不被消费：
     // 版本号是本机单调游标，白烧一格不写坏数据（§3.3 已经算过这笔），但会让日志里的版本对不上实际落库的那一版。
-    // 这里也不排任何"稍后再试"的定时器（§3.3：端侧没有自动退避重试循环）——真正的再试由日切后的下一次保存带起。
+    // 这里不排任何稍后重试的定时器。
     if (pushBlockedToday(SettingsStore.getCloudSyncState(), todayEpochDay())) {
       return;
     }
     ScheduleUseCase.syncTimer = setTimeout(() => {
       ScheduleUseCase.syncTimer = -1;
+      // 排队的 5 秒中若另一趟拉取失败，旧定时器也不能偷跑一次自动推送。
+      if (SettingsStore.getPairState() !== PAIRED
+        || pushBlockedToday(SettingsStore.getCloudSyncState(), todayEpochDay())) {
+        return;
+      }
       ScheduleUseCase.pushMySnapshot(todayEpochDay()).catch(() => {
       });
     }, SYNC_MERGE_WINDOW_MS);
@@ -672,7 +787,7 @@ export class ScheduleUseCase {
     const dayParams = ScheduleUseCase.dayParamsOf(base, 1);
     const my = await ScheduleUseCase.loadMySchedule(epochDay, dayParams, OWNER_ME);
     const avail = buildAvailability(my, dayParams, epochDay, 1);
-    const partner = await ScheduleUseCase.buildPartnerBusy(epochDay, dayParams);
+    const partner = await ScheduleUseCase.partnerBusyWithoutNetwork(epochDay, dayParams);
     const dayStart = epochDay * MIN_PER_DAY;
     const dayEnd = dayStart + MIN_PER_DAY;
     const all = await ScheduleRepo.listWindows();

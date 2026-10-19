@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>两人份 · 探头气泡第一阶段</title>
+<style>
+  * { box-sizing:border-box } :root { color-scheme:light; --paper:#fff2ed; --card:#fff;
+    --ink:#5c4750; --sub:#846d77; --soft:#fceff4; --accent:#ff77a4; }
+  body { margin:0; background:#f6f2f1; color:var(--ink); font-family:"Microsoft YaHei",sans-serif; }
+  body.dark { color-scheme:dark; --paper:#30263c; --card:#403349; --ink:#ffedf4; --sub:#d6bdca; --soft:#4b344b; background:#201c25; }
+  main { max-width:1080px; margin:36px auto; padding:0 24px; }
+  .top { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:28px; }
+  .top p { color:var(--sub); font-size:13px; margin:8px 0 0; }
+  h1 { font-size:20px; margin:0; } h2 { font-size:24px; line-height:1.5; margin:0 0 16px; }
+  button { cursor:pointer; font:inherit; color:inherit; border:0; background:var(--soft); padding:10px 14px; border-radius:22px; }
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; } .stage { display:grid; grid-template-columns:390px 1fr; gap:64px; align-items:start; }
+  .phone { width:390px; border:1px solid #e6cfd7; border-radius:36px; padding:0 18px 20px; background:var(--paper); overflow:hidden; }
+  .status { height:48px; display:flex; align-items:center; justify-content:space-between; font-size:13px; font-weight:bold; padding:0 8px; }
+  .header { padding-top:20px; }
+  .title-line { display:flex; align-items:flex-end; gap:10px; }
+  .title-line strong { flex:1; min-width:0; display:block; font-size:28px; line-height:34px; font-weight:900; white-space:nowrap; }
+  .header small { display:block; color:var(--sub); font-size:14px; line-height:20px; margin-top:2px; white-space:nowrap; }
+  .duo { --slot:112px; width:var(--slot); height:44px; flex:none; display:grid; align-items:end; justify-items:center; border-radius:0;
+    padding:0; background:transparent; overflow:hidden; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  .art { width:calc(var(--slot) - 16px); height:min(44px,calc((var(--slot) - 16px) * .4625)); overflow:hidden; transform-origin:50% 100%; will-change:transform; pointer-events:none; }
+  .art img { display:block; width:100%; height:auto; pointer-events:none; }
+  .tabs { display:flex; border-radius:30px; background:var(--soft); margin:12px 0 20px; padding:4px; }
+  .tabs span { flex:1; padding:10px 0; text-align:center; font-size:15px; font-weight:bold; }
+  .tabs span:first-child { background:var(--card); color:var(--accent); border-radius:24px; }
+  .filters { color:var(--sub); font-size:12px; text-align:right; margin:0 0 12px; }
+  .chips { display:flex; gap:8px; font-size:12px; margin-bottom:16px; }
+  .chips span { padding:10px 13px; background:var(--soft); border-radius:24px; }
+  .chips span:first-child { background:var(--accent); color:#fff; }
+  .card { background:var(--card); border-radius:28px; padding:20px; margin:12px 0; }
+  .card b { font-size:16px; } .card p { color:var(--sub); font-size:13px; margin:8px 0; }
+  .track { height:14px; background:linear-gradient(90deg,#ffb9d1,#ff77a4); border-radius:12px; margin-top:16px; }
+  .demo { color:var(--sub); font-size:11px; text-align:center; margin:22px 0 10px; }
+  .dock { background:var(--card); border-radius:30px; display:flex; justify-content:space-around; padding:16px; font-size:13px; }
+  .dock span:nth-child(2) { color:var(--accent); }
+  aside { padding-top:32px; } aside p, aside li { color:var(--sub); line-height:1.9; font-size:14px; }
+  .caption { font-size:12px; color:var(--sub); line-height:1.8; }
+  .legend { margin-top:24px; padding:18px 0; border-top:1px solid #d6a6b955; }
+  .asset-review { display:flex; align-items:end; justify-content:space-around; gap:12px; margin-top:24px; }
+  .asset-review figure { margin:0; text-align:center; font-size:12px; color:var(--sub); }
+  .asset-review img { display:block; width:96px; height:88px; object-fit:contain; margin-bottom:8px; }
+  #feedback { min-height:28px; color:var(--sub); font-size:13px; margin-top:20px; }
+  @media(max-width:800px) { main { padding:0 12px; margin:20px auto; } .top { flex-direction:column; align-items:start; }
+    .stage { display:flex; flex-direction:column; gap:0; align-items:center; } aside { width:100%; max-width:430px; }
+    .phone { max-width:100%; } }
+</style>
+<main>
+  <div class="top"><div><h1>两人份 · 探头气泡</h1><p>第一阶段：原造型 · 整体呼吸 · 连击捏压</p></div>
+    <div class="controls"><button id="theme">深色背景</button><button id="width">360 窄屏</button><button id="pause">暂停待机</button><button id="reduced">克制反馈预览</button></div></div>
+  <div class="stage"><div class="phone" id="phone">
+    <div class="status"><span>09:41</span><span>••• ▰ 100</span></div>
+    <header class="header"><div class="title-line"><strong>共同休时</strong>
+      <button class="duo" id="duo" aria-label="布布和休休，轻点捏一下"><div class="art" id="art"><img src="assets/legacy-app-assets-2026-10-17/companions_peek_b.png" alt=""></div></button></div>
+      <small>TA · 未来 4 个月</small></header>
+    <div class="tabs"><span>列表</span><span>周历</span><span>计划</span></div>
+    <p class="filters">共 2 段</p><div class="chips"><span>全部</span><span>≥2小时</span><span>完整同休</span><span>周末</span></div>
+    <div class="card"><b>10月17日 周六</b><p>17:30 – 22:30 · 5小时</p><div class="track"></div></div>
+    <div class="card"><b>10月18日 周日</b><p>07:00 – 22:30 · 15小时30分</p><div class="track"></div></div>
+    <p class="demo">日程是演示数据，不关联真实同步状态</p><div class="dock"><span>两人份</span><span>共同</span><span>我的</span></div>
+  </div><aside>
+    <h2>它们在这里，<br>安静地陪一会儿。</h2>
+    <p>轻点标题右边的角色，可以捏一下。500ms 内连续点击会逐渐加深，最多累计五下；停顿后恢复基础力度。</p>
+    <div id="feedback" role="status" aria-live="polite">待机 · 2.8 秒轻呼吸</div>
+    <div class="legend"><p>本轮沿用已选合成图，不重新画角色。底边残片通过显示裁切排除；没有底板、投影和音效。</p>
+    <p>独立耳动、表情切换、两角色错相呼吸和四段叙事，等待原造型的分层素材后实现。</p></div>
+    <p class="caption">这是 HTML 构图与手感预览，不是原生 ArkUI 运行截图。运动数值来自生产 ArkTS 纯函数；浏览器与设备的帧调度仍可能不同。上面的克制反馈按钮仅供评审，不会新增 App 设置项。</p>
+    <div class="asset-review" aria-label="新版原造型素材，小尺寸检查">
+      <figure><img src="../../entry/src/main/resources/base/media/bubu_peek.png" alt="圆耳杏色布布探头"><figcaption>确认框 · 布布</figcaption></figure>
+      <figure><img src="../../entry/src/main/resources/base/media/xiuxiu_peek.png" alt="折耳白色休休探头"><figcaption>计划弹窗 · 休休</figcaption></figure>
+      <figure><img src="../../entry/src/main/resources/base/media/xiuxiu_sleep.png" alt="原造型休休闭眼坐着"><figcaption>空状态 · 休休</figcaption></figure>
+    </div>
+  </aside></div>
+</main>
+<script src="assets/companion-motion-2026-10-17.js"></script>
+<script>
+(() => {
+  const math = window.CompanionMotion, duo = document.querySelector('#duo'), art = document.querySelector('#art');
+  const phone = document.querySelector('#phone'), feedback = document.querySelector('#feedback');
+  const theme = document.querySelector('#theme'), width = document.querySelector('#width');
+  const pause = document.querySelector('#pause'), reducedButton = document.querySelector('#reduced');
+  const media = matchMedia('(prefers-reduced-motion: reduce)');
+  let paused = false, reduced = media.matches, count = 0, last = 0, run = null, pose = {x:1,y:1,angle:0};
+  let raf = 0, breathStart = performance.now();
+  function paint(p, breath=1) { art.style.transform = `scale(${p.x*breath},${p.y*breath}) rotate(${p.angle}deg)`; }
+  function reset() { if(raf) cancelAnimationFrame(raf); raf=0; run=null; pose={x:1,y:1,angle:0}; count=0; last=0; paint(pose); }
+  function loop(now) {
+    raf=0; if(document.hidden || paused) return;
+    if(run) { const elapsed=now-run.start; pose=math.companionSquishFrame(run.spec,elapsed,run.from.x,run.from.y,run.from.angle); paint(pose);
+      if(elapsed>=run.spec.duration) { run=null; breathStart=now; feedback.textContent='已归位 · 再点一次也可以'; } }
+    else paint(pose, reduced ? 1 : math.companionBreath(((now-breathStart)%2800)/2800));
+    if(run || !reduced) raf=requestAnimationFrame(loop);
+  }
+  function start() { if(!raf && !paused && !document.hidden) raf=requestAnimationFrame(loop); }
+  function squish() {
+    if(paused || document.hidden) return;
+    const now=performance.now(); count=math.nextCompanionCombo(count,last,now); last=now;
+    run={start:now,from:{...pose},spec:math.companionSquishSpec(count,reduced,Math.random(),Math.random(),Math.random())};
+    feedback.textContent=`第 ${count} 下${count===5?' · 轻轻晃一下':''}`; start();
+  }
+  duo.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();duo.focus();squish();});
+  duo.addEventListener('click',e=>{e.stopPropagation();if(e.detail===0)squish();});
+  theme.addEventListener('click',()=>{document.body.classList.toggle('dark');theme.textContent=document.body.classList.contains('dark')?'浅色背景':'深色背景';});
+  function measure() { duo.style.setProperty('--slot',math.companionSlotWidth(document.querySelector('.header').clientWidth)+'px'); }
+  width.addEventListener('click',()=>{const narrow=phone.style.width!=='360px';phone.style.width=narrow?'360px':'390px';width.textContent=narrow?'390 标准屏':'360 窄屏';measure();});
+  pause.addEventListener('click',()=>{paused=!paused;reset();pause.textContent=paused?'恢复待机':'暂停待机';feedback.textContent=paused?'已暂停 · 保持静止':'待机 · 2.8 秒轻呼吸';breathStart=performance.now();start();});
+  reducedButton.addEventListener('click',()=>{reduced=!reduced;reset();reducedButton.textContent=reduced?'恢复完整反馈':'克制反馈预览';breathStart=performance.now();start();});
+  media.addEventListener('change',e=>{reduced=e.matches;reset();start();});
+  document.addEventListener('visibilitychange',()=>{reset();breathStart=performance.now();start();});
+  window.addEventListener('pagehide',reset); window.addEventListener('resize',measure);
+  measure();start();
+})();
+</script>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "fortwo-dateplan-v1",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": { "@hw-agconnect/cloud-server": "1.0.5" }
+}

@@ -1,7 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit';
 import { Logger } from 'commons';
-import { PairingShareGateway, ScheduleUseCase } from 'feature';
+import { ScheduleUseCase } from 'feature';
 import { HomeView } from '../view/HomeView';
 import { CoTimeView } from '../view/CoTimeView';
 import { MeView } from '../view/MeView';
@@ -38,14 +38,15 @@ const ITEM_WIDTH = 100;
 
 interface NavItem {
   icon: Resource;
+  selectedIcon: Resource;
   text: string;
   tab: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { icon: $r('sys.symbol.house'), text: '同休', tab: NavRoutes.TAB_HOME },
-  { icon: $r('sys.symbol.heart'), text: '共同', tab: NavRoutes.TAB_COMMON_TIME },
-  { icon: $r('sys.symbol.person'), text: '我的', tab: NavRoutes.TAB_ME }
+  { icon: $r('sys.symbol.house'), selectedIcon: $r('sys.symbol.house_fill'), text: '两人份', tab: NavRoutes.TAB_HOME },
+  { icon: $r('sys.symbol.heart'), selectedIcon: $r('sys.symbol.heart_fill'), text: '共同', tab: NavRoutes.TAB_COMMON_TIME },
+  { icon: $r('sys.symbol.person'), selectedIcon: $r('sys.symbol.person_fill'), text: '我的', tab: NavRoutes.TAB_ME }
 ];
 
 /**
@@ -61,13 +62,12 @@ export struct AppNavigator {
   @State private activeTab: number = NavRoutes.TAB_HOME;
   /** 当前按下的底栏单项，-1 = 没有；只影响缩放。 */
   @State private pressedTab: number = -1;
+  @State private dockVisible: boolean = true;
+  @StorageProp('crd_root_page_visible') private rootVisible: boolean = true;
   // 装饰器实参必须是字面量，取值与 MOTION_REDUCE_KEY 保持一致。
   @StorageProp('crd_reduce_motion') reduceMotion: boolean = false;
   // 跨 Tab 导航广播（计划页空态引导「去共同时间页」）：NavUtil.navToCoTime() 触发
   @StorageProp('navToCoTimeCount') @Watch('onNavToCoTime') navToCoTimeCount: number = 0;
-  // 配对请求到达广播：确认页在「我的 · 伴侣与同步」里，先把人带到那一页。
-  // 写入方在 feature 模块（依赖方向反过来，够不到 entry 的 NavUtil），故不走 pending route
-  @StorageProp('pairOfferCount') @Watch('onPairOffer') pairOfferCount: number = 0;
   // 服务卡片点击深链广播：EntryAbility 过白名单后登记，壳层取走并落地
   @StorageProp('crdPendingRouteCount') @Watch('onPendingRoute') pendingRouteCount: number = 0;
   private pathStack: NavPathStack = new NavPathStack();
@@ -84,14 +84,6 @@ export struct AppNavigator {
     const raw: Object | undefined = router.getParams();
     this.pendingRaw = raw;
     this.pendingRoute = routeNameFromParams(raw);
-    // 冷启动深链的配对请求比本页早到（EntryAbility 就收下了）：没有别的导航意图时落到「我的」
-    if (this.pendingRoute === '' && PairingShareGateway.peekOffer() !== null) {
-      this.activeTab = NavRoutes.TAB_ME;
-    }
-  }
-
-  onPairOffer(): void {
-    this.goTab(NavRoutes.TAB_ME);
   }
 
   /** 应用已在运行时点卡片/页内引导：登记的请求取走即落地，名字一律按白名单解析。 */
@@ -149,27 +141,17 @@ export struct AppNavigator {
     this.activeTab = tab;
   }
 
-  /** 选中态只做透明度/底色迁移（150–220ms），减少动效时归零，不延迟内容切换。 */
+  /** 内容切换直接落地，动画只留在被按下的条目上。 */
   private selectTab(tab: number): void {
     if (this.activeTab === tab) {
       return;
     }
-    this.getUIContext().animateTo({
-      duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionGlassEnter),
-      curve: DesignTokens.curve
-    }, () => {
-      this.goTab(tab);
-    });
+    this.goTab(tab);
   }
 
   /** 单项按压反馈：只画 0.92 缩放，抬起即回弹，不参与切换与导航逻辑。 */
   private pressTab(tab: number, down: boolean): void {
-    this.getUIContext().animateTo({
-      duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionPress),
-      curve: DesignTokens.curve
-    }, () => {
-      this.pressedTab = down ? tab : -1;
-    });
+    this.pressedTab = down ? tab : -1;
   }
 
   /**
@@ -192,6 +174,7 @@ export struct AppNavigator {
           TabContent() {
             // 首页要打开班表/配对：路由种类只有壳层知道，页面只报名字
             HomeView({
+              active: this.activeTab === NavRoutes.TAB_HOME && this.dockVisible && this.rootVisible,
               onOpenRoute: (name: string): void => {
                 this.openRoute(name, undefined);
               }
@@ -202,6 +185,7 @@ export struct AppNavigator {
           TabContent() {
             // 空态引导要去班表/配对：同首页，页面只报名字，路由种类只有壳层知道
             CoTimeView({
+              active: this.activeTab === NavRoutes.TAB_COMMON_TIME && this.dockVisible && this.rootVisible,
               onOpenRoute: (name: string): void => {
                 this.openRoute(name, undefined);
               }
@@ -212,6 +196,7 @@ export struct AppNavigator {
           TabContent() {
             // 「我的日程」要开班表页并指定录哪一侧：路由种类只有壳层知道，页面只报名字与 owner
             MeView({
+              active: this.activeTab === NavRoutes.TAB_ME && this.dockVisible && this.rootVisible,
               onOpenRoute: (name: string, params?: Object): void => {
                 this.openRoute(name, params);
               }
@@ -227,6 +212,7 @@ export struct AppNavigator {
         // 不打开时只有整条 band 的底色，岛本身什么都不画（官方「设置页签栏的悬浮样式」约束条件）。
         .barOverlap(true)
         .scrollable(false)
+        .animationDuration(0)
         .barHeight(BAR_BAND)
         // 悬浮底栏 + 沉浸光感材质（API 23 起）：岛的面与模糊交给系统，应用侧不再自绘玻璃
         .barFloatingStyle({
@@ -248,6 +234,7 @@ export struct AppNavigator {
 
         DockFx({
           bandWidth: this.bandVp,
+          active: this.dockVisible,
           bottom: DOCK_BOTTOM_MARGIN,
           bandHeight: BAR_BAND,
           radius: DOCK_RADIUS
@@ -262,12 +249,16 @@ export struct AppNavigator {
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
     .navDestination(this.destinationBuilder)
+    .onNavBarStateChange((shown: boolean) => {
+      this.dockVisible = shown;
+    })
     .onAppear(() => {
       this.consumePending();
     })
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_bg_warm'))
+    .linearGradient(DesignTokens.pageGradient())
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   /**
@@ -287,7 +278,8 @@ export struct AppNavigator {
         })
       }
       .hideTitleBar(true)
-      .backgroundColor($r('app.color.page_bg_warm'))
+      .linearGradient(DesignTokens.pageGradient())
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       // 进出班表页各看一次钟：被它盖住的 Tab 页（以及从录入页返回后的自己）都没有别的重进信号（K-4③）
       .onShown(() => {
         ScheduleUseCase.notifyClockTick();
@@ -310,7 +302,7 @@ export struct AppNavigator {
   @Builder
   navItem(item: NavItem) {
     Column({ space: 2 }) {
-      SymbolGlyph(item.icon)
+      SymbolGlyph(this.activeTab === item.tab ? item.selectedIcon : item.icon)
         .fontSize(22)
         .fontColor([this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary')])
         // 选中那颗图标浮起来一点（原型 .t.on svg 的 drop-shadow），未选中的不画
@@ -321,7 +313,7 @@ export struct AppNavigator {
         .accessibilityLevel('no')
       Text(item.text)
         .fontSize(11)
-        .fontColor(this.activeTab === item.tab ? $r('app.color.brand_pink') : $r('app.color.text_secondary'))
+        .fontColor(this.activeTab === item.tab ? $r('app.color.text_accent') : $r('app.color.text_secondary'))
         .fontWeight(this.activeTab === item.tab ? FontWeight.Bolder : FontWeight.Bold)
     }
     // 选中态用浅莓实心底标出，不只靠玻璃色差：状态要有底色/字重双重提示
@@ -330,10 +322,12 @@ export struct AppNavigator {
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(DesignTokens.radiusPill)
-    .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
     .scale(this.pressedTab === item.tab
       ? { x: DesignTokens.dockPressScale, y: DesignTokens.dockPressScale }
       : { x: 1, y: 1 })
+    .animation({ duration: DesignTokens.motion(this.reduceMotion, DesignTokens.motionPress), curve: DesignTokens.curve })
+    .backgroundColor(this.activeTab === item.tab ? $r('app.color.brand_pink_bg') : Color.Transparent)
+    .hoverEffect(HoverEffect.None)
     .focusable(true)
     .accessibilityGroup(true)
     // 底色/字重是视觉信号，读屏要把"你在哪一页、按了会去哪一页"念出来
@@ -341,6 +335,8 @@ export struct AppNavigator {
       ? item.text + '，当前所在页'
       : '切换到' + item.text + '页')
     .onTouch((e: TouchEvent) => {
+      // 条目自己承担按压，防止父级系统页签再叠一次反馈。
+      e.stopPropagation();
       if (e.type === TouchType.Down) {
         this.pressTab(item.tab, true);
       } else if (e.type === TouchType.Up || e.type === TouchType.Cancel) {

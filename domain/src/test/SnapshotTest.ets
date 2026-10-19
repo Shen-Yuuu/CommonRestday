@@ -71,6 +71,41 @@ function busyCount(data: SnapshotData, fromMin: number, toMin: number): boolean 
 
 export default function snapshotTest() {
   describe('snapshot', () => {
+    it('weekday_filter_reaches_all_snapshot_levels_without_wire_change', 0, () => {
+      const monday = Math.floor(Date.UTC(2026, 8, 28) / 86400000);
+      const my = myWithDayShift();
+      const tpl: CycleTemplate = { id: 'main', name: '工作日', seq: ['day'],
+        anchorEpochDay: monday, weekdaysMask: 31 };
+      my.template = tpl;
+      my.termStartEpochDay = monday;
+      my.sectionTimes = [{ startMin: 600, endMin: 660 }];
+      my.courses = [{ id: 'course', name: '周六课程', weekday: 6, sectionStart: 1, sectionEnd: 1,
+        weekFrom: 1, weekTo: 16, parity: 0, place: '' }];
+      for (let level = 1; level <= 3; level++) {
+        const snap = SnapshotBuilder.build(my, params(7), monday, level, 1);
+        const decoded = SnapshotCodec.decode(SnapshotCodec.encode(snap));
+        expect(decoded != null).assertTrue();
+        if (decoded == null) {
+          continue;
+        }
+        const ivs = SnapshotCodec.toIntervals(decoded);
+        const saturdayClass = (monday + 5) * MIN_PER_DAY + 630;
+        const saturdayAfternoon = (monday + 5) * MIN_PER_DAY + 900;
+        const fridayWork = (monday + 4) * MIN_PER_DAY + 900;
+        let hasClass = false;
+        let hasSaturdayWork = false;
+        let hasFridayWork = false;
+        for (let i = 0; i < ivs.length; i++) {
+          hasClass = hasClass || (ivs[i].start <= saturdayClass && ivs[i].end > saturdayClass);
+          hasSaturdayWork = hasSaturdayWork
+            || (ivs[i].start <= saturdayAfternoon && ivs[i].end > saturdayAfternoon);
+          hasFridayWork = hasFridayWork || (ivs[i].start <= fridayWork && ivs[i].end > fridayWork);
+        }
+        expect(hasClass).assertTrue();
+        expect(hasSaturdayWork).assertFalse();
+        expect(hasFridayWork).assertTrue();
+      }
+    });
     it('l1_bitmap_semantics', 0, () => {
       // startEpochDay=1000：白班 09:00–18:00，wake 07:00 bed 22:30，windDown 0
       const data = SnapshotBuilder.build(myWithDayShift(), params(2), 1000, 1, 5);
